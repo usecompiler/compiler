@@ -1,23 +1,23 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Message, ToolCall } from "~/lib/chat-storage";
+import type { Item } from "~/lib/conversation-storage";
 
-interface AgentChatProps {
-  chatId: string | null;
-  messages: Message[];
-  onAddMessage: (chatId: string, message: Message) => void;
-  onUpdateMessage: (chatId: string, messageId: string, updates: Partial<Message>) => void;
-  onCreateChat: () => { id: string };
+interface AgentConversationProps {
+  conversationId: string | null;
+  items: Item[];
+  onAddItem: (conversationId: string, item: Item) => void;
+  onUpdateItem: (conversationId: string, itemId: string, updates: Partial<Item>) => void;
+  onCreateConversation: () => Promise<{ id: string }>;
 }
 
-export function AgentChat({
-  chatId,
-  messages,
-  onAddMessage,
-  onUpdateMessage,
-  onCreateChat,
-}: AgentChatProps) {
+export function AgentConversation({
+  conversationId,
+  items,
+  onAddItem,
+  onUpdateItem,
+  onCreateConversation,
+}: AgentConversationProps) {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
@@ -27,7 +27,7 @@ export function AgentChat({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [items]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -41,45 +41,60 @@ export function AgentChat({
       e?.preventDefault();
       if (!input.trim() || isStreaming) return;
 
-      let activeChatId = chatId;
-      if (!activeChatId) {
-        const newChat = onCreateChat();
-        activeChatId = newChat.id;
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const newConversation = await onCreateConversation();
+        activeConversationId = newConversation.id;
       }
 
-      const userMessage: Message = {
+      // Add user message item
+      const userItem: Item = {
         id: crypto.randomUUID(),
+        type: "message",
         role: "user",
         content: input.trim(),
+        createdAt: Date.now(),
       };
 
-      onAddMessage(activeChatId, userMessage);
+      onAddItem(activeConversationId, userItem);
       setInput("");
       setIsStreaming(true);
       setStreamStartTime(Date.now());
 
+      // Add assistant message item (will be updated as we stream)
       const assistantId = crypto.randomUUID();
-      const assistantMessage: Message = {
+      const assistantItem: Item = {
         id: assistantId,
+        type: "message",
         role: "assistant",
-        content: "",
-        toolCalls: [],
+        content: { text: "", toolCalls: [], stats: null },
+        status: "in_progress",
+        createdAt: Date.now(),
       };
-      onAddMessage(activeChatId, assistantMessage);
+      onAddItem(activeConversationId, assistantItem);
 
       abortControllerRef.current = new AbortController();
 
-      const history = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // Build history from message items only
+      const history = items
+        .filter((item) => item.type === "message")
+        .map((item) => ({
+          role: item.role!,
+          content:
+            typeof item.content === "string"
+              ? item.content
+              : (item.content as { text?: string })?.text || "",
+        }));
 
       try {
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: userMessage.content,
+            prompt:
+              typeof userItem.content === "string"
+                ? userItem.content
+                : "",
             history,
           }),
           signal: abortControllerRef.current.signal,
@@ -94,9 +109,9 @@ export function AgentChat({
 
         const decoder = new TextDecoder();
         let buffer = "";
-        let currentContent = "";
-        let currentToolCalls: ToolCall[] = [];
-        let contentSplitIndex: number | undefined;
+        let currentText = "";
+        let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
+        let toolsStartIndex: number | null = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -112,46 +127,61 @@ export function AgentChat({
               const data = JSON.parse(line.slice(6));
 
               if (data.type === "new_turn") {
-                // Add paragraph break between assistant turns
-                currentContent += '\n\n';
+                currentText += "\n\n";
               } else if (data.type === "text") {
-                currentContent += data.content;
-                onUpdateMessage(activeChatId, assistantId, { content: currentContent });
+                currentText += data.content;
+                onUpdateItem(activeConversationId, assistantId, {
+                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                });
               } else if (data.type === "tool_use") {
-                // Record where tool use started (first tool only)
-                if (contentSplitIndex === undefined) {
-                  contentSplitIndex = currentContent.length;
-                  onUpdateMessage(activeChatId, assistantId, { contentSplitIndex });
+                // Track where in the text tools started
+                if (toolsStartIndex === null) {
+                  toolsStartIndex = currentText.length;
                 }
-                currentToolCalls = [
-                  ...currentToolCalls,
-                  { tool: data.tool, input: data.input },
-                ];
-                onUpdateMessage(activeChatId, assistantId, { toolCalls: currentToolCalls });
+                const toolCall = {
+                  id: crypto.randomUUID(),
+                  tool: data.tool,
+                  input: data.input,
+                };
+                currentToolCalls = [...currentToolCalls, toolCall];
+                onUpdateItem(activeConversationId, assistantId, {
+                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                });
               } else if (data.type === "tool_result") {
                 if (currentToolCalls.length > 0) {
                   const updatedCalls = [...currentToolCalls];
                   updatedCalls[updatedCalls.length - 1].result = data.content;
                   currentToolCalls = updatedCalls;
-                  onUpdateMessage(activeChatId, assistantId, { toolCalls: currentToolCalls });
+                  onUpdateItem(activeConversationId, assistantId, {
+                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                  });
                 }
               } else if (data.type === "error") {
-                currentContent += `\n\nError: ${data.content}`;
-                onUpdateMessage(activeChatId, assistantId, { content: currentContent });
+                currentText += `\n\nError: ${data.content}`;
+                onUpdateItem(activeConversationId, assistantId, {
+                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                });
               } else if (data.type === "result" && data.stats) {
-                onUpdateMessage(activeChatId, assistantId, { stats: data.stats });
+                onUpdateItem(activeConversationId, assistantId, {
+                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
+                  status: "completed",
+                });
               }
             }
           }
         }
       } catch (error) {
         if ((error as Error).name === "AbortError") {
-          onUpdateMessage(activeChatId, assistantId, { cancelled: true });
+          onUpdateItem(activeConversationId, assistantId, { status: "cancelled" });
         } else {
-          onUpdateMessage(activeChatId, assistantId, {
-            content:
-              messages.find((m) => m.id === assistantId)?.content +
-              "\n\nConnection error.",
+          const currentContent = items.find((i) => i.id === assistantId)?.content as { text?: string } | undefined;
+          onUpdateItem(activeConversationId, assistantId, {
+            content: {
+              text: (currentContent?.text || "") + "\n\nConnection error.",
+              toolCalls: [],
+              stats: null,
+            },
+            status: "cancelled",
           });
         }
       } finally {
@@ -160,7 +190,7 @@ export function AgentChat({
         abortControllerRef.current = null;
       }
     },
-    [input, isStreaming, chatId, messages, onAddMessage, onUpdateMessage, onCreateChat]
+    [input, isStreaming, conversationId, items, onAddItem, onUpdateItem, onCreateConversation]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -174,8 +204,8 @@ export function AgentChat({
     abortControllerRef.current?.abort();
   }, []);
 
-  // Empty state - no chat selected or no messages yet
-  const showEmptyState = !chatId || messages.length === 0;
+  // Empty state - no conversation selected or no items yet
+  const showEmptyState = !conversationId || items.length === 0;
 
   if (showEmptyState) {
     return (
@@ -184,7 +214,6 @@ export function AgentChat({
           What can I help with?
         </h1>
 
-        {/* Centered Input */}
         <div className="w-full max-w-3xl">
           <div className="relative flex items-end bg-neutral-800 border border-neutral-700 rounded-3xl">
             <button
@@ -225,19 +254,21 @@ export function AgentChat({
     );
   }
 
+  // Filter to message items for display
+  const messageItems = items.filter((item) => item.type === "message");
+
   return (
     <div className="flex flex-col h-full bg-neutral-900">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
-          {messages.map((message, index) => (
-            <MessageRow
-              key={message.id}
-              message={message}
+          {messageItems.map((item, index) => (
+            <ItemRow
+              key={item.id}
+              item={item}
               isStreaming={
                 isStreaming &&
-                message.role === "assistant" &&
-                index === messages.length - 1
+                item.role === "assistant" &&
+                index === messageItems.length - 1
               }
               streamStartTime={streamStartTime}
             />
@@ -246,11 +277,9 @@ export function AgentChat({
         </div>
       </div>
 
-      {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
           <div className="relative flex items-end bg-neutral-800 border border-neutral-700 rounded-3xl">
-            {/* Plus button */}
             <button
               type="button"
               className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors"
@@ -305,17 +334,23 @@ export function AgentChat({
   );
 }
 
-interface MessageRowProps {
-  message: Message;
+interface ItemRowProps {
+  item: Item;
   isStreaming: boolean;
   streamStartTime?: number;
 }
 
-function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) {
+interface AssistantContent {
+  text?: string;
+  toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
+  toolsStartIndex?: number | null;
+  stats?: { toolUses: number; tokens: number; durationMs: number } | null;
+}
+
+function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
 
-  // Timer for elapsed seconds while streaming
   useEffect(() => {
     if (!isStreaming || !streamStartTime) {
       setElapsedSeconds(0);
@@ -329,21 +364,24 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
     return () => clearInterval(interval);
   }, [isStreaming, streamStartTime]);
 
+  const isUser = item.role === "user";
+  const contentText =
+    typeof item.content === "string"
+      ? item.content
+      : (item.content as AssistantContent)?.text || "";
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(contentText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isUser = message.role === "user";
-
   if (isUser) {
-    // User message - right-aligned bubble
     return (
       <div className="group mb-6">
         <div className="flex justify-end">
           <div className="bg-neutral-800 text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <p className="whitespace-pre-wrap">{contentText}</p>
           </div>
         </div>
         <div className="flex justify-end mt-1">
@@ -369,20 +407,25 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
     );
   }
 
-  // Assistant message - left-aligned, no avatar
-  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+  // Assistant message
+  const assistantContent = item.content as AssistantContent | undefined;
+  const toolCalls = assistantContent?.toolCalls || [];
+  const toolsStartIndex = assistantContent?.toolsStartIndex;
+  const stats = assistantContent?.stats;
+  const hasToolCalls = toolCalls.length > 0;
+  const isCancelled = item.status === "cancelled";
+  const isCompleted = item.status === "completed";
 
-  // Split content into before/after tool use
-  const splitIndex = message.contentSplitIndex ?? message.content.length;
-  const contentBefore = message.content.slice(0, splitIndex).trim();
-  const contentAfter = message.content.slice(splitIndex).trim();
+  // Split text at the point where tools started
+  const textBeforeTools = toolsStartIndex != null ? contentText.slice(0, toolsStartIndex) : contentText;
+  const textAfterTools = toolsStartIndex != null ? contentText.slice(toolsStartIndex) : "";
 
-  const hasContentBefore = contentBefore.length > 0;
-  const hasContentAfter = contentAfter.length > 0;
+  const hasContentBefore = textBeforeTools.trim().length > 0;
+  const hasContentAfter = textAfterTools.trim().length > 0;
 
   return (
     <div className="mb-6">
-      {/* Spinner when no content yet */}
+      {/* Spinner when no content yet and no tool calls */}
       {isStreaming && !hasContentBefore && !hasToolCalls && (
         <div className="flex items-center gap-2 text-neutral-400 mb-2">
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -393,24 +436,24 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
         </div>
       )}
 
-      {/* Planning content - before tool use */}
+      {/* Content before tools */}
       {hasContentBefore && (
         <div className="text-neutral-100 prose prose-invert prose-neutral max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]}>{contentBefore}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{textBeforeTools}</Markdown>
         </div>
       )}
 
-      {/* Activity timeline - between planning and answer */}
-      {(hasToolCalls || message.stats || message.cancelled) && (
+      {/* Activity timeline - between content */}
+      {(hasToolCalls || stats || isCancelled) && (
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
-            <span className={message.stats ? "text-green-500" : message.cancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
+            <span className={stats ? "text-green-500" : isCancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
             <span className="font-medium text-neutral-400">Exploring</span>
-            {message.stats ? (
+            {stats ? (
               <span className="text-neutral-500">
-                ({message.stats.toolUses} tool uses · {formatTokens(message.stats.tokens)} tokens · {formatDuration(message.stats.durationMs)})
+                ({stats.toolUses} tool uses · {formatTokens(stats.tokens)} tokens · {formatDuration(stats.durationMs)})
               </span>
-            ) : message.cancelled ? (
+            ) : isCancelled ? (
               <span className="text-neutral-500">Stopped</span>
             ) : (
               <span className="text-neutral-500 inline-flex items-center gap-1">
@@ -423,19 +466,19 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
             )}
           </div>
           <div className="ml-2 border-l border-neutral-700 pl-3 mt-1 text-neutral-500">
-            └ {message.stats
+            └ {stats
                 ? "Done"
-                : message.cancelled
+                : isCancelled
                   ? "Stopped"
-                  : `${getToolLabel(message.toolCalls?.[message.toolCalls.length - 1]?.tool)}...`}
+                  : `${getToolLabel(toolCalls[toolCalls.length - 1]?.tool)}...`}
           </div>
         </div>
       )}
 
-      {/* Answer content - after tool use */}
+      {/* Content after tools */}
       {hasContentAfter && (
         <div className="text-neutral-100 prose prose-invert prose-neutral max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]}>{contentAfter}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{textAfterTools}</Markdown>
         </div>
       )}
     </div>

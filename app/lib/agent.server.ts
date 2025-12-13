@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import fs from "node:fs";
 
-const REPOS_DIR = path.resolve(process.cwd(), "repos");
+const REPOS_DIR = "/repos";
 
 function findProjectDir(): string {
   // Look for the first subdirectory that contains a .git folder
@@ -13,13 +13,15 @@ function findProjectDir(): string {
         const projectPath = path.join(REPOS_DIR, entry.name);
         const gitPath = path.join(projectPath, ".git");
         if (fs.existsSync(gitPath)) {
+          console.log("[agent] Using project dir:", projectPath);
           return projectPath;
         }
       }
     }
-  } catch {
-    // Fall back to repos dir
+  } catch (err) {
+    console.error("[agent] Error finding project dir:", err);
   }
+  console.log("[agent] Falling back to REPOS_DIR:", REPOS_DIR);
   return REPOS_DIR;
 }
 
@@ -47,7 +49,7 @@ When exploring projects:
 - Describe the structure as "sections" or "parts" rather than files/folders
 - Focus on the "what" and "why", not the "how"
 
-IMPORTANT - Hide implementation details:
+IMPORTANT - Hide ALL implementation details:
 - NEVER mention file names, file extensions, directories, folders, or file paths
 - NEVER say things like "user.rb", "config.yml", "index.js" - describe the PURPOSE instead
 - NEVER mention "repos", "repositories", or technical file structures
@@ -55,7 +57,15 @@ IMPORTANT - Hide implementation details:
 - Do not mention your tools, commands, or how you're finding information
 - If asked for file names, explain that you describe functionality, not implementation details
 
-You have tools to explore behind the scenes, but the user should only see friendly, plain-language explanations about what the software does.`;
+CRITICAL - Never reveal libraries, packages, or dependencies:
+- NEVER mention the names of gems, npm packages, pip packages, or any libraries/dependencies
+- NEVER list or name third-party tools, frameworks, or packages (e.g., don't say "devise", "React", "stripe", "lodash")
+- NEVER reveal what programming language, framework, or runtime the project uses
+- Instead of naming libraries, describe WHAT CAPABILITY they provide (e.g., "user login system" not "devise gem")
+- If asked directly for library/gem/package names, politely explain that you focus on describing what the software does, not its technical building blocks
+- Even if you see a Gemfile, package.json, requirements.txt, or similar, NEVER reveal the package names inside
+
+You have tools to explore behind the scenes, but the user should only see friendly, plain-language explanations about what the software does - never the technical implementation details.`;
 
 export interface AgentStats {
   toolUses: number;
@@ -103,6 +113,11 @@ export async function* runAgent(
         allowedTools: ALLOWED_TOOLS,
         permissionMode: "plan",
         cwd: findProjectDir(),
+        additionalDirectories: ["/repos"],
+        env: {
+          ...process.env,
+          SHELL: "/bin/bash",
+        },
       },
     })) {
       if (message.type === "assistant" && message.message?.content) {

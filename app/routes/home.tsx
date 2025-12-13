@@ -1,7 +1,7 @@
 import type { Route } from "./+types/home";
-import { useChats } from "~/lib/chat-storage";
-import { ChatLayout } from "~/components/chat-layout";
-import { AgentChat } from "~/components/agent-chat";
+import { useConversations } from "~/lib/conversation-storage";
+import { ConversationLayout } from "~/components/conversation-layout";
+import { AgentConversation } from "~/components/agent-conversation";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -12,20 +12,19 @@ export function meta({}: Route.MetaArgs) {
 
 export default function Home() {
   const {
-    chats,
-    currentChat,
-    currentChatId,
+    conversations,
+    currentConversation,
+    currentConversationId,
     isLoaded,
-    createChat,
-    deleteChat,
-    renameChat,
-    selectChat,
+    createConversation,
+    deleteConversation,
+    renameConversation,
+    selectConversation,
     clearSelection,
-    addMessage,
-    updateMessage,
-  } = useChats();
+    addItem,
+    updateItem,
+  } = useConversations();
 
-  // Don't render until localStorage is loaded to avoid hydration mismatch
   if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center bg-neutral-900">
@@ -35,21 +34,21 @@ export default function Home() {
   }
 
   return (
-    <ChatLayout
-      chats={chats}
-      currentChatId={currentChatId}
-      onSelectChat={selectChat}
-      onNewChat={clearSelection}
-      onDeleteChat={deleteChat}
-      onRenameChat={renameChat}
+    <ConversationLayout
+      conversations={conversations}
+      currentConversationId={currentConversationId}
+      onSelectConversation={selectConversation}
+      onNewConversation={clearSelection}
+      onDeleteConversation={deleteConversation}
+      onRenameConversation={renameConversation}
     >
-      <AgentChat
-        chatId={currentChatId}
-        messages={currentChat?.messages || []}
-        onAddMessage={addMessage}
-        onUpdateMessage={updateMessage}
-        onCreateChat={createChat}
+      <AgentConversation
+        conversationId={currentConversationId}
+        items={currentConversation?.items || []}
+        onAddItem={addItem}
+        onUpdateItem={updateItem}
+        onCreateConversation={createConversation}
       />
-    </ChatLayout>
+    </ConversationLayout>
   );
 }
