@@ -9,12 +9,17 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.67",
     "@react-router/node": "7.10.1",
     "@react-router/serve": "7.10.1",
+    "@tailwindcss/typography": "^0.5.19",
     "isbot": "^5.1.31",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-router": "7.10.1"
+    "react-markdown": "^10.1.0",
+    "react-router": "7.10.1",
+    "remark-gfm": "^4.0.1",
+    "tailwind-scrollbar-hide": "^4.0.0"
   },
   "devDependencies": {
     "@react-router/dev": "7.10.1",
