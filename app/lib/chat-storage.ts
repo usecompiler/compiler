@@ -19,6 +19,7 @@ export interface Message {
   toolCalls?: ToolCall[];
   stats?: MessageStats;
   contentSplitIndex?: number; // Index where tool use started, to split planning/answer
+  cancelled?: boolean;
 }
 
 export interface Chat {

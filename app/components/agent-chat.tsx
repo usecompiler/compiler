@@ -145,7 +145,9 @@ export function AgentChat({
           }
         }
       } catch (error) {
-        if ((error as Error).name !== "AbortError") {
+        if ((error as Error).name === "AbortError") {
+          onUpdateMessage(activeChatId, assistantId, { cancelled: true });
+        } else {
           onUpdateMessage(activeChatId, assistantId, {
             content:
               messages.find((m) => m.id === assistantId)?.content +
@@ -399,15 +401,17 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
       )}
 
       {/* Activity timeline - between planning and answer */}
-      {(hasToolCalls || message.stats) && (
+      {(hasToolCalls || message.stats || message.cancelled) && (
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
-            <span className={message.stats ? "text-green-500" : "text-yellow-500"}>●</span>
+            <span className={message.stats ? "text-green-500" : message.cancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
             <span className="font-medium text-neutral-400">Explore</span>
             {message.stats ? (
               <span className="text-neutral-500">
                 ({message.stats.toolUses} tool uses · {formatTokens(message.stats.tokens)} tokens · {formatDuration(message.stats.durationMs)})
               </span>
+            ) : message.cancelled ? (
+              <span className="text-neutral-500">Stopped</span>
             ) : (
               <span className="text-neutral-500 inline-flex items-center gap-1">
                 <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -419,7 +423,7 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
             )}
           </div>
           <div className="ml-2 border-l border-neutral-700 pl-3 mt-1 text-neutral-500">
-            └ {message.stats ? "Done" : "Running..."}
+            └ {message.stats ? "Done" : message.cancelled ? "Stopped" : "Running..."}
           </div>
         </div>
       )}
