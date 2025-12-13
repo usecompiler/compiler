@@ -443,8 +443,8 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
         </div>
       )}
 
-      {/* Activity timeline - between content */}
-      {(hasToolCalls || stats || isCancelled) && (
+      {/* Activity timeline - between content (only show if tools were used) */}
+      {(hasToolCalls || (stats && stats.toolUses > 0) || (isCancelled && hasToolCalls)) && (
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
             <span className={stats ? "text-green-500" : isCancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import type { Conversation } from "~/lib/conversation-storage";
+import { CommandPalette } from "./command-palette";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -19,6 +20,20 @@ export function Sidebar({
   onDeleteConversation,
   onRenameConversation,
 }: SidebarProps) {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <aside className="w-64 h-full bg-black flex flex-col">
       <div className="p-3 space-y-1">
@@ -43,6 +58,7 @@ export function Sidebar({
         </button>
 
         <button
+          onClick={() => setIsSearchOpen(true)}
           className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-neutral-100 rounded-lg hover:bg-neutral-800 transition-colors"
         >
           <svg
@@ -79,6 +95,14 @@ export function Sidebar({
       </div>
 
       <AccountMenu />
+
+      <CommandPalette
+        conversations={conversations}
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectConversation={onSelectConversation}
+        onNewConversation={onNewConversation}
+      />
     </aside>
   );
 }

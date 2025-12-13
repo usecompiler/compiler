@@ -18,7 +18,7 @@ body {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -26,7 +26,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-neutral-600 rounded;
+  @apply bg-neutral-600 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
