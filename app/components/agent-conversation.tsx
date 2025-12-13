@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Item } from "~/lib/conversation-storage";
+import type { Item } from "~/routes/app-layout";
 
 interface AgentConversationProps {
   conversationId: string | null;
@@ -62,6 +62,7 @@ export function AgentConversation({
       setStreamStartTime(Date.now());
 
       // Add assistant message item (will be updated as we stream)
+      // Use slightly later timestamp to ensure correct ordering when loaded from DB
       const assistantId = crypto.randomUUID();
       const assistantItem: Item = {
         id: assistantId,
@@ -69,15 +70,16 @@ export function AgentConversation({
         role: "assistant",
         content: { text: "", toolCalls: [], stats: null },
         status: "in_progress",
-        createdAt: Date.now(),
+        createdAt: Date.now() + 1,
       };
       onAddItem(activeConversationId, assistantItem);
 
       abortControllerRef.current = new AbortController();
 
-      // Build history from message items only
+      // Build history from message items only, sorted by creation time
       const history = items
         .filter((item) => item.type === "message")
+        .sort((a, b) => a.createdAt - b.createdAt)
         .map((item) => ({
           role: item.role!,
           content:
@@ -209,16 +211,16 @@ export function AgentConversation({
 
   if (showEmptyState) {
     return (
-      <div className="flex flex-col h-full items-center justify-center bg-neutral-900 px-4">
-        <h1 className="text-3xl font-medium text-neutral-100 mb-8">
+      <div className="flex flex-col h-full items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4">
+        <h1 className="text-3xl font-medium text-neutral-900 dark:text-neutral-100 mb-8">
           What can I help with?
         </h1>
 
         <div className="w-full max-w-3xl">
-          <div className="relative flex items-end bg-neutral-800 border border-neutral-700 rounded-3xl">
+          <div className="relative flex items-center bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
             <button
               type="button"
-              className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors"
+              className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -234,7 +236,7 @@ export function AgentConversation({
               disabled={isStreaming}
               rows={1}
               autoFocus
-              className="flex-1 bg-transparent text-neutral-100 placeholder-neutral-500 py-3 resize-none focus:outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 resize-none focus:outline-none disabled:opacity-50"
               style={{ maxHeight: "200px" }}
             />
 
@@ -242,7 +244,7 @@ export function AgentConversation({
               type="button"
               onClick={() => handleSubmit()}
               disabled={!input.trim()}
-              className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors disabled:opacity-30"
+              className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors disabled:opacity-30"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
@@ -254,11 +256,13 @@ export function AgentConversation({
     );
   }
 
-  // Filter to message items for display
-  const messageItems = items.filter((item) => item.type === "message");
+  // Filter to message items for display and sort by creation time
+  const messageItems = items
+    .filter((item) => item.type === "message")
+    .sort((a, b) => a.createdAt - b.createdAt);
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900">
+    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
           {messageItems.map((item, index) => (
@@ -277,12 +281,12 @@ export function AgentConversation({
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900 to-transparent pt-6 pb-4 px-4">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
-          <div className="relative flex items-end bg-neutral-800 border border-neutral-700 rounded-3xl">
+          <div className="relative flex items-center bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
             <button
               type="button"
-              className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors"
+              className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -298,7 +302,7 @@ export function AgentConversation({
               disabled={isStreaming}
               rows={1}
               autoFocus
-              className="flex-1 bg-transparent text-neutral-100 placeholder-neutral-500 py-3 resize-none focus:outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 resize-none focus:outline-none disabled:opacity-50"
               style={{ maxHeight: "200px" }}
             />
 
@@ -306,7 +310,7 @@ export function AgentConversation({
               <button
                 type="button"
                 onClick={handleStop}
-                className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors"
+                className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -317,7 +321,7 @@ export function AgentConversation({
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={!input.trim()}
-                className="p-3 text-neutral-400 hover:text-neutral-100 transition-colors disabled:opacity-30"
+                className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors disabled:opacity-30"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
@@ -325,7 +329,7 @@ export function AgentConversation({
               </button>
             )}
           </div>
-          <p className="text-xs text-center text-neutral-500 mt-2">
+          <p className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
             Gist can make mistakes. Check important info.
           </p>
         </div>
@@ -380,14 +384,14 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
     return (
       <div className="group mb-6">
         <div className="flex justify-end">
-          <div className="bg-neutral-800 text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
+          <div className="bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
             <p className="whitespace-pre-wrap">{contentText}</p>
           </div>
         </div>
         <div className="flex justify-end mt-1">
           <button
             onClick={handleCopy}
-            className={`p-1.5 text-neutral-500 hover:text-neutral-300 transition-opacity ${
+            className={`p-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity ${
               copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
             title={copied ? "Copied!" : "Copy"}
@@ -427,7 +431,7 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
     <div className="mb-6">
       {/* Spinner when no content yet and no tool calls */}
       {isStreaming && !hasContentBefore && !hasToolCalls && (
-        <div className="flex items-center gap-2 text-neutral-400 mb-2">
+        <div className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400 mb-2">
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -438,7 +442,7 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
 
       {/* Content before tools */}
       {hasContentBefore && (
-        <div className="text-neutral-100 prose prose-invert prose-neutral max-w-none">
+        <div className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
           <Markdown remarkPlugins={[remarkGfm]}>{textBeforeTools}</Markdown>
         </div>
       )}
@@ -448,7 +452,7 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
             <span className={stats ? "text-green-500" : isCancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
-            <span className="font-medium text-neutral-400">Exploring</span>
+            <span className="font-medium text-neutral-500 dark:text-neutral-400">Exploring</span>
             {stats ? (
               <span className="text-neutral-500">
                 ({stats.toolUses} tool uses · {formatTokens(stats.tokens)} tokens · {formatDuration(stats.durationMs)})
@@ -465,7 +469,7 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
               </span>
             )}
           </div>
-          <div className="ml-2 border-l border-neutral-700 pl-3 mt-1 text-neutral-500">
+          <div className="ml-2 border-l border-neutral-300 dark:border-neutral-700 pl-3 mt-1 text-neutral-400 dark:text-neutral-500">
             └ {stats
                 ? "Done"
                 : isCancelled
@@ -477,7 +481,7 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
 
       {/* Content after tools */}
       {hasContentAfter && (
-        <div className="text-neutral-100 prose prose-invert prose-neutral max-w-none">
+        <div className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
           <Markdown remarkPlugins={[remarkGfm]}>{textAfterTools}</Markdown>
         </div>
       )}

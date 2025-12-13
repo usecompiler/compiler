@@ -1,4 +1,4 @@
-import { useNavigate, useOutletContext } from "react-router";
+import { useNavigate, useParams, useOutletContext } from "react-router";
 import { useEffect } from "react";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
@@ -11,8 +11,11 @@ export function meta() {
   ];
 }
 
-export default function Home() {
+export default function Conversation() {
+  const params = useParams();
   const navigate = useNavigate();
+  const conversationIdFromUrl = params.id || null;
+
   const {
     conversations,
     currentConversation,
@@ -27,12 +30,20 @@ export default function Home() {
     updateItem,
   } = useOutletContext<AppContext>();
 
-  // Clear selection when on home page
+  // Select conversation from URL
   useEffect(() => {
-    if (currentConversationId) {
-      clearSelection();
+    if (!conversationIdFromUrl) return;
+
+    const exists = conversations.some((c) => c.id === conversationIdFromUrl);
+    if (exists) {
+      if (currentConversationId !== conversationIdFromUrl) {
+        selectConversation(conversationIdFromUrl);
+      }
+    } else {
+      // Conversation doesn't exist, redirect to home
+      navigate("/", { replace: true });
     }
-  }, []);
+  }, [conversationIdFromUrl, conversations, currentConversationId, selectConversation, navigate]);
 
   const handleSelectConversation = (id: string) => {
     selectConversation(id);
@@ -46,6 +57,9 @@ export default function Home() {
 
   const handleDeleteConversation = async (id: string) => {
     await deleteConversation(id);
+    if (id === currentConversationId) {
+      navigate("/");
+    }
   };
 
   const handleCreateConversation = async () => {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./sidebar";
-import type { Conversation } from "~/lib/conversation-storage";
+import type { Conversation } from "~/routes/app-layout";
+import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
   conversations: Conversation[];
@@ -9,6 +10,7 @@ interface ConversationLayoutProps {
   onNewConversation: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
+  user: User;
   children: React.ReactNode;
 }
 
@@ -19,6 +21,7 @@ export function ConversationLayout({
   onNewConversation,
   onDeleteConversation,
   onRenameConversation,
+  user,
   children,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,7 +39,7 @@ export function ConversationLayout({
   }, [onNewConversation]);
 
   return (
-    <div className="flex h-screen bg-neutral-900">
+    <div className="flex h-screen bg-neutral-50 dark:bg-neutral-900">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-20 lg:hidden"
@@ -62,6 +65,7 @@ export function ConversationLayout({
           }}
           onDeleteConversation={onDeleteConversation}
           onRenameConversation={onRenameConversation}
+          user={user}
         />
       </div>
 
@@ -69,7 +73,7 @@ export function ConversationLayout({
         <header className="h-14 flex items-center px-4">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden p-2 -ml-2 mr-2 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700 rounded-lg transition-colors"
+            className="lg:hidden p-2 -ml-2 mr-2 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-lg transition-colors dark:text-neutral-400 dark:hover:text-neutral-100 dark:hover:bg-neutral-700"
           >
             <svg
               className="w-6 h-6"
@@ -85,7 +89,7 @@ export function ConversationLayout({
               />
             </svg>
           </button>
-          <span className="text-neutral-100 text-lg">Gist</span>
+          <span className="text-neutral-900 dark:text-neutral-100 text-lg">Gist</span>
         </header>
 
         <main className="flex-1 overflow-hidden">{children}</main>

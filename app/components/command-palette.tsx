@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { Conversation } from "~/lib/conversation-storage";
+import type { Conversation } from "~/routes/app-layout";
 
 interface CommandPaletteProps {
   conversations: Conversation[];
@@ -82,12 +82,12 @@ export function CommandPalette({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-xl bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-4 py-4">
           <svg
-            className="w-5 h-5 text-neutral-500"
+            className="w-5 h-5 text-neutral-400 dark:text-neutral-500"
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
@@ -105,11 +105,11 @@ export function CommandPalette({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search chats..."
-            className="flex-1 bg-transparent text-neutral-100 placeholder-neutral-500 outline-none text-base"
+            className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 outline-none text-base"
           />
           <button
             onClick={onClose}
-            className="p-1 text-neutral-500 hover:text-neutral-300 transition-colors"
+            className="p-1 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -117,7 +117,7 @@ export function CommandPalette({
           </button>
         </div>
 
-        <div className="max-h-96 overflow-y-auto px-3 pb-3 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent">
+        <div className="max-h-96 overflow-y-auto px-3 pb-3 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-600 scrollbar-track-transparent">
           {/* New conversation option - always shown first when no query */}
           {hasNewChatOption && (
             <button
@@ -125,8 +125,8 @@ export function CommandPalette({
                 onNewConversation();
                 onClose();
               }}
-              className={`w-full flex items-center gap-3 px-3 py-3 mb-2 text-left text-sm text-neutral-100 rounded-xl transition-colors ${
-                selectedIndex === 0 ? "bg-neutral-700" : "hover:bg-neutral-700"
+              className={`w-full flex items-center gap-3 px-3 py-3 mb-2 text-left text-sm text-neutral-900 dark:text-neutral-100 rounded-xl transition-colors ${
+                selectedIndex === 0 ? "bg-neutral-100 dark:bg-neutral-700" : "hover:bg-neutral-100 dark:hover:bg-neutral-700"
               }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -137,7 +137,7 @@ export function CommandPalette({
           )}
 
           {filteredConversations.length === 0 && query ? (
-            <div className="px-4 py-8 text-center text-sm text-neutral-500">
+            <div className="px-4 py-8 text-center text-sm text-neutral-400 dark:text-neutral-500">
               No conversations found
             </div>
           ) : (
@@ -154,11 +154,11 @@ export function CommandPalette({
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm rounded-xl transition-colors ${
                     isSelected
-                      ? "bg-neutral-700 text-neutral-100"
-                      : "text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100"
+                      ? "bg-neutral-100 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
+                      : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
                   }`}
                 >
-                  <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-neutral-400 dark:text-neutral-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 0 1-.923 1.785A5.969 5.969 0 0 0 6 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337Z" />
                   </svg>
                   <span className="truncate">{conversation.title}</span>

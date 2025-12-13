@@ -1,13 +1,17 @@
 import type { Route } from "./+types/api.conversations";
 import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+import { requireAuth } from "~/lib/auth.server";
 
-// GET /api/conversations - List all conversations
-export async function loader({}: Route.LoaderArgs) {
+// GET /api/conversations - List all conversations for current user
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireAuth(request);
+
   const allConversations = await db
     .select()
     .from(conversations)
+    .where(eq(conversations.userId, user.id))
     .orderBy(desc(conversations.updatedAt));
 
   const conversationsWithItems = await Promise.all(
@@ -43,6 +47,8 @@ export async function loader({}: Route.LoaderArgs) {
 // DELETE /api/conversations - Delete a conversation (with ?id=xxx)
 // PATCH /api/conversations - Rename a conversation (with ?id=xxx)
 export async function action({ request }: Route.ActionArgs) {
+  const user = await requireAuth(request);
+
   if (request.method === "POST") {
     const body = await request.json();
     const id = body.id || crypto.randomUUID();
@@ -50,6 +56,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     await db.insert(conversations).values({
       id,
+      userId: user.id,
       title,
     });
 
@@ -75,7 +82,10 @@ export async function action({ request }: Route.ActionArgs) {
       return new Response("Missing conversation id", { status: 400 });
     }
 
-    await db.delete(conversations).where(eq(conversations.id, id));
+    // Only delete if owned by user
+    await db
+      .delete(conversations)
+      .where(and(eq(conversations.id, id), eq(conversations.userId, user.id)));
     return Response.json({ success: true });
   }
 
@@ -88,10 +98,11 @@ export async function action({ request }: Route.ActionArgs) {
       return new Response("Missing conversation id", { status: 400 });
     }
 
+    // Only update if owned by user
     await db
       .update(conversations)
       .set({ title: body.title, updatedAt: new Date() })
-      .where(eq(conversations.id, id));
+      .where(and(eq(conversations.id, id), eq(conversations.userId, user.id)));
 
     return Response.json({ success: true });
   }

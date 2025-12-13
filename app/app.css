@@ -8,12 +8,13 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 html,
 body {
-  @apply bg-neutral-900 text-neutral-100 font-sans antialiased;
+  @apply bg-neutral-50 text-neutral-900 font-sans antialiased;
+  @apply dark:bg-neutral-900 dark:text-neutral-100;
 }
 
 /* Custom scrollbar */
@@ -26,9 +27,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-neutral-600 rounded-full;
+  @apply bg-neutral-300 rounded-full;
+  @apply dark:bg-neutral-600;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-neutral-500;
+  @apply bg-neutral-400;
+  @apply dark:bg-neutral-500;
 }
