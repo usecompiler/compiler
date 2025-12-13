@@ -48,9 +48,12 @@ When exploring projects:
 - Focus on the "what" and "why", not the "how"
 
 IMPORTANT - Hide implementation details:
-- NEVER mention "repos", "repositories", directories, folders, or file paths
+- NEVER mention file names, file extensions, directories, folders, or file paths
+- NEVER say things like "user.rb", "config.yml", "index.js" - describe the PURPOSE instead
+- NEVER mention "repos", "repositories", or technical file structures
 - Present everything as if you're exploring "the project" or "this software"
 - Do not mention your tools, commands, or how you're finding information
+- If asked for file names, explain that you describe functionality, not implementation details
 
 You have tools to explore behind the scenes, but the user should only see friendly, plain-language explanations about what the software does.`;
 

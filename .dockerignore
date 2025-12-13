@@ -2,3 +2,6 @@
 build
 node_modules
 README.md
+.git
+.env
+repos

@@ -405,7 +405,7 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
             <span className={message.stats ? "text-green-500" : message.cancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
-            <span className="font-medium text-neutral-400">Explore</span>
+            <span className="font-medium text-neutral-400">Exploring</span>
             {message.stats ? (
               <span className="text-neutral-500">
                 ({message.stats.toolUses} tool uses · {formatTokens(message.stats.tokens)} tokens · {formatDuration(message.stats.durationMs)})
@@ -423,7 +423,11 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
             )}
           </div>
           <div className="ml-2 border-l border-neutral-700 pl-3 mt-1 text-neutral-500">
-            └ {message.stats ? "Done" : message.cancelled ? "Stopped" : "Running..."}
+            └ {message.stats
+                ? "Done"
+                : message.cancelled
+                  ? "Stopped"
+                  : `${getToolLabel(message.toolCalls?.[message.toolCalls.length - 1]?.tool)}...`}
           </div>
         </div>
       )}
@@ -440,6 +444,21 @@ function MessageRow({ message, isStreaming, streamStartTime }: MessageRowProps) 
 
 function formatTokens(tokens: number): string {
   return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+}
+
+function getToolLabel(tool?: string): string {
+  switch (tool) {
+    case "Read":
+      return "Reading";
+    case "Glob":
+      return "Searching";
+    case "Grep":
+      return "Searching";
+    case "Bash":
+      return "Running";
+    default:
+      return "Running";
+  }
 }
 
 function formatDuration(ms: number): string {
