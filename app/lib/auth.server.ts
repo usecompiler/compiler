@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 import { db } from "./db/index.server";
-import { users, sessions } from "./db/schema";
+import { users, sessions, organizations, members } from "./db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -60,10 +60,21 @@ export function createLogoutCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }
 
+export interface Organization {
+  id: string;
+}
+
+export interface Membership {
+  organizationId: string;
+  role: "owner" | "member";
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
+  organization: Organization | null;
+  membership: Membership | null;
 }
 
 export async function getUser(request: Request): Promise<User | null> {
@@ -76,9 +87,13 @@ export async function getUser(request: Request): Promise<User | null> {
       expiresAt: sessions.expiresAt,
       userEmail: users.email,
       userName: users.name,
+      orgId: organizations.id,
+      memberRole: members.role,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
+    .leftJoin(members, eq(users.id, members.userId))
+    .leftJoin(organizations, eq(members.organizationId, organizations.id))
     .where(eq(sessions.id, sessionId))
     .limit(1);
 
@@ -94,6 +109,13 @@ export async function getUser(request: Request): Promise<User | null> {
     id: session.userId,
     email: session.userEmail,
     name: session.userName,
+    organization: session.orgId ? { id: session.orgId } : null,
+    membership: session.orgId
+      ? {
+          organizationId: session.orgId,
+          role: session.memberRole as "owner" | "member",
+        }
+      : null,
   };
 }
 
@@ -115,6 +137,23 @@ export async function getUserByEmail(email: string) {
   return result[0] || null;
 }
 
+export async function createOrganization(ownerId: string): Promise<Organization> {
+  const orgId = crypto.randomUUID();
+
+  await db.insert(organizations).values({
+    id: orgId,
+  });
+
+  await db.insert(members).values({
+    id: crypto.randomUUID(),
+    userId: ownerId,
+    organizationId: orgId,
+    role: "owner",
+  });
+
+  return { id: orgId };
+}
+
 export async function createUser(
   email: string,
   name: string,
@@ -130,5 +169,16 @@ export async function createUser(
     passwordHash,
   });
 
-  return { id, email: email.toLowerCase(), name };
+  const organization = await createOrganization(id);
+
+  return {
+    id,
+    email: email.toLowerCase(),
+    name,
+    organization,
+    membership: {
+      organizationId: organization.id,
+      role: "owner",
+    },
+  };
 }

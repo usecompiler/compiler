@@ -1,9 +1,9 @@
 import { Outlet } from "react-router";
 import type { Route } from "./+types/app-layout";
-import { requireAuth } from "~/lib/auth.server";
+import { requireAuth, type Organization, type Membership } from "~/lib/auth.server";
 import { getConversations, type ConversationMeta, type Item } from "~/lib/conversations.server";
 
-export type { Item, ConversationMeta };
+export type { Item, ConversationMeta, Organization, Membership };
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireAuth(request);
@@ -12,7 +12,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export interface AppContext {
-  user: { id: string; email: string; name: string };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    organization: Organization | null;
+    membership: Membership | null;
+  };
   conversations: ConversationMeta[];
   hasMore: boolean;
 }

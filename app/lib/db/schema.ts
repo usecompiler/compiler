@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -7,6 +7,27 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const organizations = pgTable("organizations", {
+  id: text("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const members = pgTable(
+  "members",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    organizationId: text("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    role: text("role").notNull().default("member"), // 'owner' | 'member'
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("user_org_unique").on(table.userId, table.organizationId)]
+);
 
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
