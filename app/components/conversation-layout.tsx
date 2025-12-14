@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./sidebar";
-import type { Conversation } from "~/routes/app-layout";
+import type { ConversationMeta } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
-  conversations: Conversation[];
+  conversations: ConversationMeta[];
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
-  onDeleteConversation: (id: string) => void;
-  onRenameConversation: (id: string, title: string) => void;
   user: User;
+  hasMore: boolean;
   children: React.ReactNode;
 }
 
@@ -19,9 +18,8 @@ export function ConversationLayout({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
-  onDeleteConversation,
-  onRenameConversation,
   user,
+  hasMore,
   children,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -63,9 +61,8 @@ export function ConversationLayout({
             onNewConversation();
             setSidebarOpen(false);
           }}
-          onDeleteConversation={onDeleteConversation}
-          onRenameConversation={onRenameConversation}
           user={user}
+          hasMore={hasMore}
         />
       </div>
 

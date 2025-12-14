@@ -1,8 +1,11 @@
-import { useNavigate, useParams, useOutletContext } from "react-router";
-import { useEffect } from "react";
+import { useNavigate, useParams, useOutletContext, useSearchParams } from "react-router";
+import { useRef } from "react";
+import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
+import { requireAuth } from "~/lib/auth.server";
+import { getConversationItems } from "~/lib/conversations.server";
 
 export function meta() {
   return [
@@ -11,79 +14,51 @@ export function meta() {
   ];
 }
 
-export default function Conversation() {
-  const params = useParams();
+export async function loader({ request, params }: Route.LoaderArgs) {
+  await requireAuth(request);
+  const items = await getConversationItems(params.id!);
+  return { items };
+}
+
+export default function Conversation({ loaderData }: Route.ComponentProps) {
+  const { id } = useParams();
   const navigate = useNavigate();
-  const conversationIdFromUrl = params.id || null;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { conversations, user, hasMore } = useOutletContext<AppContext>();
+  const initialPrompt = searchParams.get("prompt");
+  const hasProcessedInitialPrompt = useRef(false);
 
-  const {
-    conversations,
-    currentConversation,
-    currentConversationId,
-    user,
-    createConversation,
-    deleteConversation,
-    renameConversation,
-    selectConversation,
-    clearSelection,
-    addItem,
-    updateItem,
-  } = useOutletContext<AppContext>();
-
-  // Select conversation from URL
-  useEffect(() => {
-    if (!conversationIdFromUrl) return;
-
-    const exists = conversations.some((c) => c.id === conversationIdFromUrl);
-    if (exists) {
-      if (currentConversationId !== conversationIdFromUrl) {
-        selectConversation(conversationIdFromUrl);
-      }
-    } else {
-      // Conversation doesn't exist, redirect to home
-      navigate("/", { replace: true });
+  // Clear prompt from URL after it's been processed
+  const handlePromptProcessed = () => {
+    if (initialPrompt && !hasProcessedInitialPrompt.current) {
+      hasProcessedInitialPrompt.current = true;
+      setSearchParams({}, { replace: true });
     }
-  }, [conversationIdFromUrl, conversations, currentConversationId, selectConversation, navigate]);
+  };
 
-  const handleSelectConversation = (id: string) => {
-    selectConversation(id);
-    navigate(`/c/${id}`);
+  const handleSelectConversation = (convId: string) => {
+    navigate(`/c/${convId}`);
   };
 
   const handleNewConversation = () => {
-    clearSelection();
     navigate("/");
-  };
-
-  const handleDeleteConversation = async (id: string) => {
-    await deleteConversation(id);
-    if (id === currentConversationId) {
-      navigate("/");
-    }
-  };
-
-  const handleCreateConversation = async () => {
-    const newConv = await createConversation();
-    navigate(`/c/${newConv.id}`);
-    return newConv;
   };
 
   return (
     <ConversationLayout
       conversations={conversations}
-      currentConversationId={currentConversationId}
+      currentConversationId={id || null}
       onSelectConversation={handleSelectConversation}
       onNewConversation={handleNewConversation}
-      onDeleteConversation={handleDeleteConversation}
-      onRenameConversation={renameConversation}
       user={user}
+      hasMore={hasMore}
     >
       <AgentConversation
-        conversationId={currentConversationId}
-        items={currentConversation?.items || []}
-        onAddItem={addItem}
-        onUpdateItem={updateItem}
-        onCreateConversation={handleCreateConversation}
+        key={id}
+        conversationId={id!}
+        initialItems={loaderData.items}
+        initialPrompt={initialPrompt}
+        onInitialPromptProcessed={handlePromptProcessed}
       />
     </ConversationLayout>
   );

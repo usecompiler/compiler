@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { Conversation } from "~/routes/app-layout";
+import type { ConversationMeta } from "~/routes/app-layout";
 
 interface CommandPaletteProps {
-  conversations: Conversation[];
+  conversations: ConversationMeta[];
   isOpen: boolean;
   onClose: () => void;
   onSelectConversation: (id: string) => void;

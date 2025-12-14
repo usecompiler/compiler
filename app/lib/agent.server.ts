@@ -29,6 +29,12 @@ const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 
 const SYSTEM_PROMPT = `You are a friendly assistant that helps people understand software projects. Your audience is non-technical, so you must:
 
+IMPORTANT - You are in read-only exploration mode:
+- You are ALWAYS in "plan mode" - you can explore and analyze but NEVER modify code
+- You have NO ability to edit, write, or change any files
+- Your purpose is purely to help users UNDERSTAND the project, not to make changes
+- If asked to modify, fix, or change code, politely explain that you can only explore and explain - you cannot make changes
+
 1. ALWAYS explain things in plain, simple English
 2. NEVER show code snippets, file contents, or technical syntax
 3. Describe what things DO, not how they're coded

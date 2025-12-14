@@ -3,44 +3,17 @@ import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth } from "~/lib/auth.server";
+import { getConversations } from "~/lib/conversations.server";
 
-// GET /api/conversations - List all conversations for current user
+// GET /api/conversations - List conversations with pagination
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireAuth(request);
+  const url = new URL(request.url);
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const limit = parseInt(url.searchParams.get("limit") || "20");
 
-  const allConversations = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.userId, user.id))
-    .orderBy(desc(conversations.updatedAt));
-
-  const conversationsWithItems = await Promise.all(
-    allConversations.map(async (conv) => {
-      const convItems = await db
-        .select()
-        .from(items)
-        .where(eq(items.conversationId, conv.id))
-        .orderBy(items.createdAt);
-
-      return {
-        id: conv.id,
-        title: conv.title,
-        createdAt: conv.createdAt.getTime(),
-        updatedAt: conv.updatedAt.getTime(),
-        items: convItems.map((item) => ({
-          id: item.id,
-          type: item.type,
-          role: item.role,
-          content: item.content,
-          toolCallId: item.toolCallId,
-          status: item.status,
-          createdAt: item.createdAt.getTime(),
-        })),
-      };
-    })
-  );
-
-  return Response.json(conversationsWithItems);
+  const { conversations: convList, hasMore } = await getConversations(user.id, { limit, offset });
+  return Response.json({ conversations: convList, hasMore });
 }
 
 // POST /api/conversations - Create a new conversation

@@ -1,8 +1,12 @@
-import { useNavigate, useOutletContext } from "react-router";
-import { useEffect } from "react";
+import { Form, redirect, useNavigate, useNavigation, useOutletContext } from "react-router";
+import { useState } from "react";
+import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
-import { AgentConversation } from "~/components/agent-conversation";
+import { PromptInput } from "~/components/prompt-input";
+import { requireAuth } from "~/lib/auth.server";
+import { db } from "~/lib/db/index.server";
+import { conversations } from "~/lib/db/schema";
 
 export function meta() {
   return [
@@ -11,66 +15,74 @@ export function meta() {
   ];
 }
 
+export async function action({ request }: Route.ActionArgs) {
+  const user = await requireAuth(request);
+  const formData = await request.formData();
+  const prompt = formData.get("prompt")?.toString() || "";
+
+  if (!prompt.trim()) {
+    return { error: "Please enter a message" };
+  }
+
+  const id = crypto.randomUUID();
+
+  await db.insert(conversations).values({
+    id,
+    userId: user.id,
+    title: "New Chat",
+  });
+
+  return redirect(`/c/${id}?prompt=${encodeURIComponent(prompt)}`);
+}
+
 export default function Home() {
   const navigate = useNavigate();
-  const {
-    conversations,
-    currentConversation,
-    currentConversationId,
-    user,
-    createConversation,
-    deleteConversation,
-    renameConversation,
-    selectConversation,
-    clearSelection,
-    addItem,
-    updateItem,
-  } = useOutletContext<AppContext>();
+  const navigation = useNavigation();
+  const { conversations, user, hasMore } = useOutletContext<AppContext>();
 
-  // Clear selection when on home page
-  useEffect(() => {
-    if (currentConversationId) {
-      clearSelection();
-    }
-  }, []);
+  const isCreating = navigation.state === "submitting";
 
   const handleSelectConversation = (id: string) => {
-    selectConversation(id);
     navigate(`/c/${id}`);
   };
 
   const handleNewConversation = () => {
-    clearSelection();
     navigate("/");
-  };
-
-  const handleDeleteConversation = async (id: string) => {
-    await deleteConversation(id);
-  };
-
-  const handleCreateConversation = async () => {
-    const newConv = await createConversation();
-    navigate(`/c/${newConv.id}`);
-    return newConv;
   };
 
   return (
     <ConversationLayout
       conversations={conversations}
-      currentConversationId={currentConversationId}
+      currentConversationId={null}
       onSelectConversation={handleSelectConversation}
       onNewConversation={handleNewConversation}
-      onDeleteConversation={handleDeleteConversation}
-      onRenameConversation={renameConversation}
       user={user}
+      hasMore={hasMore}
     >
-      <AgentConversation
-        conversationId={currentConversationId}
-        items={currentConversation?.items || []}
-        onAddItem={addItem}
-        onUpdateItem={updateItem}
-        onCreateConversation={handleCreateConversation}
-      />
+      <HomePromptInput isCreating={isCreating} />
     </ConversationLayout>
+  );
+}
+
+function HomePromptInput({ isCreating }: { isCreating: boolean }) {
+  const [input, setInput] = useState("");
+
+  return (
+    <div className="flex flex-col h-full items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4">
+      <h1 className="text-3xl font-medium text-neutral-900 dark:text-neutral-100 mb-8">
+        What can I help with?
+      </h1>
+
+      <Form method="post" className="w-full max-w-3xl">
+        <PromptInput
+          name="prompt"
+          value={input}
+          onChange={setInput}
+          onSubmit={() => {}}
+          disabled={isCreating}
+          autoFocus
+        />
+      </Form>
+    </div>
   );
 }
