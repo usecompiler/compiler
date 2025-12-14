@@ -2,17 +2,28 @@ import type { Route } from "./+types/api.conversations";
 import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "~/lib/auth.server";
-import { getConversations } from "~/lib/conversations.server";
+import { requireActiveAuth } from "~/lib/auth.server";
+import { getConversations, isUserInOrg } from "~/lib/conversations.server";
 
 // GET /api/conversations - List conversations with pagination
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await requireAuth(request);
+  const user = await requireActiveAuth(request);
   const url = new URL(request.url);
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const limit = parseInt(url.searchParams.get("limit") || "20");
+  const impersonateUserId = url.searchParams.get("impersonate");
 
-  const { conversations: convList, hasMore } = await getConversations(user.id, { limit, offset });
+  let targetUserId = user.id;
+
+  // Handle impersonation for org owners
+  if (impersonateUserId && user.membership?.role === "owner" && user.organization) {
+    const isInOrg = await isUserInOrg(impersonateUserId, user.organization.id);
+    if (isInOrg) {
+      targetUserId = impersonateUserId;
+    }
+  }
+
+  const { conversations: convList, hasMore } = await getConversations(targetUserId, { limit, offset });
   return Response.json({ conversations: convList, hasMore });
 }
 
@@ -20,7 +31,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 // DELETE /api/conversations - Delete a conversation (with ?id=xxx)
 // PATCH /api/conversations - Rename a conversation (with ?id=xxx)
 export async function action({ request }: Route.ActionArgs) {
-  const user = await requireAuth(request);
+  const user = await requireActiveAuth(request);
 
   if (request.method === "POST") {
     const body = await request.json();

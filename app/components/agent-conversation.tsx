@@ -1,15 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useRevalidator } from "react-router";
+import { useRevalidator, useBlocker } from "react-router";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
 import { PromptInput } from "./prompt-input";
+import { NavigationBlocker } from "./navigation-blocker";
 
 interface AgentConversationProps {
   conversationId: string;
   initialItems: Item[];
   initialPrompt?: string | null;
   onInitialPromptProcessed?: () => void;
+  readOnly?: boolean;
 }
 
 export function AgentConversation({
@@ -17,6 +19,7 @@ export function AgentConversation({
   initialItems,
   initialPrompt,
   onInitialPromptProcessed,
+  readOnly = false,
 }: AgentConversationProps) {
   // Local state for items - starts with loader data
   const [items, setItems] = useState<Item[]>(initialItems);
@@ -27,6 +30,22 @@ export function AgentConversation({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
+
+  // Block navigation when streaming
+  const blocker = useBlocker(isStreaming);
+
+  // Warn on browser close/refresh when streaming
+  useEffect(() => {
+    if (!isStreaming) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isStreaming]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -266,6 +285,7 @@ export function AgentConversation({
 
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
+      <NavigationBlocker blocker={blocker} />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
           {messageItems.map((item, index) => (
@@ -286,20 +306,30 @@ export function AgentConversation({
 
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
-          <form onSubmit={handleSubmit}>
-            <PromptInput
-              value={input}
-              onChange={setInput}
-              onSubmit={handleSubmit}
-              isStreaming={isStreaming}
-              onStop={handleStop}
-              autoFocus
-              autoFocusKey={conversationId}
-            />
-          </form>
-          <p className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
-            Gist can make mistakes. Check important info.
-          </p>
+          {readOnly ? (
+            <div className="text-center py-3">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Read-only mode
+              </p>
+            </div>
+          ) : (
+            <>
+              <form onSubmit={handleSubmit}>
+                <PromptInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSubmit}
+                  isStreaming={isStreaming}
+                  onStop={handleStop}
+                  autoFocus
+                  autoFocusKey={conversationId}
+                />
+              </form>
+              <p className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
+                Gist can make mistakes. Check important info.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

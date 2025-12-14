@@ -1,9 +1,35 @@
 import { db } from "~/lib/db/index.server";
-import { conversations as conversationsTable, items as itemsTable } from "~/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { conversations as conversationsTable, items as itemsTable, members } from "~/lib/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
+
+// Check if a user is a member of a specific organization
+export async function isUserInOrg(userId: string, organizationId: string): Promise<boolean> {
+  const result = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.userId, userId), eq(members.organizationId, organizationId)))
+    .limit(1);
+
+  return result.length > 0;
+}
+
+// Get a conversation by ID
+export async function getConversation(conversationId: string): Promise<{ id: string; userId: string; title: string } | null> {
+  const result = await db
+    .select({
+      id: conversationsTable.id,
+      userId: conversationsTable.userId,
+      title: conversationsTable.title,
+    })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, conversationId))
+    .limit(1);
+
+  return result[0] || null;
+}
 
 // Sidebar conversation metadata (no items)
 export interface ConversationMeta {

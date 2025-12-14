@@ -1,11 +1,11 @@
-import { useNavigate, useParams, useOutletContext, useSearchParams } from "react-router";
+import { useNavigate, useParams, useOutletContext, useSearchParams, redirect } from "react-router";
 import { useRef } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
-import { requireAuth } from "~/lib/auth.server";
-import { getConversationItems } from "~/lib/conversations.server";
+import { requireActiveAuth } from "~/lib/auth.server";
+import { getConversation, getConversationItems, isUserInOrg } from "~/lib/conversations.server";
 
 export function meta() {
   return [
@@ -15,7 +15,28 @@ export function meta() {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  await requireAuth(request);
+  const user = await requireActiveAuth(request);
+  const isOwner = user.membership?.role === "owner";
+
+  // Get conversation to check ownership
+  const conversation = await getConversation(params.id!);
+  if (!conversation) {
+    throw redirect("/");
+  }
+
+  // Check access: user owns it, OR user is org owner impersonating someone in same org
+  const ownsConversation = conversation.userId === user.id;
+  let canAccess = ownsConversation;
+
+  if (!ownsConversation && isOwner && user.organization) {
+    // Check if conversation owner is in the same org
+    canAccess = await isUserInOrg(conversation.userId, user.organization.id);
+  }
+
+  if (!canAccess) {
+    throw redirect("/");
+  }
+
   const items = await getConversationItems(params.id!);
   return { items };
 }
@@ -24,7 +45,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { conversations, user, hasMore } = useOutletContext<AppContext>();
+  const { conversations, user, hasMore, impersonating, orgMembers, isOwner } = useOutletContext<AppContext>();
   const initialPrompt = searchParams.get("prompt");
   const hasProcessedInitialPrompt = useRef(false);
 
@@ -32,12 +53,18 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   const handlePromptProcessed = () => {
     if (initialPrompt && !hasProcessedInitialPrompt.current) {
       hasProcessedInitialPrompt.current = true;
-      setSearchParams({}, { replace: true });
+      // Keep impersonate param if present
+      const newParams = new URLSearchParams();
+      if (impersonating) {
+        newParams.set("impersonate", impersonating.id);
+      }
+      setSearchParams(newParams, { replace: true });
     }
   };
 
   const handleSelectConversation = (convId: string) => {
-    navigate(`/c/${convId}`);
+    const impersonateParam = impersonating ? `?impersonate=${impersonating.id}` : "";
+    navigate(`/c/${convId}${impersonateParam}`);
   };
 
   const handleNewConversation = () => {
@@ -52,13 +79,17 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       onNewConversation={handleNewConversation}
       user={user}
       hasMore={hasMore}
+      impersonating={impersonating}
+      orgMembers={orgMembers}
+      isOwner={isOwner}
     >
       <AgentConversation
         key={id}
         conversationId={id!}
         initialItems={loaderData.items}
-        initialPrompt={initialPrompt}
+        initialPrompt={impersonating ? null : initialPrompt}
         onInitialPromptProcessed={handlePromptProcessed}
+        readOnly={!!impersonating}
       />
     </ConversationLayout>
   );

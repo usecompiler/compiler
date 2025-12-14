@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./sidebar";
-import type { ConversationMeta } from "~/routes/app-layout";
+import type { ConversationMeta, Member, ImpersonatingUser } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
@@ -10,6 +10,9 @@ interface ConversationLayoutProps {
   onNewConversation: () => void;
   user: User;
   hasMore: boolean;
+  impersonating: ImpersonatingUser | null;
+  orgMembers: Member[];
+  isOwner: boolean;
   children: React.ReactNode;
 }
 
@@ -20,6 +23,9 @@ export function ConversationLayout({
   onNewConversation,
   user,
   hasMore,
+  impersonating,
+  orgMembers,
+  isOwner,
   children,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -63,6 +69,9 @@ export function ConversationLayout({
           }}
           user={user}
           hasMore={hasMore}
+          impersonating={impersonating}
+          orgMembers={orgMembers}
+          isOwner={isOwner}
         />
       </div>
 
