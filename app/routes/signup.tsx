@@ -1,19 +1,33 @@
-import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation, useLoaderData } from "react-router";
 import type { Route } from "./+types/signup";
 import {
   getUserByEmail,
   createUser,
+  createUserWithoutOrg,
   createSession,
   createSessionCookie,
   getUser,
 } from "~/lib/auth.server";
+import { getInvitationByToken, acceptInvitation } from "~/lib/invitations.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUser(request);
   if (user) {
     return redirect("/");
   }
-  return null;
+
+  // Check for invitation token
+  const url = new URL(request.url);
+  const inviteToken = url.searchParams.get("invite");
+
+  if (inviteToken) {
+    const invitation = await getInvitationByToken(inviteToken);
+    if (invitation) {
+      return { inviteToken, inviteRole: invitation.role };
+    }
+  }
+
+  return { inviteToken: null, inviteRole: null };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -21,6 +35,7 @@ export async function action({ request }: Route.ActionArgs) {
   const name = formData.get("name") as string;
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
+  const inviteToken = formData.get("inviteToken") as string | null;
 
   if (!name || !email || !password) {
     return { error: "All fields are required" };
@@ -35,6 +50,25 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "An account with this email already exists" };
   }
 
+  // If signing up via invitation, create user without org and accept invitation
+  if (inviteToken) {
+    const invitation = await getInvitationByToken(inviteToken);
+    if (!invitation) {
+      return { error: "Invitation has expired or is invalid" };
+    }
+
+    const newUser = await createUserWithoutOrg(email, name, password);
+    await acceptInvitation(inviteToken, newUser.id);
+    const sessionId = await createSession(newUser.id);
+
+    return redirect("/", {
+      headers: {
+        "Set-Cookie": createSessionCookie(sessionId),
+      },
+    });
+  }
+
+  // Normal signup - create user with their own org
   const user = await createUser(email, name, password);
   const sessionId = await createSession(user.id);
 
@@ -47,17 +81,28 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function Signup() {
   const actionData = useActionData<typeof action>();
+  const loaderData = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+  const isInvite = !!loaderData?.inviteToken;
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 text-center mb-8">
-          Create your account
+        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 text-center mb-2">
+          {isInvite ? "Join the team" : "Create your account"}
         </h1>
+        {isInvite && (
+          <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mb-6">
+            You've been invited to join as a <span className="font-medium">{loaderData.inviteRole}</span>
+          </p>
+        )}
+        {!isInvite && <div className="mb-8" />}
 
         <Form method="post" className="space-y-4">
+          {loaderData?.inviteToken && (
+            <input type="hidden" name="inviteToken" value={loaderData.inviteToken} />
+          )}
           {actionData?.error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400">
               {actionData.error}

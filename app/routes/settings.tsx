@@ -1,39 +1,62 @@
+import { Form, Link, useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/settings";
-import { Link, useLoaderData } from "react-router";
-import path from "node:path";
-import fs from "node:fs";
+import {
+  requireActiveAuth,
+  updateUserName,
+  updateUserPassword,
+} from "~/lib/auth.server";
 
-const REPOS_DIR = path.resolve(process.cwd(), "repos");
-
-interface Repo {
-  name: string;
-  hasGit: boolean;
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireActiveAuth(request);
+  const isOwner = user.membership?.role === "owner";
+  return { user, isOwner };
 }
 
-export async function loader(): Promise<Repo[]> {
-  const repos: Repo[] = [];
+export async function action({ request }: Route.ActionArgs) {
+  const user = await requireActiveAuth(request);
+  const formData = await request.formData();
+  const intent = formData.get("intent");
 
-  try {
-    const entries = fs.readdirSync(REPOS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        const projectPath = path.join(REPOS_DIR, entry.name);
-        const gitPath = path.join(projectPath, ".git");
-        repos.push({
-          name: entry.name,
-          hasGit: fs.existsSync(gitPath),
-        });
-      }
+  if (intent === "update-name") {
+    const name = formData.get("name") as string;
+    if (!name || name.trim().length === 0) {
+      return { error: "Name is required", success: null };
     }
-  } catch {
-    // repos directory doesn't exist or isn't readable
+    await updateUserName(user.id, name.trim());
+    return { error: null, success: "Name updated successfully" };
   }
 
-  return repos;
+  if (intent === "update-password") {
+    const currentPassword = formData.get("currentPassword") as string;
+    const newPassword = formData.get("newPassword") as string;
+    const confirmPassword = formData.get("confirmPassword") as string;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return { error: "All password fields are required", success: null };
+    }
+
+    if (newPassword.length < 8) {
+      return { error: "New password must be at least 8 characters", success: null };
+    }
+
+    if (newPassword !== confirmPassword) {
+      return { error: "New passwords do not match", success: null };
+    }
+
+    const updated = await updateUserPassword(user.id, currentPassword, newPassword);
+    if (!updated) {
+      return { error: "Current password is incorrect", success: null };
+    }
+
+    return { error: null, success: "Password updated successfully" };
+  }
+
+  return { error: "Unknown action", success: null };
 }
 
 export default function Settings() {
-  const repos = useLoaderData<typeof loader>();
+  const { user, isOwner } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
@@ -52,49 +75,173 @@ export default function Settings() {
         </div>
       </header>
 
+      {/* Tabs */}
+      <div className="border-b border-neutral-200 dark:border-neutral-800">
+        <div className="max-w-3xl mx-auto px-4">
+          <nav className="flex gap-6">
+            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
+              Account
+            </span>
+            {isOwner && (
+              <>
+                <Link
+                  to="/settings/repositories"
+                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+                >
+                  Repositories
+                </Link>
+                <Link
+                  to="/settings/organization"
+                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+                >
+                  Organization
+                </Link>
+              </>
+            )}
+          </nav>
+        </div>
+      </div>
+
       {/* Content */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        {actionData?.error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-600 dark:text-red-400">
+            {actionData.error}
+          </div>
+        )}
+        {actionData?.success && (
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-600 dark:text-green-400">
+            {actionData.success}
+          </div>
+        )}
+
+        {/* Profile Section */}
         <section>
           <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-            Repositories
+            Profile
           </h2>
 
-          {repos.length === 0 ? (
-            <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 text-center">
-              <p className="text-neutral-500 dark:text-neutral-400">No repositories found</p>
-              <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-2">
-                Clone a git repository into the repos/ directory to get started.
+          <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 space-y-4">
+            <input type="hidden" name="intent" value="update-name" />
+
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+              >
+                Name
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                defaultValue={user.name}
+                required
+                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+              >
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={user.email}
+                disabled
+                className="w-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-500 dark:text-neutral-400 cursor-not-allowed"
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </Form>
+        </section>
+
+        {/* Password Section */}
+        <section>
+          <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
+            Change Password
+          </h2>
+
+          <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 space-y-4">
+            <input type="hidden" name="intent" value="update-password" />
+
+            <div>
+              <label
+                htmlFor="currentPassword"
+                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+              >
+                Current Password
+              </label>
+              <input
+                type="password"
+                id="currentPassword"
+                name="currentPassword"
+                required
+                autoComplete="current-password"
+                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="newPassword"
+                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+              >
+                New Password
+              </label>
+              <input
+                type="password"
+                id="newPassword"
+                name="newPassword"
+                required
+                autoComplete="new-password"
+                minLength={8}
+                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+              />
+              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                Must be at least 8 characters
               </p>
             </div>
-          ) : (
-            <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg divide-y divide-neutral-200 dark:divide-neutral-700">
-              {repos.map((repo) => (
-                <div
-                  key={repo.name}
-                  className="flex items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <svg className="w-5 h-5 text-neutral-400 dark:text-neutral-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-                    </svg>
-                    <span className="text-neutral-900 dark:text-neutral-100">{repo.name}</span>
-                  </div>
-                  {repo.hasGit ? (
-                    <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-500">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-500" />
-                      Git
-                    </span>
-                  ) : (
-                    <span className="text-xs text-neutral-400 dark:text-neutral-500">No git</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
 
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-4">
-            The assistant will explore the first repository with a .git folder.
-          </p>
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+              >
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                required
+                autoComplete="new-password"
+                minLength={8}
+                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+              >
+                Update Password
+              </button>
+            </div>
+          </Form>
         </section>
       </main>
     </div>

@@ -24,10 +24,22 @@ export const members = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
     role: text("role").notNull().default("member"), // 'owner' | 'member'
+    deactivatedAt: timestamp("deactivated_at"), // null = active, set = deactivated
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [uniqueIndex("user_org_unique").on(table.userId, table.organizationId)]
 );
+
+export const invitations = pgTable("invitations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  token: text("token").unique().notNull(),
+  role: text("role").notNull().default("member"), // role to assign on accept
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),

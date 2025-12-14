@@ -6,6 +6,12 @@ export default [
   route("signup", "routes/signup.tsx"),
   route("logout", "routes/logout.tsx"),
 
+  // Deactivated user page (no layout)
+  route("deactivated", "routes/deactivated.tsx"),
+
+  // Invitation acceptance route (public, no layout)
+  route("invite/:token", "routes/invite.$token.tsx"),
+
   // API routes
   route("api/agent", "routes/api.agent.ts"),
   route("api/conversations", "routes/api.conversations.ts"),
@@ -16,5 +22,7 @@ export default [
     index("routes/home.tsx"),
     route("c/:id", "routes/conversation.tsx"),
     route("settings", "routes/settings.tsx"),
+    route("settings/repositories", "routes/settings.repositories.tsx"),
+    route("settings/organization", "routes/settings.organization.tsx"),
   ]),
 ] satisfies RouteConfig;

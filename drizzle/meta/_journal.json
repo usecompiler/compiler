@@ -8,6 +8,13 @@
       "when": 1765708597169,
       "tag": "0000_add_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765709557073,
+      "tag": "0001_add_invitations",
+      "breakpoints": true
     }
   ]
 }

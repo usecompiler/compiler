@@ -1,12 +1,12 @@
 import { Outlet } from "react-router";
 import type { Route } from "./+types/app-layout";
-import { requireAuth, type Organization, type Membership } from "~/lib/auth.server";
+import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
 import { getConversations, type ConversationMeta, type Item } from "~/lib/conversations.server";
 
 export type { Item, ConversationMeta, Organization, Membership };
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await requireAuth(request);
+  const user = await requireActiveAuth(request);
   const { conversations, hasMore } = await getConversations(user.id);
   return { user, conversations, hasMore };
 }

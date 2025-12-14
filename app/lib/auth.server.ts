@@ -67,6 +67,7 @@ export interface Organization {
 export interface Membership {
   organizationId: string;
   role: "owner" | "member";
+  isDeactivated: boolean;
 }
 
 export interface User {
@@ -89,6 +90,7 @@ export async function getUser(request: Request): Promise<User | null> {
       userName: users.name,
       orgId: organizations.id,
       memberRole: members.role,
+      memberDeactivatedAt: members.deactivatedAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -105,6 +107,8 @@ export async function getUser(request: Request): Promise<User | null> {
     return null;
   }
 
+  const isDeactivated = session.memberDeactivatedAt !== null;
+
   return {
     id: session.userId,
     email: session.userEmail,
@@ -114,6 +118,7 @@ export async function getUser(request: Request): Promise<User | null> {
       ? {
           organizationId: session.orgId,
           role: session.memberRole as "owner" | "member",
+          isDeactivated,
         }
       : null,
   };
@@ -123,6 +128,18 @@ export async function requireAuth(request: Request): Promise<User> {
   const user = await getUser(request);
   if (!user) {
     throw redirect("/login");
+  }
+  return user;
+}
+
+// Require auth AND check that user is not deactivated
+export async function requireActiveAuth(request: Request): Promise<User> {
+  const user = await getUser(request);
+  if (!user) {
+    throw redirect("/login");
+  }
+  if (user.membership?.isDeactivated) {
+    throw redirect("/deactivated");
   }
   return user;
 }
@@ -179,6 +196,57 @@ export async function createUser(
     membership: {
       organizationId: organization.id,
       role: "owner",
+      isDeactivated: false,
     },
   };
+}
+
+// Create user without automatically creating an organization
+// Used when user signs up via invitation link
+export async function createUserWithoutOrg(
+  email: string,
+  name: string,
+  password: string
+): Promise<{ id: string; email: string; name: string }> {
+  const id = crypto.randomUUID();
+  const passwordHash = await hashPassword(password);
+
+  await db.insert(users).values({
+    id,
+    email: email.toLowerCase(),
+    name,
+    passwordHash,
+  });
+
+  return {
+    id,
+    email: email.toLowerCase(),
+    name,
+  };
+}
+
+export async function updateUserName(userId: string, name: string): Promise<void> {
+  await db.update(users).set({ name }).where(eq(users.id, userId));
+}
+
+export async function updateUserPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<boolean> {
+  const result = await db
+    .select({ passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (result.length === 0) return false;
+
+  const valid = await verifyPassword(currentPassword, result[0].passwordHash);
+  if (!valid) return false;
+
+  const newHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userId));
+
+  return true;
 }
