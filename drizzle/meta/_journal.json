@@ -15,6 +15,20 @@
       "when": 1765709557073,
       "tag": "0001_add_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765745251252,
+      "tag": "0002_dark_the_fallen",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765776234597,
+      "tag": "0003_nice_maestro",
+      "breakpoints": true
     }
   ]
 }

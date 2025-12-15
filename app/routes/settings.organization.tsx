@@ -35,46 +35,46 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await requireActiveAuth(request);
 
   if (!user.organization || !user.membership) {
-    return { error: "No organization found", newInviteToken: null };
+    return { error: "No organization found", newInviteToken: null, newInviteRole: null };
   }
 
   if (user.membership.role !== "owner") {
-    return { error: "Only owners can manage invitations", newInviteToken: null };
+    return { error: "Only owners can manage invitations", newInviteToken: null, newInviteRole: null };
   }
 
   const formData = await request.formData();
   const intent = formData.get("intent");
 
   if (intent === "create-invitation") {
-    const invitation = await createInvitation(user.organization.id, "member");
-    return { error: null, newInviteToken: invitation.token };
+    const invitation = await createInvitation(user.organization.id);
+    return { error: null, newInviteToken: invitation.token, newInviteRole: "member" };
   }
 
   if (intent === "revoke-invitation") {
     const invitationId = formData.get("invitationId") as string;
     await revokeInvitation(invitationId, user.organization.id);
-    return { error: null, newInviteToken: null };
+    return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
   if (intent === "deactivate-member") {
     const memberId = formData.get("memberId") as string;
     const result = await deactivateMember(memberId, user.organization.id, user.id);
     if (!result.success) {
-      return { error: result.error, newInviteToken: null };
+      return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
-    return { error: null, newInviteToken: null };
+    return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
   if (intent === "reactivate-member") {
     const memberId = formData.get("memberId") as string;
     const result = await reactivateMember(memberId, user.organization.id);
     if (!result.success) {
-      return { error: result.error, newInviteToken: null };
+      return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
-    return { error: null, newInviteToken: null };
+    return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
-  return { error: "Unknown action", newInviteToken: null };
+  return { error: "Unknown action", newInviteToken: null, newInviteRole: null };
 }
 
 export default function OrganizationSettings() {
@@ -184,7 +184,9 @@ export default function OrganizationSettings() {
             {/* Show newly created invite link */}
             {actionData?.newInviteToken && (
               <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-                <p className="text-sm text-green-600 dark:text-green-400 mb-2">Invitation created! Share this link:</p>
+                <p className="text-sm text-green-600 dark:text-green-400 mb-2">
+                  Invitation created! Share this link:
+                </p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 bg-neutral-100 dark:bg-neutral-900 px-3 py-2 rounded text-sm text-neutral-700 dark:text-neutral-300 overflow-x-auto">
                     {typeof window !== "undefined" ? `${window.location.origin}/invite/${actionData.newInviteToken}` : `/invite/${actionData.newInviteToken}`}

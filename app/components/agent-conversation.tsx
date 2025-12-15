@@ -1,10 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useRevalidator, useBlocker } from "react-router";
+import { useRevalidator, useBlocker, useSearchParams, useFetcher } from "react-router";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
+import type { Member } from "~/lib/invitations.server";
 import { PromptInput } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
+
+interface ShareLink {
+  token: string;
+  createdAt: string;
+}
 
 interface AgentConversationProps {
   conversationId: string;
@@ -12,6 +18,11 @@ interface AgentConversationProps {
   initialPrompt?: string | null;
   onInitialPromptProcessed?: () => void;
   readOnly?: boolean;
+  isSharedView?: boolean;
+  ownsConversation?: boolean;
+  reviewers?: Member[];
+  shareLink?: ShareLink | null;
+  userName?: string;
 }
 
 export function AgentConversation({
@@ -20,21 +31,32 @@ export function AgentConversation({
   initialPrompt,
   onInitialPromptProcessed,
   readOnly = false,
+  isSharedView = false,
+  ownsConversation = false,
+  reviewers = [],
+  shareLink,
+  userName,
 }: AgentConversationProps) {
-  // Local state for items - starts with loader data
   const [items, setItems] = useState<Item[]>(initialItems);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
+  const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
+  const [copiedReviewer, setCopiedReviewer] = useState<string | null>(null);
+  const [reviewInput, setReviewInput] = useState("");
+  const [pendingReviewer, setPendingReviewer] = useState<Member | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const reviewerDropdownRef = useRef<HTMLDivElement>(null);
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
+  const [searchParams] = useSearchParams();
+  const shareToken = searchParams.get("share");
+  const shareFetcher = useFetcher();
+  const reviewFetcher = useFetcher();
 
-  // Block navigation when streaming
   const blocker = useBlocker(isStreaming);
 
-  // Warn on browser close/refresh when streaming
   useEffect(() => {
     if (!isStreaming) return;
 
@@ -51,7 +73,6 @@ export function AgentConversation({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items]);
 
-  // Handle initial prompt from URL (auto-submit on first load)
   useEffect(() => {
     const hasExistingMessages = items.length > 0;
 
@@ -68,19 +89,28 @@ export function AgentConversation({
     }
   }, [initialPrompt, conversationId, items.length, isStreaming]);
 
-  const addItem = useCallback(async (item: Item) => {
+  useEffect(() => {
+    if (!reviewerDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) {
+        setReviewerDropdownOpen(false);
+      }
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [reviewerDropdownOpen]);
+
+  const addItem = useCallback(async (item: Item, token?: string | null) => {
     setItems(prev => [...prev, item]);
-    // Persist to DB
     await fetch("/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, item }),
+      body: JSON.stringify({ conversationId, item, shareToken: token }),
     });
   }, [conversationId]);
 
   const updateItem = useCallback((itemId: string, updates: Partial<Item>) => {
     setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
-    // Persist to DB (fire and forget)
     fetch(`/api/items?id=${itemId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -88,13 +118,112 @@ export function AgentConversation({
     });
   }, []);
 
+  useEffect(() => {
+    if (!pendingReviewer || shareFetcher.state !== "idle" || !shareFetcher.data) return;
+
+    const token = (shareFetcher.data as { shareToken?: string }).shareToken;
+    if (!token) {
+      setPendingReviewer(null);
+      return;
+    }
+
+    const reviewer = pendingReviewer;
+    setPendingReviewer(null);
+
+    const completeReviewRequest = async () => {
+      const url = `${window.location.origin}/c/${conversationId}?share=${token}`;
+      await navigator.clipboard.writeText(url);
+      setCopiedReviewer(reviewer.userId);
+      setTimeout(() => setCopiedReviewer(null), 2000);
+
+      const reviewFormData = new FormData();
+      reviewFormData.append("intent", "request-review");
+      reviewFormData.append("reviewerUserId", reviewer.userId);
+      reviewFormData.append("shareToken", token);
+      reviewFetcher.submit(reviewFormData, {
+        method: "post",
+        action: `/c/${conversationId}`,
+      });
+
+      const requesterName = userName || "Someone";
+      const systemItem: Item = {
+        id: crypto.randomUUID(),
+        type: "system",
+        content: {
+          text: `${requesterName} requested a review from ${reviewer.user.name}`,
+          shareUrl: url,
+        },
+        createdAt: Date.now(),
+      };
+      await addItem(systemItem);
+    };
+
+    completeReviewRequest();
+  }, [shareFetcher.state, shareFetcher.data, pendingReviewer, conversationId, userName, addItem, reviewFetcher]);
+
+  const handleReviewerClick = async (reviewer: Member) => {
+    setReviewerDropdownOpen(false);
+
+    let token = shareLink?.token;
+
+    if (token) {
+      const url = `${window.location.origin}/c/${conversationId}?share=${token}`;
+      await navigator.clipboard.writeText(url);
+      setCopiedReviewer(reviewer.userId);
+      setTimeout(() => setCopiedReviewer(null), 2000);
+
+      const reviewFormData = new FormData();
+      reviewFormData.append("intent", "request-review");
+      reviewFormData.append("reviewerUserId", reviewer.userId);
+      reviewFormData.append("shareToken", token);
+      reviewFetcher.submit(reviewFormData, {
+        method: "post",
+        action: `/c/${conversationId}`,
+      });
+
+      const requesterName = userName || "Someone";
+      const systemItem: Item = {
+        id: crypto.randomUUID(),
+        type: "system",
+        content: {
+          text: `${requesterName} requested a review from ${reviewer.user.name}`,
+          shareUrl: url,
+        },
+        createdAt: Date.now(),
+      };
+      await addItem(systemItem);
+    } else {
+      setPendingReviewer(reviewer);
+      const formData = new FormData();
+      formData.append("intent", "create-share");
+      shareFetcher.submit(formData, {
+        method: "post",
+        action: `/c/${conversationId}`,
+      });
+    }
+  };
+
+  const handleReviewSubmit = useCallback(async (approved: boolean) => {
+    const reviewItem: Item = {
+      id: crypto.randomUUID(),
+      type: "review",
+      content: {
+        text: reviewInput.trim(),
+        approved,
+        reviewerName: userName || "Anonymous",
+      },
+      createdAt: Date.now(),
+    };
+    await addItem(reviewItem, shareToken);
+    setReviewInput("");
+  }, [reviewInput, userName, addItem, shareToken]);
+
   const handleSubmitWithPrompt = useCallback(
     async (promptText: string) => {
       if (!promptText.trim() || isStreaming || !conversationId) {
         return;
       }
 
-      // Add user message item
       const userItem: Item = {
         id: crypto.randomUUID(),
         type: "message",
@@ -103,7 +232,6 @@ export function AgentConversation({
         createdAt: Date.now(),
       };
 
-      // Update title if this is the first message
       if (items.length === 0) {
         const title = promptText.trim().slice(0, 50) + (promptText.length > 50 ? "..." : "");
         fetch(`/api/conversations?id=${conversationId}`, {
@@ -118,10 +246,8 @@ export function AgentConversation({
       setIsStreaming(true);
       setStreamStartTime(Date.now());
 
-      // Revalidate to update sidebar order (conversation moves to top)
       revalidator.revalidate();
 
-      // Add assistant message item (will be updated as we stream)
       const assistantId = crypto.randomUUID();
       const assistantItem: Item = {
         id: assistantId,
@@ -135,7 +261,6 @@ export function AgentConversation({
 
       abortControllerRef.current = new AbortController();
 
-      // Build history from message items only, sorted by creation time
       const history = items
         .filter((item) => item.type === "message")
         .sort((a, b) => a.createdAt - b.createdAt)
@@ -261,7 +386,6 @@ export function AgentConversation({
     abortControllerRef.current?.abort();
   }, []);
 
-  // Show loading state while initial prompt is being processed
   const showLoadingState = initialPrompt && !hasProcessedInitialPrompt.current && items.length === 0;
 
   if (showLoadingState) {
@@ -278,9 +402,8 @@ export function AgentConversation({
     );
   }
 
-  // Filter to message items for display and sort by creation time
   const messageItems = items
-    .filter((item) => item.type === "message")
+    .filter((item) => item.type === "message" || item.type === "system" || item.type === "review")
     .sort((a, b) => a.createdAt - b.createdAt);
 
   return (
@@ -298,6 +421,7 @@ export function AgentConversation({
                 index === messageItems.length - 1
               }
               streamStartTime={streamStartTime}
+              ownsConversation={ownsConversation}
             />
           ))}
           <div ref={messagesEndRef} />
@@ -307,11 +431,74 @@ export function AgentConversation({
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
           {readOnly ? (
-            <div className="text-center py-3">
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                Read-only mode
-              </p>
-            </div>
+            isSharedView ? (
+              (() => {
+                let lastApprovalIndex = -1;
+                for (let i = items.length - 1; i >= 0; i--) {
+                  const item = items[i];
+                  if (
+                    item.type === "review" &&
+                    (item.content as { approved?: boolean; reviewerName?: string })?.approved === true &&
+                    (item.content as { reviewerName?: string })?.reviewerName === userName
+                  ) {
+                    lastApprovalIndex = i;
+                    break;
+                  }
+                }
+                const hasNewActivitySinceApproval = lastApprovalIndex === -1 ||
+                  items.slice(lastApprovalIndex + 1).some(
+                    (item) =>
+                      (item.type === "message" && item.role === "user") ||
+                      (item.type === "system" && typeof item.content === "object" && "shareUrl" in (item.content as object))
+                  );
+                const hasAlreadyApproved = !hasNewActivitySinceApproval;
+                return (
+                  <>
+                    <div className="relative flex items-center bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
+                      <textarea
+                        value={reviewInput}
+                        onChange={(e) => setReviewInput(e.target.value)}
+                        placeholder="Leave a comment..."
+                        rows={1}
+                        className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 pl-4 resize-none focus:outline-none"
+                        style={{ maxHeight: "200px" }}
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          target.style.height = "24px";
+                          target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
+                        }}
+                      />
+                      <div className="flex items-center gap-1 pr-2">
+                        <button
+                          type="button"
+                          onClick={() => handleReviewSubmit(false)}
+                          disabled={!reviewInput.trim()}
+                          className="px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Comment
+                        </button>
+                        {!hasAlreadyApproved && (
+                          <button
+                            type="button"
+                            onClick={() => handleReviewSubmit(true)}
+                            className="px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                          >
+                            Approve
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs mt-2">&nbsp;</div>
+                  </>
+                );
+              })()
+            ) : (
+              <div className="text-center py-3">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  Read-only mode
+                </p>
+              </div>
+            )
           ) : (
             <>
               <form onSubmit={handleSubmit}>
@@ -325,9 +512,41 @@ export function AgentConversation({
                   autoFocusKey={conversationId}
                 />
               </form>
-              <p className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
-                Gist can make mistakes. Check important info.
-              </p>
+              <div className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
+                Gist can make mistakes.{" "}
+                <div className="relative inline-block" ref={reviewerDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReviewerDropdownOpen(!reviewerDropdownOpen);
+                    }}
+                    className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 underline underline-offset-2"
+                  >
+                    {copiedReviewer ? "Link copied!" : "Request a review"}
+                  </button>
+                  {reviewerDropdownOpen && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50">
+                      {reviewers.length > 0 ? (
+                        reviewers.map((reviewer) => (
+                          <button
+                            key={reviewer.userId}
+                            type="button"
+                            onClick={() => handleReviewerClick(reviewer)}
+                            className="w-full px-3 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                          >
+                            {reviewer.user.name}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+                          No team members available.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -340,6 +559,7 @@ interface ItemRowProps {
   item: Item;
   isStreaming: boolean;
   streamStartTime?: number;
+  ownsConversation?: boolean;
 }
 
 interface AssistantContent {
@@ -349,7 +569,7 @@ interface AssistantContent {
   stats?: { toolUses: number; tokens: number; durationMs: number } | null;
 }
 
-function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
+function ItemRow({ item, isStreaming, streamStartTime, ownsConversation }: ItemRowProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
 
@@ -377,6 +597,80 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (item.type === "system") {
+    const systemContent = item.content as { text?: string; shareUrl?: string } | string;
+    const text = typeof systemContent === "string" ? systemContent : systemContent?.text || "";
+    const shareUrl = typeof systemContent === "object" ? systemContent?.shareUrl : undefined;
+
+    const handleCopyLink = async () => {
+      if (shareUrl) {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    };
+
+    return (
+      <div className="flex flex-col items-center my-4 gap-1">
+        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+          {text}
+        </span>
+        {shareUrl && ownsConversation && (
+          <button
+            onClick={handleCopyLink}
+            className="text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 flex items-center gap-1"
+          >
+            {copied ? (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                Copied
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                </svg>
+                Copy link
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (item.type === "review") {
+    const reviewContent = item.content as { text?: string; approved?: boolean; reviewerName?: string };
+    const reviewText = reviewContent?.text || "";
+    const approved = reviewContent?.approved || false;
+    const reviewerName = reviewContent?.reviewerName || "Anonymous";
+
+    if (approved) {
+      return (
+        <div className="flex flex-col items-center my-4 gap-1">
+          <span className="text-sm text-green-600/70 dark:text-green-500/70">
+            {reviewerName} approved
+          </span>
+          {reviewText && (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center">
+              {reviewText}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex justify-center my-4">
+        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+          {reviewText} – {reviewerName}
+        </span>
+      </div>
+    );
+  }
 
   if (isUser) {
     return (
@@ -409,7 +703,6 @@ function ItemRow({ item, isStreaming, streamStartTime }: ItemRowProps) {
     );
   }
 
-  // Assistant message
   const assistantContent = item.content as AssistantContent | undefined;
   const toolCalls = assistantContent?.toolCalls || [];
   const toolsStartIndex = assistantContent?.toolsStartIndex;
@@ -502,7 +795,10 @@ function getToolLabel(tool?: string): string {
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds} seconds`;
+  }
   const minutes = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return minutes > 0 ? `${minutes}m ${secs}s` : `${secs}s`;
+  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
 }

@@ -3,7 +3,7 @@ import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { getConversations, isUserInOrg } from "~/lib/conversations.server";
+import { getConversations, isUserInOrg, dismissReviewRequest } from "~/lib/conversations.server";
 
 // GET /api/conversations - List conversations with pagination
 export async function loader({ request }: Route.LoaderArgs) {
@@ -76,13 +76,19 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method === "PATCH") {
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
+    const reviewRequestId = url.searchParams.get("reviewRequestId");
+
+    if (reviewRequestId) {
+      await dismissReviewRequest(reviewRequestId, user.id);
+      return Response.json({ success: true });
+    }
+
     const body = await request.json();
 
     if (!id) {
       return new Response("Missing conversation id", { status: 400 });
     }
 
-    // Only update if owned by user
     await db
       .update(conversations)
       .set({ title: body.title, updatedAt: new Date() })

@@ -38,7 +38,7 @@ export async function action({ request }: Route.ActionArgs) {
 export default function Home() {
   const navigate = useNavigate();
   const navigation = useNavigation();
-  const { conversations, user, hasMore, impersonating, orgMembers, isOwner } = useOutletContext<AppContext>();
+  const { conversations, user, hasMore, impersonating, orgMembers, isOwner, reviewRequests } = useOutletContext<AppContext>();
 
   const isCreating = navigation.state === "submitting";
 
@@ -62,6 +62,7 @@ export default function Home() {
       impersonating={impersonating}
       orgMembers={orgMembers}
       isOwner={isOwner}
+      reviewRequests={reviewRequests}
     >
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />

@@ -12,6 +12,9 @@ export default [
   // Invitation acceptance route (public, no layout)
   route("invite/:token", "routes/invite.$token.tsx"),
 
+  // Share route (redirects to conversation)
+  route("share/:token", "routes/share.$token.tsx"),
+
   // API routes
   route("api/agent", "routes/api.agent.ts"),
   route("api/conversations", "routes/api.conversations.ts"),

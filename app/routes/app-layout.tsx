@@ -1,10 +1,10 @@
 import { Outlet } from "react-router";
 import type { Route } from "./+types/app-layout";
 import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
-import { getConversations, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
+import { getConversations, isUserInOrg, getReviewRequestsForUser, type ConversationMeta, type Item, type ReviewRequest } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
 
-export type { Item, ConversationMeta, Organization, Membership, Member };
+export type { Item, ConversationMeta, Organization, Membership, Member, ReviewRequest };
 
 export interface ImpersonatingUser {
   id: string;
@@ -16,26 +16,30 @@ export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
   const isOwner = user.membership?.role === "owner";
 
-  // Parse impersonate query param
   const url = new URL(request.url);
   const impersonateUserId = url.searchParams.get("impersonate");
 
   let impersonating: ImpersonatingUser | null = null;
   let orgMembers: Member[] = [];
+  let reviewers: Member[] = [];
   let conversations: ConversationMeta[] = [];
+  let reviewRequests: ReviewRequest[] = [];
   let hasMore = false;
 
-  // Load org members for owners (for the dropdown)
-  if (isOwner && user.organization) {
-    orgMembers = await getMembers(user.organization.id);
+  if (user.organization) {
+    const allMembers = await getMembers(user.organization.id);
+    reviewers = allMembers.filter((m) => !m.isDeactivated);
+
+    if (isOwner) {
+      orgMembers = allMembers;
+    }
+
+    reviewRequests = await getReviewRequestsForUser(user.id);
   }
 
-  // Handle impersonation
   if (impersonateUserId && isOwner && user.organization) {
-    // Verify target user is in same org
     const isInOrg = await isUserInOrg(impersonateUserId, user.organization.id);
     if (isInOrg) {
-      // Find the member being impersonated
       const targetMember = orgMembers.find((m) => m.userId === impersonateUserId);
       if (targetMember) {
         impersonating = {
@@ -50,14 +54,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  // If not impersonating, get user's own conversations
   if (!impersonating) {
     const result = await getConversations(user.id);
     conversations = result.conversations;
     hasMore = result.hasMore;
   }
 
-  return { user, conversations, hasMore, impersonating, orgMembers, isOwner };
+  return { user, conversations, hasMore, impersonating, orgMembers, reviewers, isOwner, reviewRequests };
 }
 
 export interface AppContext {
@@ -72,7 +75,9 @@ export interface AppContext {
   hasMore: boolean;
   impersonating: ImpersonatingUser | null;
   orgMembers: Member[];
+  reviewers: Member[];
   isOwner: boolean;
+  reviewRequests: ReviewRequest[];
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
@@ -82,7 +87,9 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     hasMore: loaderData.hasMore,
     impersonating: loaderData.impersonating,
     orgMembers: loaderData.orgMembers,
+    reviewers: loaderData.reviewers,
     isOwner: loaderData.isOwner,
+    reviewRequests: loaderData.reviewRequests,
   };
 
   return <Outlet context={context} />;

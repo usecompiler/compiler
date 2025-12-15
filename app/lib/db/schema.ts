@@ -73,3 +73,30 @@ export const items = pgTable("items", {
   status: text("status"), // 'in_progress' | 'completed' | 'cancelled'
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const conversationShares = pgTable("conversation_shares", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id")
+    .references(() => conversations.id, { onDelete: "cascade" })
+    .notNull(),
+  token: text("token").unique().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"), // null = active, set = revoked
+});
+
+export const reviewRequests = pgTable("review_requests", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id")
+    .references(() => conversations.id, { onDelete: "cascade" })
+    .notNull(),
+  requestedByUserId: text("requested_by_user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  requestedToUserId: text("requested_to_user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  shareToken: text("share_token").notNull(),
+  status: text("status").notNull().default("pending"), // 'pending' | 'reviewed'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
+});

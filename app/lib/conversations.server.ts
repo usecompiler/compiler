@@ -1,11 +1,11 @@
+import { randomBytes } from "crypto";
 import { db } from "~/lib/db/index.server";
-import { conversations as conversationsTable, items as itemsTable, members } from "~/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, reviewRequests } from "~/lib/db/schema";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
 
-// Check if a user is a member of a specific organization
 export async function isUserInOrg(userId: string, organizationId: string): Promise<boolean> {
   const result = await db
     .select({ id: members.id })
@@ -16,7 +16,6 @@ export async function isUserInOrg(userId: string, organizationId: string): Promi
   return result.length > 0;
 }
 
-// Get a conversation by ID
 export async function getConversation(conversationId: string): Promise<{ id: string; userId: string; title: string } | null> {
   const result = await db
     .select({
@@ -31,7 +30,6 @@ export async function getConversation(conversationId: string): Promise<{ id: str
   return result[0] || null;
 }
 
-// Sidebar conversation metadata (no items)
 export interface ConversationMeta {
   id: string;
   title: string;
@@ -41,7 +39,6 @@ export interface ConversationMeta {
 
 const CONVERSATIONS_PAGE_SIZE = 20;
 
-// Get conversations list for sidebar with pagination
 export async function getConversations(
   userId: string,
   options?: { limit?: number; offset?: number }
@@ -59,7 +56,7 @@ export async function getConversations(
     .from(conversationsTable)
     .where(eq(conversationsTable.userId, userId))
     .orderBy(desc(conversationsTable.updatedAt))
-    .limit(limit + 1) // Fetch one extra to check hasMore
+    .limit(limit + 1)
     .offset(offset);
 
   const hasMore = rows.length > limit;
@@ -73,7 +70,6 @@ export async function getConversations(
   return { conversations, hasMore };
 }
 
-// Get items for a specific conversation
 export async function getConversationItems(conversationId: string): Promise<Item[]> {
   const rows = await db
     .select()
@@ -90,4 +86,191 @@ export async function getConversationItems(conversationId: string): Promise<Item
     status: item.status as "in_progress" | "completed" | "cancelled" | undefined,
     createdAt: item.createdAt.getTime(),
   }));
+}
+
+export interface ShareLink {
+  token: string;
+  createdAt: Date;
+}
+
+function generateShareToken(): string {
+  return randomBytes(16).toString("hex");
+}
+
+export async function createShareLink(conversationId: string): Promise<string> {
+  const existing = await getShareLink(conversationId);
+  if (existing) {
+    return existing.token;
+  }
+
+  const token = generateShareToken();
+  const id = crypto.randomUUID();
+
+  await db.insert(conversationShares).values({
+    id,
+    conversationId,
+    token,
+  });
+
+  return token;
+}
+
+export async function getShareLink(conversationId: string): Promise<ShareLink | null> {
+  const result = await db
+    .select({
+      token: conversationShares.token,
+      createdAt: conversationShares.createdAt,
+    })
+    .from(conversationShares)
+    .where(
+      and(
+        eq(conversationShares.conversationId, conversationId),
+        isNull(conversationShares.revokedAt)
+      )
+    )
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function revokeShareLink(conversationId: string): Promise<void> {
+  await db
+    .update(conversationShares)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(conversationShares.conversationId, conversationId),
+        isNull(conversationShares.revokedAt)
+      )
+    );
+}
+
+export async function getConversationByShareToken(
+  token: string
+): Promise<{ conversation: { id: string; userId: string; title: string }; organizationId: string; ownerName: string } | null> {
+  const result = await db
+    .select({
+      conversationId: conversationShares.conversationId,
+      conversationTitle: conversationsTable.title,
+      conversationUserId: conversationsTable.userId,
+      organizationId: members.organizationId,
+      ownerName: users.name,
+    })
+    .from(conversationShares)
+    .innerJoin(conversationsTable, eq(conversationShares.conversationId, conversationsTable.id))
+    .innerJoin(members, eq(conversationsTable.userId, members.userId))
+    .innerJoin(users, eq(conversationsTable.userId, users.id))
+    .where(
+      and(
+        eq(conversationShares.token, token),
+        isNull(conversationShares.revokedAt)
+      )
+    )
+    .limit(1);
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  const row = result[0];
+  return {
+    conversation: {
+      id: row.conversationId,
+      userId: row.conversationUserId,
+      title: row.conversationTitle,
+    },
+    organizationId: row.organizationId,
+    ownerName: row.ownerName,
+  };
+}
+
+export interface ReviewRequest {
+  id: string;
+  conversationId: string;
+  conversationTitle: string;
+  requestedByName: string;
+  shareToken: string;
+  createdAt: number;
+}
+
+export async function getReviewRequestsForUser(userId: string): Promise<ReviewRequest[]> {
+  const result = await db
+    .select({
+      id: reviewRequests.id,
+      conversationId: reviewRequests.conversationId,
+      conversationTitle: conversationsTable.title,
+      requestedByName: users.name,
+      shareToken: reviewRequests.shareToken,
+      createdAt: reviewRequests.createdAt,
+    })
+    .from(reviewRequests)
+    .innerJoin(conversationsTable, eq(reviewRequests.conversationId, conversationsTable.id))
+    .innerJoin(users, eq(reviewRequests.requestedByUserId, users.id))
+    .where(
+      and(
+        eq(reviewRequests.requestedToUserId, userId),
+        eq(reviewRequests.status, "pending")
+      )
+    )
+    .orderBy(desc(reviewRequests.createdAt));
+
+  return result.map((row) => ({
+    id: row.id,
+    conversationId: row.conversationId,
+    conversationTitle: row.conversationTitle,
+    requestedByName: row.requestedByName,
+    shareToken: row.shareToken,
+    createdAt: row.createdAt.getTime(),
+  }));
+}
+
+export async function createReviewRequest(
+  conversationId: string,
+  requestedByUserId: string,
+  requestedToUserId: string,
+  shareToken: string
+): Promise<string> {
+  const id = crypto.randomUUID();
+
+  await db.insert(reviewRequests).values({
+    id,
+    conversationId,
+    requestedByUserId,
+    requestedToUserId,
+    shareToken,
+  });
+
+  return id;
+}
+
+export async function markReviewRequestAsReviewed(
+  conversationId: string,
+  userId: string
+): Promise<void> {
+  await db
+    .update(reviewRequests)
+    .set({ status: "reviewed", reviewedAt: new Date() })
+    .where(
+      and(
+        eq(reviewRequests.conversationId, conversationId),
+        eq(reviewRequests.requestedToUserId, userId),
+        eq(reviewRequests.status, "pending")
+      )
+    );
+}
+
+export async function dismissReviewRequest(
+  reviewRequestId: string,
+  userId: string
+): Promise<void> {
+  await db
+    .update(reviewRequests)
+    .set({ status: "dismissed" })
+    .where(
+      and(
+        eq(reviewRequests.id, reviewRequestId),
+        eq(reviewRequests.requestedToUserId, userId),
+        eq(reviewRequests.status, "pending")
+      )
+    );
 }

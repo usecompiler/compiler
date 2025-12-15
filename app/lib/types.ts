@@ -1,4 +1,4 @@
-export type ItemType = "message" | "tool_call" | "tool_output";
+export type ItemType = "message" | "tool_call" | "tool_output" | "system" | "review";
 
 export interface Item {
   id: string;
