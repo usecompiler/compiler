@@ -124,7 +124,7 @@ export default function RepositoriesSettings() {
           )}
 
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-4">
-            The assistant will explore the first repository with a .git folder.
+            The assistant can explore all repositories.
           </p>
         </section>
       </main>

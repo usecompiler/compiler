@@ -1,29 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import path from "node:path";
-import fs from "node:fs";
 
 const REPOS_DIR = "/repos";
-
-function findProjectDir(): string {
-  // Look for the first subdirectory that contains a .git folder
-  try {
-    const entries = fs.readdirSync(REPOS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        const projectPath = path.join(REPOS_DIR, entry.name);
-        const gitPath = path.join(projectPath, ".git");
-        if (fs.existsSync(gitPath)) {
-          console.log("[agent] Using project dir:", projectPath);
-          return projectPath;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[agent] Error finding project dir:", err);
-  }
-  console.log("[agent] Falling back to REPOS_DIR:", REPOS_DIR);
-  return REPOS_DIR;
-}
 
 const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 
@@ -118,7 +95,7 @@ export async function* runAgent(
         systemPrompt: SYSTEM_PROMPT,
         allowedTools: ALLOWED_TOOLS,
         permissionMode: "plan",
-        cwd: findProjectDir(),
+        cwd: REPOS_DIR,
         additionalDirectories: ["/repos"],
         env: {
           ...process.env,
