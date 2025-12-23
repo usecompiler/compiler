@@ -1,8 +1,13 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import path from "node:path";
 
-const REPOS_DIR = "/repos";
+const REPOS_BASE_DIR = "/repos";
 
 const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
+
+function getOrgReposDir(organizationId: string): string {
+  return path.join(REPOS_BASE_DIR, organizationId);
+}
 
 const SYSTEM_PROMPT = `You are a friendly assistant that helps people understand software projects. Your audience is non-technical, so you must:
 
@@ -57,7 +62,14 @@ export interface AgentStats {
 }
 
 export interface AgentEvent {
-  type: "text" | "tool_use" | "tool_result" | "new_turn" | "result" | "error" | "done";
+  type:
+    | "text"
+    | "tool_use"
+    | "tool_result"
+    | "new_turn"
+    | "result"
+    | "error"
+    | "done";
   content?: string;
   tool?: string;
   input?: unknown;
@@ -81,9 +93,11 @@ function formatHistory(messages: HistoryMessage[]): string {
 
 export async function* runAgent(
   prompt: string,
+  organizationId: string,
   history: HistoryMessage[] = []
 ): AsyncGenerator<AgentEvent> {
   const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
+  const orgReposDir = getOrgReposDir(organizationId);
 
   try {
     let turnCount = 0;
@@ -95,8 +109,8 @@ export async function* runAgent(
         systemPrompt: SYSTEM_PROMPT,
         allowedTools: ALLOWED_TOOLS,
         permissionMode: "plan",
-        cwd: REPOS_DIR,
-        additionalDirectories: ["/repos"],
+        cwd: orgReposDir,
+        additionalDirectories: [orgReposDir],
         env: {
           ...process.env,
           SHELL: "/bin/bash",
@@ -123,9 +137,14 @@ export async function* runAgent(
         }
       } else if (message.type === "result") {
         // Emit final stats
-        const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+        const usage = (
+          message as {
+            usage?: { input_tokens?: number; output_tokens?: number };
+          }
+        ).usage;
         const tokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
-        const durationMs = (message as { duration_ms?: number }).duration_ms || 0;
+        const durationMs =
+          (message as { duration_ms?: number }).duration_ms || 0;
         yield {
           type: "result",
           stats: {

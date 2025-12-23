@@ -23,6 +23,7 @@ interface AgentConversationProps {
   reviewers?: Member[];
   shareLink?: ShareLink | null;
   userName?: string;
+  isOwner?: boolean;
 }
 
 export function AgentConversation({
@@ -36,6 +37,7 @@ export function AgentConversation({
   reviewers = [],
   shareLink,
   userName,
+  isOwner = false,
 }: AgentConversationProps) {
   const [items, setItems] = useState<Item[]>(initialItems);
   const [input, setInput] = useState("");
@@ -224,6 +226,10 @@ export function AgentConversation({
         return;
       }
 
+      setInput("");
+      setIsStreaming(true);
+      setStreamStartTime(Date.now());
+
       const userItem: Item = {
         id: crypto.randomUUID(),
         type: "message",
@@ -241,10 +247,7 @@ export function AgentConversation({
         });
       }
 
-      await addItem(userItem);
-      setInput("");
-      setIsStreaming(true);
-      setStreamStartTime(Date.now());
+      addItem(userItem);
 
       revalidator.revalidate();
 
@@ -257,7 +260,7 @@ export function AgentConversation({
         status: "in_progress",
         createdAt: Date.now() + 1,
       };
-      await addItem(assistantItem);
+      addItem(assistantItem);
 
       abortControllerRef.current = new AbortController();
 
@@ -541,6 +544,14 @@ export function AgentConversation({
                       ) : (
                         <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
                           No team members available.
+                          {isOwner && (
+                            <a
+                              href="/settings/organization"
+                              className="block mt-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 underline"
+                            >
+                              Invite a team member
+                            </a>
+                          )}
                         </div>
                       )}
                     </div>

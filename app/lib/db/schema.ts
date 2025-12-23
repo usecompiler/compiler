@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -10,6 +10,7 @@ export const users = pgTable("users", {
 
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),
+  onboardingCompleted: boolean("onboarding_completed").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -96,7 +97,37 @@ export const reviewRequests = pgTable("review_requests", {
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
   shareToken: text("share_token").notNull(),
-  status: text("status").notNull().default("pending"), // 'pending' | 'reviewed'
+  status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   reviewedAt: timestamp("reviewed_at"),
+});
+
+export const githubInstallations = pgTable("github_installations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  installationId: text("installation_id").notNull(),
+  encryptedAccessToken: text("encrypted_access_token"),
+  accessTokenIv: text("access_token_iv"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const repositories = pgTable("repositories", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  githubRepoId: text("github_repo_id"),
+  name: text("name").notNull(),
+  fullName: text("full_name").notNull(),
+  cloneUrl: text("clone_url").notNull(),
+  isPrivate: boolean("is_private").default(false).notNull(),
+  cloneStatus: text("clone_status").default("pending").notNull(),
+  clonedAt: timestamp("cloned_at"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

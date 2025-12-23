@@ -1,9 +1,16 @@
 import type { Route } from "./+types/api.agent";
 import { runAgent, type HistoryMessage } from "~/lib/agent.server";
+import { requireActiveAuth } from "~/lib/auth.server";
+import { syncStaleRepos } from "~/lib/clone.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
+  }
+
+  const user = await requireActiveAuth(request);
+  if (!user.organization) {
+    return new Response("Organization required", { status: 403 });
   }
 
   const body = await request.json();
@@ -14,12 +21,16 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Missing prompt", { status: 400 });
   }
 
+  const organizationId = user.organization.id;
+
+  await syncStaleRepos(organizationId);
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(prompt, history)) {
+        for await (const event of runAgent(prompt, organizationId, history)) {
           const data = `data: ${JSON.stringify(event)}\n\n`;
           controller.enqueue(encoder.encode(data));
         }

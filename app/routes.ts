@@ -9,6 +9,12 @@ export default [
   // Deactivated user page (no layout)
   route("deactivated", "routes/deactivated.tsx"),
 
+  // Onboarding routes (no layout)
+  route("onboarding/github", "routes/onboarding.github.tsx"),
+  route("onboarding/github-callback", "routes/onboarding.github-callback.tsx"),
+  route("onboarding/repos", "routes/onboarding.repos.tsx"),
+  route("onboarding/syncing", "routes/onboarding.syncing.tsx"),
+
   // Invitation acceptance route (public, no layout)
   route("invite/:token", "routes/invite.$token.tsx"),
 
@@ -19,6 +25,7 @@ export default [
   route("api/agent", "routes/api.agent.ts"),
   route("api/conversations", "routes/api.conversations.ts"),
   route("api/items", "routes/api.items.ts"),
+  route("api/search", "routes/api.search.ts"),
 
   // App routes (with layout that handles auth + conversations)
   layout("routes/app-layout.tsx", [

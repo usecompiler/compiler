@@ -171,6 +171,7 @@ export function Sidebar({
         onClose={() => setIsSearchOpen(false)}
         onSelectConversation={onSelectConversation}
         onNewConversation={onNewConversation}
+        impersonateUserId={impersonating?.id}
       />
     </aside>
   );

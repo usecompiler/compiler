@@ -62,6 +62,7 @@ export function createLogoutCookie(): string {
 
 export interface Organization {
   id: string;
+  onboardingCompleted: boolean;
 }
 
 export interface Membership {
@@ -89,6 +90,7 @@ export async function getUser(request: Request): Promise<User | null> {
       userEmail: users.email,
       userName: users.name,
       orgId: organizations.id,
+      orgOnboardingCompleted: organizations.onboardingCompleted,
       memberRole: members.role,
       memberDeactivatedAt: members.deactivatedAt,
     })
@@ -113,7 +115,9 @@ export async function getUser(request: Request): Promise<User | null> {
     id: session.userId,
     email: session.userEmail,
     name: session.userName,
-    organization: session.orgId ? { id: session.orgId } : null,
+    organization: session.orgId
+      ? { id: session.orgId, onboardingCompleted: session.orgOnboardingCompleted ?? false }
+      : null,
     membership: session.orgId
       ? {
           organizationId: session.orgId,
@@ -168,7 +172,7 @@ export async function createOrganization(ownerId: string): Promise<Organization>
     role: "owner",
   });
 
-  return { id: orgId };
+  return { id: orgId, onboardingCompleted: false };
 }
 
 export async function createUser(

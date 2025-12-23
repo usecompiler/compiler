@@ -1,4 +1,4 @@
-import { Form, redirect, useNavigate, useNavigation, useOutletContext } from "react-router";
+import { Form, redirect, useNavigate, useOutletContext } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
@@ -37,10 +37,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const navigation = useNavigation();
   const { conversations, user, hasMore, impersonating, orgMembers, isOwner, reviewRequests } = useOutletContext<AppContext>();
-
-  const isCreating = navigation.state === "submitting";
 
   const handleSelectConversation = (id: string) => {
     const impersonateParam = impersonating ? `?impersonate=${impersonating.id}` : "";
@@ -67,13 +64,13 @@ export default function Home() {
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />
       ) : (
-        <HomePromptInput isCreating={isCreating} />
+        <HomePromptInput />
       )}
     </ConversationLayout>
   );
 }
 
-function HomePromptInput({ isCreating }: { isCreating: boolean }) {
+function HomePromptInput() {
   const [input, setInput] = useState("");
 
   return (
@@ -88,7 +85,6 @@ function HomePromptInput({ isCreating }: { isCreating: boolean }) {
           value={input}
           onChange={setInput}
           onSubmit={() => {}}
-          disabled={isCreating}
           autoFocus
         />
       </Form>

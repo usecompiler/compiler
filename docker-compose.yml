@@ -1,25 +1,38 @@
 services:
   app:
-    build: .
-    ports:
-      - "3000:3000"
+    image: ghcr.io/the-gist-app/gist:latest
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=postgresql://gist:gist@db:5432/gist
-      - SHELL=/bin/sh
+      - DATABASE_URL=postgresql://gist:${POSTGRES_PASSWORD}@db:5432/gist
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY}
     volumes:
-      - ./repos:/repos
+      - repos:/repos
     depends_on:
       db:
         condition: service_healthy
 
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
   db:
     image: postgres:16-alpine
-    ports:
-      - "5433:5432"
     environment:
       - POSTGRES_USER=gist
-      - POSTGRES_PASSWORD=gist
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=gist
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -30,4 +43,7 @@ services:
       retries: 5
 
 volumes:
+  repos:
   pgdata:
+  caddy_data:
+  caddy_config:

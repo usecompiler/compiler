@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "~/lib/db/index.server";
 import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, reviewRequests } from "~/lib/db/schema";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and, isNull, or, ilike, sql } from "drizzle-orm";
 import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
@@ -68,6 +68,111 @@ export async function getConversations(
   }));
 
   return { conversations, hasMore };
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  matchType: "title" | "content";
+  snippet?: string;
+  updatedAt: number;
+}
+
+export async function searchConversations(
+  userId: string,
+  query: string,
+  limit: number = 10
+): Promise<SearchResult[]> {
+  if (!query.trim()) {
+    return [];
+  }
+
+  const searchPattern = `%${query.toLowerCase()}%`;
+
+  const titleMatches = await db
+    .select({
+      id: conversationsTable.id,
+      title: conversationsTable.title,
+      updatedAt: conversationsTable.updatedAt,
+    })
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.userId, userId),
+        ilike(conversationsTable.title, searchPattern)
+      )
+    )
+    .orderBy(desc(conversationsTable.updatedAt))
+    .limit(limit);
+
+  const contentMatches = await db
+    .select({
+      conversationId: conversationsTable.id,
+      title: conversationsTable.title,
+      updatedAt: conversationsTable.updatedAt,
+      content: itemsTable.content,
+    })
+    .from(itemsTable)
+    .innerJoin(conversationsTable, eq(itemsTable.conversationId, conversationsTable.id))
+    .where(
+      and(
+        eq(conversationsTable.userId, userId),
+        eq(itemsTable.type, "message"),
+        or(
+          sql`LOWER(${itemsTable.content}::text) LIKE ${searchPattern}`,
+          sql`LOWER(${itemsTable.content}->>'text') LIKE ${searchPattern}`
+        )
+      )
+    )
+    .orderBy(desc(conversationsTable.updatedAt))
+    .limit(limit * 2);
+
+  const results: SearchResult[] = [];
+  const seenIds = new Set<string>();
+
+  for (const match of titleMatches) {
+    if (!seenIds.has(match.id)) {
+      seenIds.add(match.id);
+      results.push({
+        id: match.id,
+        title: match.title,
+        matchType: "title",
+        updatedAt: match.updatedAt.getTime(),
+      });
+    }
+  }
+
+  for (const match of contentMatches) {
+    if (!seenIds.has(match.conversationId)) {
+      seenIds.add(match.conversationId);
+      const contentText = typeof match.content === "string"
+        ? match.content
+        : (match.content as { text?: string })?.text || "";
+
+      const lowerContent = contentText.toLowerCase();
+      const lowerQuery = query.toLowerCase();
+      const matchIndex = lowerContent.indexOf(lowerQuery);
+
+      let snippet = "";
+      if (matchIndex !== -1) {
+        const start = Math.max(0, matchIndex - 30);
+        const end = Math.min(contentText.length, matchIndex + query.length + 30);
+        snippet = (start > 0 ? "..." : "") + contentText.slice(start, end) + (end < contentText.length ? "..." : "");
+      }
+
+      results.push({
+        id: match.conversationId,
+        title: match.title,
+        matchType: "content",
+        snippet,
+        updatedAt: match.updatedAt.getTime(),
+      });
+    }
+  }
+
+  results.sort((a, b) => b.updatedAt - a.updatedAt);
+
+  return results.slice(0, limit);
 }
 
 export async function getConversationItems(conversationId: string): Promise<Item[]> {

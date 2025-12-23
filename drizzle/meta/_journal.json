@@ -5,29 +5,78 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1765708597169,
-      "tag": "0000_add_organizations",
+      "when": 1734562800000,
+      "tag": "0000_create_users",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1765709557073,
-      "tag": "0001_add_invitations",
+      "when": 1734562801000,
+      "tag": "0001_create_organizations",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1765745251252,
-      "tag": "0002_dark_the_fallen",
+      "when": 1734562802000,
+      "tag": "0002_create_sessions",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1765776234597,
-      "tag": "0003_nice_maestro",
+      "when": 1734562803000,
+      "tag": "0003_create_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1734562804000,
+      "tag": "0004_create_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1734562805000,
+      "tag": "0005_create_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1734562806000,
+      "tag": "0006_create_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1734562807000,
+      "tag": "0007_create_conversation_shares",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1734562808000,
+      "tag": "0008_create_review_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1734562809000,
+      "tag": "0009_create_github_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1734562810000,
+      "tag": "0010_create_repositories",
       "breakpoints": true
     }
   ]

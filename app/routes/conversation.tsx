@@ -202,6 +202,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
             reviewers={filteredReviewers}
             shareLink={shareLink}
             userName={user.name}
+            isOwner={isOwner}
           />
         </div>
       </div>

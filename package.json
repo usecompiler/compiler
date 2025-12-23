@@ -6,7 +6,9 @@
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.67",
@@ -14,6 +16,7 @@
     "@react-router/serve": "7.10.1",
     "@tailwindcss/typography": "^0.5.19",
     "bcrypt": "^6.0.0",
+    "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.1",
     "isbot": "^5.1.31",
     "postgres": "^3.4.7",
@@ -31,7 +34,6 @@
     "@types/node": "^22",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "drizzle-kit": "^0.31.8",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",

@@ -72,7 +72,7 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await createUser(email, name, password);
   const sessionId = await createSession(user.id);
 
-  return redirect("/", {
+  return redirect("/onboarding/github", {
     headers: {
       "Set-Cookie": createSessionCookie(sessionId),
     },
@@ -83,7 +83,7 @@ export default function Signup() {
   const actionData = useActionData<typeof action>();
   const loaderData = useLoaderData<typeof loader>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting = navigation.state !== "idle";
   const isInvite = !!loaderData?.inviteToken;
 
   return (

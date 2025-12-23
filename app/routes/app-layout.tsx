@@ -1,4 +1,4 @@
-import { Outlet } from "react-router";
+import { Outlet, redirect } from "react-router";
 import type { Route } from "./+types/app-layout";
 import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
 import { getConversations, isUserInOrg, getReviewRequestsForUser, type ConversationMeta, type Item, type ReviewRequest } from "~/lib/conversations.server";
@@ -15,6 +15,10 @@ export interface ImpersonatingUser {
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
   const isOwner = user.membership?.role === "owner";
+
+  if (user.organization && !user.organization.onboardingCompleted && isOwner) {
+    throw redirect("/onboarding/github");
+  }
 
   const url = new URL(request.url);
   const impersonateUserId = url.searchParams.get("impersonate");
