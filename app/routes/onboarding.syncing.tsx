@@ -1,4 +1,4 @@
-import { redirect, useNavigate, useRevalidator } from "react-router";
+import { redirect, useRevalidator, Link } from "react-router";
 import { useEffect } from "react";
 import type { Route } from "./+types/onboarding.syncing";
 import { requireActiveAuth } from "~/lib/auth.server";
@@ -42,7 +42,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function OnboardingSyncing({ loaderData }: Route.ComponentProps) {
   const { repos } = loaderData;
-  const navigate = useNavigate();
   const revalidator = useRevalidator();
 
   const allDone = repos.every(
@@ -95,13 +94,21 @@ export default function OnboardingSyncing({ loaderData }: Route.ComponentProps) 
           </div>
         </div>
 
-        <button
-          onClick={() => navigate("/")}
-          disabled={!allDone}
-          className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {allDone ? "Continue" : "Syncing..."}
-        </button>
+        {allDone ? (
+          <Link
+            to="/"
+            className="block w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors text-center"
+          >
+            Continue
+          </Link>
+        ) : (
+          <button
+            disabled
+            className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 opacity-50 cursor-not-allowed"
+          >
+            Syncing...
+          </button>
+        )}
       </div>
     </div>
   );

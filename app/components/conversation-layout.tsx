@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { Sidebar } from "./sidebar";
 import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
   conversations: ConversationMeta[];
-  currentConversationId: string | null;
-  onSelectConversation: (id: string) => void;
-  onNewConversation: () => void;
   user: User;
   hasMore: boolean;
   impersonating: ImpersonatingUser | null;
@@ -20,9 +18,6 @@ interface ConversationLayoutProps {
 
 export function ConversationLayout({
   conversations,
-  currentConversationId,
-  onSelectConversation,
-  onNewConversation,
   user,
   hasMore,
   impersonating,
@@ -33,18 +28,24 @@ export function ConversationLayout({
   reviewRequests = [],
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
-        onNewConversation();
+        navigate("/");
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onNewConversation]);
+  }, [navigate]);
 
   return (
     <div className="flex h-screen bg-neutral-50 dark:bg-neutral-900">
@@ -62,15 +63,6 @@ export function ConversationLayout({
       >
         <Sidebar
           conversations={conversations}
-          currentConversationId={currentConversationId}
-          onSelectConversation={(id) => {
-            onSelectConversation(id);
-            setSidebarOpen(false);
-          }}
-          onNewConversation={() => {
-            onNewConversation();
-            setSidebarOpen(false);
-          }}
           user={user}
           hasMore={hasMore}
           impersonating={impersonating}

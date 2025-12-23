@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useFetcher, Link } from "react-router";
+import { useNavigate, useFetcher, Link, NavLink, useParams } from "react-router";
 import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest } from "~/routes/app-layout";
 import { CommandPalette } from "./command-palette";
 import type { User } from "~/lib/auth.server";
 
+function buildConversationUrl(id: string, impersonating: ImpersonatingUser | null, shareToken?: string): string {
+  const params = new URLSearchParams();
+  if (impersonating) params.set("impersonate", impersonating.id);
+  if (shareToken) params.set("share", shareToken);
+  const query = params.toString();
+  return `/c/${id}${query ? `?${query}` : ""}`;
+}
+
 interface SidebarProps {
   conversations: ConversationMeta[];
-  currentConversationId: string | null;
-  onSelectConversation: (id: string) => void;
-  onNewConversation: () => void;
   user: User;
   hasMore: boolean;
   impersonating: ImpersonatingUser | null;
@@ -19,9 +24,6 @@ interface SidebarProps {
 
 export function Sidebar({
   conversations: initialConversations,
-  currentConversationId,
-  onSelectConversation,
-  onNewConversation,
   user,
   hasMore: initialHasMore,
   impersonating,
@@ -29,7 +31,7 @@ export function Sidebar({
   isOwner,
   reviewRequests = [],
 }: SidebarProps) {
-  const navigate = useNavigate();
+  const { id: currentConversationId } = useParams();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [conversations, setConversations] = useState(initialConversations);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -83,8 +85,9 @@ export function Sidebar({
     <aside className="w-64 h-full bg-neutral-100 dark:bg-black flex flex-col">
       <div className="p-3 space-y-1">
         {!impersonating && (
-          <button
-            onClick={onNewConversation}
+          <Link
+            to="/"
+            prefetch="intent"
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
           >
             <svg
@@ -101,7 +104,7 @@ export function Sidebar({
               />
             </svg>
             New conversation
-          </button>
+          </Link>
         )}
 
         <button
@@ -136,8 +139,6 @@ export function Sidebar({
                 <ReviewRequestItem
                   key={request.id}
                   request={request}
-                  isActive={request.conversationId === currentConversationId}
-                  onSelect={() => navigate(`/c/${request.conversationId}?share=${request.shareToken}`)}
                 />
               ))}
             </nav>
@@ -151,9 +152,8 @@ export function Sidebar({
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
-              isActive={conversation.id === currentConversationId}
-              onSelect={() => onSelectConversation(conversation.id)}
               readOnly={!!impersonating}
+              impersonating={impersonating}
             />
           ))}
 
@@ -169,8 +169,6 @@ export function Sidebar({
         conversations={conversations}
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
-        onSelectConversation={onSelectConversation}
-        onNewConversation={onNewConversation}
         impersonateUserId={impersonating?.id}
       />
     </aside>
@@ -179,11 +177,9 @@ export function Sidebar({
 
 interface ReviewRequestItemProps {
   request: ReviewRequest;
-  isActive: boolean;
-  onSelect: () => void;
 }
 
-function ReviewRequestItem({ request, isActive, onSelect }: ReviewRequestItemProps) {
+function ReviewRequestItem({ request }: ReviewRequestItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const fetcher = useFetcher();
 
@@ -194,7 +190,8 @@ function ReviewRequestItem({ request, isActive, onSelect }: ReviewRequestItemPro
     return () => document.removeEventListener("click", close);
   }, [isOpen]);
 
-  const handleDismiss = () => {
+  const handleDismiss = (e: React.MouseEvent) => {
+    e.preventDefault();
     fetcher.submit(null, {
       method: "PATCH",
       action: `/api/conversations?reviewRequestId=${request.id}`,
@@ -205,18 +202,20 @@ function ReviewRequestItem({ request, isActive, onSelect }: ReviewRequestItemPro
   const isPending = fetcher.state !== "idle";
 
   return (
-    <div
-      className={`group relative flex items-center px-3 py-2.5 text-sm rounded-lg cursor-pointer transition-colors ${
+    <NavLink
+      to={`/c/${request.conversationId}?share=${request.shareToken}`}
+      prefetch="intent"
+      className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
         isActive
           ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100"
       } ${isPending ? "opacity-50" : ""}`}
-      onClick={onSelect}
     >
       <span className="flex-1 truncate pr-6">{request.conversationTitle}</span>
 
       <button
         onClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
@@ -234,7 +233,10 @@ function ReviewRequestItem({ request, isActive, onSelect }: ReviewRequestItemPro
       {isOpen && (
         <div
           className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <button
             onClick={handleDismiss}
@@ -247,7 +249,7 @@ function ReviewRequestItem({ request, isActive, onSelect }: ReviewRequestItemPro
           </button>
         </div>
       )}
-    </div>
+    </NavLink>
   );
 }
 
@@ -267,15 +269,15 @@ function ConversationSkeletons({ count = 3 }: { count?: number }) {
 
 interface ConversationItemProps {
   conversation: ConversationMeta;
-  isActive: boolean;
-  onSelect: () => void;
   readOnly?: boolean;
+  impersonating: ImpersonatingUser | null;
 }
 
-function ConversationItem({ conversation, isActive, onSelect, readOnly = false }: ConversationItemProps) {
+function ConversationItem({ conversation, readOnly = false, impersonating }: ConversationItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const fetcher = useFetcher();
+  const { id: currentId } = useParams();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -284,7 +286,8 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
     return () => document.removeEventListener("click", close);
   }, [isOpen]);
 
-  const handleRename = () => {
+  const handleRename = (e: React.MouseEvent) => {
+    e.preventDefault();
     const newTitle = window.prompt("Rename conversation", conversation.title);
     if (newTitle?.trim()) {
       fetcher.submit(
@@ -299,13 +302,14 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
     setIsOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
     if (confirm("Delete this conversation?")) {
       fetcher.submit(null, {
         method: "DELETE",
         action: `/api/conversations?id=${conversation.id}`,
       });
-      if (isActive) {
+      if (currentId === conversation.id) {
         navigate("/");
       }
     }
@@ -313,15 +317,17 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
   };
 
   const isPending = fetcher.state !== "idle";
+  const conversationUrl = buildConversationUrl(conversation.id, impersonating);
 
   return (
-    <div
-      className={`group relative flex items-center px-3 py-2.5 text-sm rounded-lg cursor-pointer transition-colors ${
+    <NavLink
+      to={conversationUrl}
+      prefetch="intent"
+      className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
         isActive
           ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100"
       } ${isPending ? "opacity-50" : ""}`}
-      onClick={onSelect}
     >
       <span className={`flex-1 truncate ${readOnly ? "" : "pr-6"}`}>{conversation.title}</span>
 
@@ -329,6 +335,7 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
         <>
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
@@ -346,7 +353,10 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
           {isOpen && (
             <div
               className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
               <button
                 onClick={handleRename}
@@ -370,7 +380,7 @@ function ConversationItem({ conversation, isActive, onSelect, readOnly = false }
           )}
         </>
       )}
-    </div>
+    </NavLink>
   );
 }
 
@@ -461,11 +471,10 @@ function AccountMenu({ user, isOwner, orgMembers, impersonating }: AccountMenuPr
           </div>
 
           <div className="py-1 border-b border-neutral-200 dark:border-neutral-700">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate("/settings");
-              }}
+            <Link
+              to="/settings"
+              prefetch="intent"
+              onClick={(e) => e.stopPropagation()}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
             >
               <svg className="w-5 h-5 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -473,7 +482,7 @@ function AccountMenu({ user, isOwner, orgMembers, impersonating }: AccountMenuPr
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
               </svg>
               Settings
-            </button>
+            </Link>
           </div>
 
           <div className="py-1">

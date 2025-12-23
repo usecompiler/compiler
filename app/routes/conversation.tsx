@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useOutletContext, useSearchParams, redirect } from "react-router";
+import { useParams, useOutletContext, useSearchParams, redirect } from "react-router";
 import { useRef, useState } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
@@ -122,7 +122,6 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { conversations, user, hasMore, impersonating, orgMembers, reviewers, isOwner, reviewRequests } = useOutletContext<AppContext>();
   const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
@@ -142,15 +141,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       }
       setSearchParams(newParams, { replace: true });
     }
-  };
-
-  const handleSelectConversation = (convId: string) => {
-    const impersonateParam = impersonating ? `?impersonate=${impersonating.id}` : "";
-    navigate(`/c/${convId}${impersonateParam}`);
-  };
-
-  const handleNewConversation = () => {
-    navigate("/");
   };
 
   const headerRight = (
@@ -177,9 +167,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   return (
     <ConversationLayout
       conversations={conversations}
-      currentConversationId={id || null}
-      onSelectConversation={handleSelectConversation}
-      onNewConversation={handleNewConversation}
       user={user}
       hasMore={hasMore}
       impersonating={impersonating}

@@ -1,4 +1,4 @@
-import { Form, redirect, useNavigate, useOutletContext } from "react-router";
+import { Form, redirect, useOutletContext } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
@@ -36,24 +36,11 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Home() {
-  const navigate = useNavigate();
   const { conversations, user, hasMore, impersonating, orgMembers, isOwner, reviewRequests } = useOutletContext<AppContext>();
-
-  const handleSelectConversation = (id: string) => {
-    const impersonateParam = impersonating ? `?impersonate=${impersonating.id}` : "";
-    navigate(`/c/${id}${impersonateParam}`);
-  };
-
-  const handleNewConversation = () => {
-    navigate("/");
-  };
 
   return (
     <ConversationLayout
       conversations={conversations}
-      currentConversationId={null}
-      onSelectConversation={handleSelectConversation}
-      onNewConversation={handleNewConversation}
       user={user}
       hasMore={hasMore}
       impersonating={impersonating}
