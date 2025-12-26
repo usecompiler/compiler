@@ -49,7 +49,10 @@ export function AgentConversation({
   const [pendingReviewer, setPendingReviewer] = useState<Member | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const reviewerDropdownRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const isAtBottomRef = useRef(true);
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
   const [searchParams] = useSearchParams();
@@ -72,8 +75,37 @@ export function AgentConversation({
   }, [isStreaming]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const checkScrollPosition = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollButton(!isAtBottom);
+      isAtBottomRef.current = isAtBottom;
+    };
+
+    container.addEventListener("scroll", checkScrollPosition);
+    checkScrollPosition();
+
+    return () => container.removeEventListener("scroll", checkScrollPosition);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [items]);
+
+  useEffect(() => {
+    if (initialItems.length > 0) {
+      messagesEndRef.current?.scrollIntoView();
+    }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
     const hasExistingMessages = items.length > 0;
@@ -248,6 +280,8 @@ export function AgentConversation({
       }
 
       addItem(userItem);
+      isAtBottomRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
       revalidator.revalidate();
 
@@ -412,7 +446,7 @@ export function AgentConversation({
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       <NavigationBlocker blocker={blocker} />
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
           {messageItems.map((item, index) => (
             <ItemRow
@@ -430,6 +464,18 @@ export function AgentConversation({
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {showScrollButton && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute left-1/2 -translate-x-1/2 bottom-32 z-10 w-8 h-8 rounded-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-pointer"
+          aria-label="Scroll to bottom"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+      )}
 
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
@@ -529,31 +575,33 @@ export function AgentConversation({
                     {copiedReviewer ? "Link copied!" : "Request a review"}
                   </button>
                   {reviewerDropdownOpen && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50">
-                      {reviewers.length > 0 ? (
-                        reviewers.map((reviewer) => (
-                          <button
-                            key={reviewer.userId}
-                            type="button"
-                            onClick={() => handleReviewerClick(reviewer)}
-                            className="w-full px-3 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                          >
-                            {reviewer.user.name}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
-                          No team members available.
-                          {isOwner && (
-                            <a
-                              href="/settings/organization"
-                              className="block mt-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 underline"
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl z-50 overflow-hidden">
+                      <div className="py-2 max-h-64 overflow-y-auto">
+                        {reviewers.length > 0 ? (
+                          reviewers.map((reviewer) => (
+                            <button
+                              key={reviewer.userId}
+                              type="button"
+                              onClick={() => handleReviewerClick(reviewer)}
+                              className="w-full px-4 py-2.5 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700/50 transition-colors"
                             >
-                              Invite a team member
-                            </a>
-                          )}
-                        </div>
-                      )}
+                              {reviewer.user.name}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
+                            No team members available.
+                            {isOwner && (
+                              <a
+                                href="/settings/organization"
+                                className="block mt-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                              >
+                                Invite a team member →
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

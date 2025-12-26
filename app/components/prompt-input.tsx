@@ -60,15 +60,6 @@ export function PromptInput({
 
   return (
     <div className="relative flex items-center bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
-      <button
-        type="button"
-        className="p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
-
       <textarea
         ref={textareaRef}
         name={name}
@@ -76,10 +67,10 @@ export function PromptInput({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        disabled={disabled || isStreaming}
+        disabled={disabled}
         rows={1}
         autoFocus={autoFocus}
-        className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 resize-none focus:outline-none disabled:opacity-50"
+        className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 pl-4 resize-none focus:outline-none disabled:opacity-50"
         style={{ maxHeight: "200px" }}
       />
 

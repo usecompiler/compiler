@@ -82,7 +82,7 @@ export function Sidebar({
   const isLoadingMore = fetcher.state === "loading";
 
   return (
-    <aside className="w-64 h-full bg-neutral-100 dark:bg-black flex flex-col">
+    <aside className="w-64 h-full bg-neutral-100 dark:bg-black flex flex-col border-r border-neutral-200 dark:border-neutral-800">
       <div className="p-3 space-y-1">
         {!impersonating && (
           <Link

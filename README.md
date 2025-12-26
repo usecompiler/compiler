@@ -23,14 +23,29 @@ An AI-powered project assistant that helps teams have conversations about their 
 - Node.js 20+
 - PostgreSQL 16+
 - GitHub App (for repository access)
-- Anthropic API key
+- Anthropic API key OR AWS credentials (for Bedrock)
 
 ## Environment Variables
 
 Create a `.env` file based on `.env.example`:
 
+### AI Provider (choose one)
+
+**Anthropic API (Default)**
 ```
 ANTHROPIC_API_KEY=       # Claude API key from console.anthropic.com
+```
+
+**AWS Bedrock (Alternative)**
+```
+CLAUDE_CODE_USE_BEDROCK=1    # Enable Bedrock mode
+AWS_REGION=us-east-1         # AWS region
+AWS_ACCESS_KEY_ID=           # AWS access key
+AWS_SECRET_ACCESS_KEY=       # AWS secret key
+```
+
+### Other Required Variables
+```
 DATABASE_URL=            # PostgreSQL connection string
 GITHUB_APP_ID=           # GitHub App ID
 GITHUB_APP_SLUG=         # GitHub App slug

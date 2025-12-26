@@ -1,6 +1,9 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 
+const isUsingBedrock = process.env.CLAUDE_CODE_USE_BEDROCK === "1";
+console.log(`Agent provider: ${isUsingBedrock ? "AWS Bedrock" : "Anthropic API"}`);
+
 const REPOS_BASE_DIR = "/repos";
 
 const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];

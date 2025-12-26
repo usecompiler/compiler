@@ -46,6 +46,7 @@ export async function action({ request }: Route.ActionArgs) {
       content: item.content || null,
       toolCallId: item.toolCallId || null,
       status: item.status || null,
+      createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
     });
 
     if (item.type === "review") {

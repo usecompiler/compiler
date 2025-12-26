@@ -1,4 +1,4 @@
-import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { Form, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
 import {
   getUserByEmail,
@@ -106,13 +106,6 @@ export default function Login() {
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </Form>
-
-        <p className="mt-6 text-center text-sm text-neutral-400 dark:text-neutral-500">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100">
-            Sign up
-          </Link>
-        </p>
       </div>
     </div>
   );
