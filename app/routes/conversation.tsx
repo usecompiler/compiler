@@ -19,7 +19,7 @@ import {
 
 export function meta() {
   return [
-    { title: "Gist" },
+    { title: "Compiler" },
     { name: "description", content: "AI-powered project assistant" },
   ];
 }

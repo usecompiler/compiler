@@ -1,6 +1,6 @@
 # Docker Deployment
 
-Deploy Gist using Docker with automatic SSL via Caddy.
+Deploy Compiler using Docker with automatic SSL via Caddy.
 
 ## Prerequisites
 
@@ -13,8 +13,8 @@ Deploy Gist using Docker with automatic SSL via Caddy.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/the-gist-app/gist.git
-   cd gist
+   git clone https://github.com/usecompiler/compiler.git
+   cd compiler
    ```
 
 2. Create a `.env` file:
@@ -37,7 +37,7 @@ Deploy Gist using Docker with automatic SSL via Caddy.
 
 | Variable | Description |
 |----------|-------------|
-| `DOMAIN` | Your domain (e.g., `gist.example.com`) |
+| `DOMAIN` | Your domain (e.g., `compiler.example.com`) |
 | `ANTHROPIC_API_KEY` | API key from [console.anthropic.com](https://console.anthropic.com/) |
 | `POSTGRES_PASSWORD` | Database password (choose a secure one) |
 | `GITHUB_APP_ID` | Your GitHub App ID |
@@ -56,7 +56,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 1. Go to [GitHub Developer Settings](https://github.com/settings/apps/new)
 
 2. Fill in the required fields:
-   - **App name**: Choose a name (e.g., "My Gist App")
+   - **App name**: Choose a name (e.g., "My Compiler App")
    - **Homepage URL**: Your domain
    - **Callback URL**: `https://your-domain.com/onboarding/github-callback`
 
@@ -109,5 +109,5 @@ Data is stored in Docker volumes:
 
 To backup the database:
 ```bash
-docker compose exec db pg_dump -U gist gist > backup.sql
+docker compose exec db pg_dump -U compiler compiler > backup.sql
 ```

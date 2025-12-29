@@ -1,15 +1,15 @@
 services:
   app:
-    image: ghcr.io/the-gist-app/gist:latest
+    image: ghcr.io/usecompiler/compiler:latest
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=postgresql://gist:${POSTGRES_PASSWORD}@db:5432/gist
+      - DATABASE_URL=postgresql://compiler:${POSTGRES_PASSWORD}@db:5432/compiler
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY}
     volumes:
-      - repos:/repos
+      - ./repos:/repos
     depends_on:
       db:
         condition: service_healthy
@@ -31,19 +31,18 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=gist
+      - POSTGRES_USER=compiler
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=gist
+      - POSTGRES_DB=compiler
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gist"]
+      test: ["CMD-SHELL", "pg_isready -U compiler"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
-  repos:
   pgdata:
   caddy_data:
   caddy_config:

@@ -1,5 +1,5 @@
 {
-  "name": "gist",
+  "name": "compiler",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,5 +1,5 @@
 {
-  "name": "Gist",
+  "name": "Compiler",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/app",

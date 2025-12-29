@@ -9,11 +9,11 @@ services:
     volumes:
       - ..:/app:cached
       - /app/node_modules
-      - ../repos:/repos
+      - repos:/repos
     command: sleep infinity
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=postgresql://gist:gist@db:5432/gist
+      - DATABASE_URL=postgresql://compiler:compiler@db:5432/compiler
       - SHELL=/bin/bash
     depends_on:
       db:
@@ -24,16 +24,17 @@ services:
     ports:
       - "5433:5432"
     environment:
-      - POSTGRES_USER=gist
-      - POSTGRES_PASSWORD=gist
-      - POSTGRES_DB=gist
+      - POSTGRES_USER=compiler
+      - POSTGRES_PASSWORD=compiler
+      - POSTGRES_DB=compiler
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gist"]
+      test: ["CMD-SHELL", "pg_isready -U compiler"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
   pgdata:
+  repos:

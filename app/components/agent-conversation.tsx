@@ -562,7 +562,7 @@ export function AgentConversation({
                 />
               </form>
               <div className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
-                Gist can make mistakes.{" "}
+                Compiler can make mistakes.{" "}
                 <div className="relative inline-block" ref={reviewerDropdownRef}>
                   <button
                     type="button"

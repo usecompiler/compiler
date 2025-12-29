@@ -9,8 +9,8 @@ The easiest way to get started is using a Dev Container, which provides a fully 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/the-gist-app/gist.git
-   cd gist
+   git clone https://github.com/usecompiler/compiler.git
+   cd compiler
    ```
 
 2. Create a `.env` file:

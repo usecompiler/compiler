@@ -93,7 +93,7 @@ export function ConversationLayout({
                 />
               </svg>
             </button>
-            <span className="text-neutral-900 dark:text-neutral-100 text-lg">Gist</span>
+            <span className="text-neutral-900 dark:text-neutral-100 text-lg">Compiler</span>
           </div>
           {headerRight && (
             <div className="flex items-center">

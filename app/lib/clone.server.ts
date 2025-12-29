@@ -4,7 +4,10 @@ import fs from "node:fs";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
-import { getOrRefreshAccessToken, getAuthenticatedCloneUrl } from "./github.server";
+import {
+  getOrRefreshAccessToken,
+  getAuthenticatedCloneUrl,
+} from "./github.server";
 
 const REPOS_BASE_DIR = "/repos";
 
@@ -16,7 +19,10 @@ function getRepoPath(organizationId: string, repoName: string): string {
   return path.join(getOrgRepoDir(organizationId), repoName);
 }
 
-function execGit(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
+function execGit(
+  args: string[],
+  cwd?: string
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const proc = spawn("git", args, { cwd });
     let stdout = "";
@@ -72,7 +78,7 @@ export async function cloneRepository(
 
     const authCloneUrl = getAuthenticatedCloneUrl(cloneUrl, accessToken);
 
-    await execGit(["clone", "--depth", "1", authCloneUrl, repoPath]);
+    await execGit(["clone", authCloneUrl, repoPath]);
 
     await db
       .update(repositories)
@@ -146,8 +152,13 @@ export async function pullRepository(
     throw new Error("No access token available");
   }
 
-  const remoteUrl = (await execGit(["remote", "get-url", "origin"], repoPath)).stdout.trim();
-  const authUrl = getAuthenticatedCloneUrl(remoteUrl.replace(/x-access-token:[^@]+@/, ""), accessToken);
+  const remoteUrl = (
+    await execGit(["remote", "get-url", "origin"], repoPath)
+  ).stdout.trim();
+  const authUrl = getAuthenticatedCloneUrl(
+    remoteUrl.replace(/x-access-token:[^@]+@/, ""),
+    accessToken
+  );
 
   await execGit(["remote", "set-url", "origin", authUrl], repoPath);
   await execGit(["pull", "--ff-only"], repoPath);
@@ -158,7 +169,12 @@ export async function pullRepository(
   const repo = await db
     .select()
     .from(repositories)
-    .where(and(eq(repositories.organizationId, organizationId), eq(repositories.name, repoName)))
+    .where(
+      and(
+        eq(repositories.organizationId, organizationId),
+        eq(repositories.name, repoName)
+      )
+    )
     .limit(1);
 
   if (repo.length > 0) {
@@ -184,7 +200,12 @@ export async function pullPublicRepository(
   const repo = await db
     .select()
     .from(repositories)
-    .where(and(eq(repositories.organizationId, organizationId), eq(repositories.name, repoName)))
+    .where(
+      and(
+        eq(repositories.organizationId, organizationId),
+        eq(repositories.name, repoName)
+      )
+    )
     .limit(1);
 
   if (repo.length > 0) {

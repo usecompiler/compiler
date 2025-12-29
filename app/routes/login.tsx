@@ -53,7 +53,7 @@ export default function Login() {
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 text-center mb-8">
-          Sign in to Gist
+          Sign in to Compiler
         </h1>
 
         <Form method="post" className="space-y-4">

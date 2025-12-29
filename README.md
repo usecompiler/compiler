@@ -1,29 +1,12 @@
-# Gist
+# Compiler
 
-An AI-powered project assistant that helps teams have conversations about their code using Claude.
+An AI-powered tool that helps non-technical teams get answers about how an app works without needing to ask engineers.
 
-## Features
-
-- **AI Conversations** - Chat with Claude about your codebase using the Claude Agent SDK
-- **GitHub Integration** - Connect repositories via GitHub App for AI-powered code analysis
-- **Team Collaboration** - Multi-user organizations with role-based access (owner/member)
-- **Conversation Sharing** - Share conversations via tokens for read-only access
-- **Code Review Requests** - Request reviews from team members by sharing conversations
-- **Repository Syncing** - Clone and sync repositories for offline analysis
-
-## Tech Stack
+## Stack
 
 - **Frontend**: React 19, React Router 7, TailwindCSS 4
 - **Backend**: Node.js 20, React Router Node adapter
 - **Database**: PostgreSQL 16 with Drizzle ORM
-- **AI**: Claude Agent SDK
-
-## Prerequisites
-
-- Node.js 20+
-- PostgreSQL 16+
-- GitHub App (for repository access)
-- Anthropic API key OR AWS credentials (for Bedrock)
 
 ## Environment Variables
 
@@ -32,11 +15,13 @@ Create a `.env` file based on `.env.example`:
 ### AI Provider (choose one)
 
 **Anthropic API (Default)**
+
 ```
 ANTHROPIC_API_KEY=       # Claude API key from console.anthropic.com
 ```
 
 **AWS Bedrock (Alternative)**
+
 ```
 CLAUDE_CODE_USE_BEDROCK=1    # Enable Bedrock mode
 AWS_REGION=us-east-1         # AWS region
@@ -45,8 +30,8 @@ AWS_SECRET_ACCESS_KEY=       # AWS secret key
 ```
 
 ### Other Required Variables
+
 ```
-DATABASE_URL=            # PostgreSQL connection string
 GITHUB_APP_ID=           # GitHub App ID
 GITHUB_APP_SLUG=         # GitHub App slug
 GITHUB_PRIVATE_KEY=      # GitHub App private key (PEM format)
@@ -65,14 +50,14 @@ The development server runs at `http://localhost:5173`.
 
 ### Available Scripts
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run start` | Run production server |
-| `npm run typecheck` | Run TypeScript type checking |
-| `npm run db:migrate` | Run database migrations |
-| `npm run db:push` | Push schema changes to database |
+| Script               | Description                     |
+| -------------------- | ------------------------------- |
+| `npm run dev`        | Start development server        |
+| `npm run build`      | Build for production            |
+| `npm run start`      | Run production server           |
+| `npm run typecheck`  | Run TypeScript type checking    |
+| `npm run db:migrate` | Run database migrations         |
+| `npm run db:push`    | Push schema changes to database |
 
 ## Docker Deployment
 
@@ -81,32 +66,18 @@ docker compose up -d
 ```
 
 The Docker setup includes:
+
 - Multi-stage build for optimized images
 - PostgreSQL with health checks
 - Caddy reverse proxy with automatic SSL
 - Automatic database migrations on startup
 
 Required environment variables for Docker:
+
 - `POSTGRES_PASSWORD` - Database password
 - `DOMAIN` - Your domain for SSL
 
 See [docs/docker-deployment.md](docs/docker-deployment.md) for detailed deployment instructions.
-
-## Database Schema
-
-The app uses the following tables:
-
-- `users` - User accounts
-- `organizations` - Team organizations
-- `members` - User-organization membership with roles
-- `sessions` - Authentication sessions
-- `conversations` - Chat conversations
-- `items` - Messages and tool calls within conversations
-- `conversationShares` - Share tokens for conversations
-- `reviewRequests` - Code review workflow
-- `invitations` - Team invitations
-- `githubInstallations` - GitHub App installations
-- `repositories` - Connected repositories
 
 ## Documentation
 

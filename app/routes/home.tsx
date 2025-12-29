@@ -10,7 +10,7 @@ import { conversations } from "~/lib/db/schema";
 
 export function meta() {
   return [
-    { title: "Gist" },
+    { title: "Compiler" },
     { name: "description", content: "AI-powered project assistant" },
   ];
 }
