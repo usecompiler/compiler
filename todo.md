@@ -1,4 +1,0 @@
-- [ ] AWS bedrock
-- [ ] package it up like fizzy
-- [ ] security audit
-- [ ] open source
