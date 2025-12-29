@@ -14,6 +14,7 @@ import {
   getGitHubAppInstallUrl,
   type GitHubRepo,
 } from "~/lib/github.server";
+import { canManageOrganization } from "~/lib/permissions.server";
 
 interface Repo {
   id: string;
@@ -28,7 +29,7 @@ interface Repo {
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
 
-  if (user.membership?.role !== "owner") {
+  if (!canManageOrganization(user.membership?.role)) {
     throw redirect("/settings");
   }
 
@@ -90,7 +91,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   const user = await requireActiveAuth(request);
 
-  if (!user.organization || user.membership?.role !== "owner") {
+  if (!user.organization || !canManageOrganization(user.membership?.role)) {
     return { error: "Unauthorized" };
   }
 

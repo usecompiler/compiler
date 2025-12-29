@@ -3,6 +3,7 @@ import type { Route } from "./+types/app-layout";
 import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
 import { getConversations, isUserInOrg, getReviewRequestsForUser, type ConversationMeta, type Item, type ReviewRequest } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
+import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 
 export type { Item, ConversationMeta, Organization, Membership, Member, ReviewRequest };
 
@@ -15,6 +16,8 @@ export interface ImpersonatingUser {
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
   const isOwner = user.membership?.role === "owner";
+  const isAdmin = user.membership?.role === "admin";
+  const canManageOrg = canManageOrganization(user.membership?.role);
 
   if (user.organization && !user.organization.onboardingCompleted && isOwner) {
     throw redirect("/onboarding/github");
@@ -34,18 +37,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     const allMembers = await getMembers(user.organization.id);
     reviewers = allMembers.filter((m) => !m.isDeactivated);
 
-    if (isOwner) {
+    if (canManageOrg) {
       orgMembers = allMembers;
     }
 
     reviewRequests = await getReviewRequestsForUser(user.id);
   }
 
-  if (impersonateUserId && isOwner && user.organization) {
+  if (impersonateUserId && canManageOrg && user.organization) {
     const isInOrg = await isUserInOrg(impersonateUserId, user.organization.id);
     if (isInOrg) {
       const targetMember = orgMembers.find((m) => m.userId === impersonateUserId);
-      if (targetMember) {
+      if (targetMember && canImpersonate(user.membership?.role, targetMember.role)) {
         impersonating = {
           id: targetMember.userId,
           name: targetMember.user.name,
@@ -64,7 +67,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     hasMore = result.hasMore;
   }
 
-  return { user, conversations, hasMore, impersonating, orgMembers, reviewers, isOwner, reviewRequests };
+  return { user, conversations, hasMore, impersonating, orgMembers, reviewers, isOwner, isAdmin, reviewRequests };
 }
 
 export interface AppContext {
@@ -81,6 +84,7 @@ export interface AppContext {
   orgMembers: Member[];
   reviewers: Member[];
   isOwner: boolean;
+  isAdmin: boolean;
   reviewRequests: ReviewRequest[];
 }
 
@@ -93,6 +97,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     orgMembers: loaderData.orgMembers,
     reviewers: loaderData.reviewers,
     isOwner: loaderData.isOwner,
+    isAdmin: loaderData.isAdmin,
     reviewRequests: loaderData.reviewRequests,
   };
 

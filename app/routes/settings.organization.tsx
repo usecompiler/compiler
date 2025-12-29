@@ -9,26 +9,29 @@ import {
   revokeInvitation,
   deactivateMember,
   reactivateMember,
+  updateMemberRole,
   type Member,
   type Invitation,
 } from "~/lib/invitations.server";
+import { canManageOrganization, canDeactivateMember, canCreateInvitationWithRole, getRoleBadgeStyle, type Role } from "~/lib/permissions";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
 
-  // Only owners can access organization settings
-  if (user.membership?.role !== "owner") {
+  if (!canManageOrganization(user.membership?.role)) {
     throw redirect("/settings");
   }
 
   if (!user.organization || !user.membership) {
-    return { members: [], invitations: [], error: "No organization found" };
+    return { members: [], invitations: [], error: "No organization found", isOwner: false, currentUserRole: "member" as Role };
   }
 
   const members = await getMembers(user.organization.id);
   const invitations = await getInvitations(user.organization.id);
+  const isOwner = user.membership.role === "owner";
+  const currentUserRole = user.membership.role as Role;
 
-  return { members, invitations, error: null };
+  return { members, invitations, error: null, isOwner, currentUserRole };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -38,16 +41,22 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "No organization found", newInviteToken: null, newInviteRole: null };
   }
 
-  if (user.membership.role !== "owner") {
-    return { error: "Only owners can manage invitations", newInviteToken: null, newInviteRole: null };
+  if (!canManageOrganization(user.membership.role)) {
+    return { error: "Only owners and admins can manage organization", newInviteToken: null, newInviteRole: null };
   }
 
   const formData = await request.formData();
   const intent = formData.get("intent");
 
   if (intent === "create-invitation") {
-    const invitation = await createInvitation(user.organization.id);
-    return { error: null, newInviteToken: invitation.token, newInviteRole: "member" };
+    const roleToAssign = (formData.get("role") as Role) || "member";
+
+    if (!canCreateInvitationWithRole(user.membership.role, roleToAssign)) {
+      return { error: "You cannot create invitations for this role", newInviteToken: null, newInviteRole: null };
+    }
+
+    const invitation = await createInvitation(user.organization.id, roleToAssign);
+    return { error: null, newInviteToken: invitation.token, newInviteRole: roleToAssign };
   }
 
   if (intent === "revoke-invitation") {
@@ -58,7 +67,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "deactivate-member") {
     const memberId = formData.get("memberId") as string;
-    const result = await deactivateMember(memberId, user.organization.id, user.id);
+    const result = await deactivateMember(memberId, user.organization.id, user.id, user.membership.role);
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
@@ -74,15 +83,29 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
+  if (intent === "set-role") {
+    if (user.membership.role !== "owner") {
+      return { error: "Only owners can change member roles", newInviteToken: null, newInviteRole: null };
+    }
+
+    const memberId = formData.get("memberId") as string;
+    const newRole = formData.get("newRole") as "admin" | "member";
+
+    const result = await updateMemberRole(memberId, user.organization.id, newRole);
+    if (!result.success) {
+      return { error: result.error, newInviteToken: null, newInviteRole: null };
+    }
+    return { error: null, newInviteToken: null, newInviteRole: null };
+  }
+
   return { error: "Unknown action", newInviteToken: null, newInviteRole: null };
 }
 
 export default function OrganizationSettings() {
-  const { members, invitations, error: loaderError } = useLoaderData<typeof loader>();
+  const { members, invitations, error: loaderError, isOwner, currentUserRole } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  // Only owners can access this page, so isOwner is always true
-  const isOwner = true;
+  const [selectedRole, setSelectedRole] = useState<Role>("member");
 
   const copyInviteLink = (token: string) => {
     const url = `${window.location.origin}/invite/${token}`;
@@ -155,82 +178,91 @@ export default function OrganizationSettings() {
 
           <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg divide-y divide-neutral-200 dark:divide-neutral-700">
             {members.map((member) => (
-              <MemberRow key={member.id} member={member} isOwner={isOwner} />
+              <MemberRow key={member.id} member={member} isOwner={isOwner} currentUserRole={currentUserRole} />
             ))}
           </div>
         </section>
 
-        {/* Invitations Section (Owner only) */}
-        {isOwner && (
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                Pending Invitations
-              </h2>
-              <Form method="post">
-                <input type="hidden" name="intent" value="create-invitation" />
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+        {/* Invitations Section */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              Pending Invitations
+            </h2>
+            <Form method="post" className="flex items-center gap-2">
+              <input type="hidden" name="intent" value="create-invitation" />
+              {isOwner && (
+                <select
+                  name="role"
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value as Role)}
+                  className="text-sm bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  Create Invite
-                </button>
-              </Form>
-            </div>
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              )}
+              <button
+                type="submit"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Create Invite
+              </button>
+            </Form>
+          </div>
 
-            {/* Show newly created invite link */}
             {actionData?.newInviteToken && (
-              <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-                <p className="text-sm text-green-600 dark:text-green-400 mb-2">
-                  Invitation created! Share this link:
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-neutral-100 dark:bg-neutral-900 px-3 py-2 rounded text-sm text-neutral-700 dark:text-neutral-300 overflow-x-auto">
-                    {typeof window !== "undefined" ? `${window.location.origin}/invite/${actionData.newInviteToken}` : `/invite/${actionData.newInviteToken}`}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => copyInviteLink(actionData.newInviteToken!)}
-                    className="px-3 py-2 text-sm bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
-                  >
-                    {copiedToken === actionData.newInviteToken ? "Copied!" : "Copy"}
-                  </button>
-                </div>
+            <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 mt-4">
+              <p className="text-sm text-green-600 dark:text-green-400 mb-2">
+                Invitation created! Share this link:
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-neutral-100 dark:bg-neutral-900 px-3 py-2 rounded text-sm text-neutral-700 dark:text-neutral-300 overflow-x-auto">
+                  {typeof window !== "undefined" ? `${window.location.origin}/invite/${actionData.newInviteToken}` : `/invite/${actionData.newInviteToken}`}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copyInviteLink(actionData.newInviteToken!)}
+                  className="px-3 py-2 text-sm bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+                >
+                  {copiedToken === actionData.newInviteToken ? "Copied!" : "Copy"}
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            {invitations.length === 0 ? (
-              <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 text-center">
-                <p className="text-neutral-500 dark:text-neutral-400">No pending invitations</p>
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg divide-y divide-neutral-200 dark:divide-neutral-700">
-                {invitations.map((invitation) => (
-                  <InvitationRow
-                    key={invitation.id}
-                    invitation={invitation}
-                    onCopy={() => copyInviteLink(invitation.token)}
-                    isCopied={copiedToken === invitation.token}
-                  />
-                ))}
-              </div>
-            )}
+          {invitations.length === 0 ? (
+            <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 text-center">
+              <p className="text-neutral-500 dark:text-neutral-400">No pending invitations</p>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg divide-y divide-neutral-200 dark:divide-neutral-700">
+              {invitations.map((invitation) => (
+                <InvitationRow
+                  key={invitation.id}
+                  invitation={invitation}
+                  onCopy={() => copyInviteLink(invitation.token)}
+                  isCopied={copiedToken === invitation.token}
+                />
+              ))}
+            </div>
+          )}
 
-            <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-4">
-              Invitations expire after 24 hours and can only be used once.
-            </p>
-          </section>
-        )}
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-4">
+            Invitations expire after 24 hours and can only be used once.
+          </p>
+        </section>
       </main>
     </div>
   );
 }
 
-function MemberRow({ member, isOwner }: { member: Member; isOwner: boolean }) {
+function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwner: boolean; currentUserRole: Role }) {
   const fetcher = useFetcher();
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const isSubmitting = fetcher.state !== "idle";
 
   const initials = member.user.name
@@ -245,6 +277,17 @@ function MemberRow({ member, isOwner }: { member: Member; isOwner: boolean }) {
       e.preventDefault();
     }
   };
+
+  const handleRoleChange = (newRole: "admin" | "member") => {
+    fetcher.submit(
+      { intent: "set-role", memberId: member.id, newRole },
+      { method: "post" }
+    );
+    setShowRoleMenu(false);
+  };
+
+  const showDeactivateButton = canDeactivateMember(currentUserRole, member.role);
+  const canChangeRole = isOwner && member.role !== "owner";
 
   return (
     <div className={`flex items-center justify-between px-4 py-3 ${isSubmitting ? "opacity-50" : ""} ${member.isDeactivated ? "bg-neutral-50 dark:bg-neutral-900/50" : ""}`}>
@@ -269,14 +312,44 @@ function MemberRow({ member, isOwner }: { member: Member; isOwner: boolean }) {
             Deactivated
           </span>
         )}
-        <span className={`text-xs px-2 py-1 rounded ${
-          member.role === "owner"
-            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-            : "bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
-        }`}>
-          {member.role}
-        </span>
-        {isOwner && member.role !== "owner" && (
+        {canChangeRole ? (
+          <div className="relative">
+            <button
+              onClick={() => setShowRoleMenu(!showRoleMenu)}
+              className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${getRoleBadgeStyle(member.role)}`}
+            >
+              {member.role}
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+            {showRoleMenu && (
+              <div className="absolute right-0 mt-1 w-28 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50">
+                <button
+                  onClick={() => handleRoleChange("admin")}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+                    member.role === "admin" ? "font-medium" : ""
+                  }`}
+                >
+                  Admin
+                </button>
+                <button
+                  onClick={() => handleRoleChange("member")}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+                    member.role === "member" ? "font-medium" : ""
+                  }`}
+                >
+                  Member
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <span className={`text-xs px-2 py-1 rounded ${getRoleBadgeStyle(member.role)}`}>
+            {member.role}
+          </span>
+        )}
+        {showDeactivateButton && member.role !== "owner" && (
           member.isDeactivated ? (
             <fetcher.Form method="post">
               <input type="hidden" name="intent" value="reactivate-member" />

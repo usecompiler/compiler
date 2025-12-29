@@ -11,6 +11,7 @@ interface ConversationLayoutProps {
   impersonating: ImpersonatingUser | null;
   orgMembers: Member[];
   isOwner: boolean;
+  isAdmin: boolean;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
   reviewRequests?: ReviewRequest[];
@@ -23,6 +24,7 @@ export function ConversationLayout({
   impersonating,
   orgMembers,
   isOwner,
+  isAdmin,
   headerRight,
   children,
   reviewRequests = [],
@@ -68,6 +70,7 @@ export function ConversationLayout({
           impersonating={impersonating}
           orgMembers={orgMembers}
           isOwner={isOwner}
+          isAdmin={isAdmin}
           reviewRequests={reviewRequests}
         />
       </div>

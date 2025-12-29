@@ -119,7 +119,7 @@ export async function clonePublicRepository(
       fs.rmSync(repoPath, { recursive: true, force: true });
     }
 
-    await execGit(["clone", "--depth", "1", cloneUrl, repoPath]);
+    await execGit(["clone", cloneUrl, repoPath]);
 
     await db
       .update(repositories)

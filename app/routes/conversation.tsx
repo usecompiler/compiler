@@ -123,7 +123,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { conversations, user, hasMore, impersonating, orgMembers, reviewers, isOwner, reviewRequests } = useOutletContext<AppContext>();
+  const { conversations, user, hasMore, impersonating, orgMembers, reviewers, isOwner, isAdmin, reviewRequests } = useOutletContext<AppContext>();
   const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
@@ -172,6 +172,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       impersonating={impersonating}
       orgMembers={orgMembers}
       isOwner={isOwner}
+      isAdmin={isAdmin}
       headerRight={(ownsConversation || isSharedView) ? headerRight : undefined}
       reviewRequests={reviewRequests}
     >

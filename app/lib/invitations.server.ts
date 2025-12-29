@@ -17,7 +17,7 @@ export interface Member {
   id: string;
   userId: string;
   organizationId: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
   isDeactivated: boolean;
   deactivatedAt: Date | null;
   createdAt: Date;
@@ -39,7 +39,7 @@ function generateToken(): string {
 
 export async function createInvitation(
   organizationId: string,
-  role: "owner" | "member" = "member"
+  role: "owner" | "admin" | "member" = "member"
 ): Promise<Invitation> {
   const id = crypto.randomUUID();
   const token = generateToken();
@@ -163,7 +163,7 @@ export async function getMembers(organizationId: string): Promise<Member[]> {
     id: row.id,
     userId: row.userId,
     organizationId: row.organizationId,
-    role: row.role as "owner" | "member",
+    role: row.role as "owner" | "admin" | "member",
     isDeactivated: row.deactivatedAt !== null,
     deactivatedAt: row.deactivatedAt,
     createdAt: row.createdAt,
@@ -178,9 +178,9 @@ export async function getMembers(organizationId: string): Promise<Member[]> {
 export async function deactivateMember(
   memberId: string,
   organizationId: string,
-  requesterId: string
+  requesterId: string,
+  requesterRole: "owner" | "admin" | "member" = "member"
 ): Promise<{ success: boolean; error?: string }> {
-  // Get the member to deactivate
   const memberToDeactivate = await db
     .select()
     .from(members)
@@ -191,19 +191,48 @@ export async function deactivateMember(
     return { success: false, error: "Member not found" };
   }
 
-  // Can't deactivate yourself
   if (memberToDeactivate[0].userId === requesterId) {
     return { success: false, error: "Cannot deactivate yourself" };
   }
 
-  // Can't deactivate the owner
   if (memberToDeactivate[0].role === "owner") {
     return { success: false, error: "Cannot deactivate the owner" };
+  }
+
+  if (requesterRole === "admin" && memberToDeactivate[0].role === "admin") {
+    return { success: false, error: "Admins cannot deactivate other admins" };
   }
 
   await db
     .update(members)
     .set({ deactivatedAt: new Date() })
+    .where(and(eq(members.id, memberId), eq(members.organizationId, organizationId)));
+
+  return { success: true };
+}
+
+export async function updateMemberRole(
+  memberId: string,
+  organizationId: string,
+  newRole: "admin" | "member"
+): Promise<{ success: boolean; error?: string }> {
+  const memberToUpdate = await db
+    .select()
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.organizationId, organizationId)))
+    .limit(1);
+
+  if (memberToUpdate.length === 0) {
+    return { success: false, error: "Member not found" };
+  }
+
+  if (memberToUpdate[0].role === "owner") {
+    return { success: false, error: "Cannot change owner's role" };
+  }
+
+  await db
+    .update(members)
+    .set({ role: newRole })
     .where(and(eq(members.id, memberId), eq(members.organizationId, organizationId)));
 
   return { success: true };

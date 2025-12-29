@@ -67,7 +67,7 @@ export interface Organization {
 
 export interface Membership {
   organizationId: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
   isDeactivated: boolean;
 }
 
@@ -121,7 +121,7 @@ export async function getUser(request: Request): Promise<User | null> {
     membership: session.orgId
       ? {
           organizationId: session.orgId,
-          role: session.memberRole as "owner" | "member",
+          role: session.memberRole as "owner" | "admin" | "member",
           isDeactivated,
         }
       : null,

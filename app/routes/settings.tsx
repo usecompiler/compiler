@@ -5,11 +5,12 @@ import {
   updateUserName,
   updateUserPassword,
 } from "~/lib/auth.server";
+import { canManageOrganization } from "~/lib/permissions.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
-  const isOwner = user.membership?.role === "owner";
-  return { user, isOwner };
+  const canManageOrg = canManageOrganization(user.membership?.role);
+  return { user, canManageOrg };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -55,7 +56,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Settings() {
-  const { user, isOwner } = useLoaderData<typeof loader>();
+  const { user, canManageOrg } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -82,7 +83,7 @@ export default function Settings() {
             <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
               Account
             </span>
-            {isOwner && (
+            {canManageOrg && (
               <>
                 <Link
                   to="/settings/repositories"

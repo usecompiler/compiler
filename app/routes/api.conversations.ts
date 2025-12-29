@@ -4,8 +4,9 @@ import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { getConversations, isUserInOrg, dismissReviewRequest } from "~/lib/conversations.server";
+import { getMembers } from "~/lib/invitations.server";
+import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 
-// GET /api/conversations - List conversations with pagination
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
   const url = new URL(request.url);
@@ -15,11 +16,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   let targetUserId = user.id;
 
-  // Handle impersonation for org owners
-  if (impersonateUserId && user.membership?.role === "owner" && user.organization) {
+  if (impersonateUserId && canManageOrganization(user.membership?.role) && user.organization) {
     const isInOrg = await isUserInOrg(impersonateUserId, user.organization.id);
     if (isInOrg) {
-      targetUserId = impersonateUserId;
+      const members = await getMembers(user.organization.id);
+      const targetMember = members.find((m) => m.userId === impersonateUserId);
+      if (targetMember && canImpersonate(user.membership?.role, targetMember.role)) {
+        targetUserId = impersonateUserId;
+      }
     }
   }
 

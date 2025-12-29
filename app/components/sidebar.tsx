@@ -3,6 +3,7 @@ import { useNavigate, useFetcher, Link, NavLink, useParams } from "react-router"
 import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest } from "~/routes/app-layout";
 import { CommandPalette } from "./command-palette";
 import type { User } from "~/lib/auth.server";
+import { canImpersonate, canManageOrganization, type Role } from "~/lib/permissions";
 
 function buildConversationUrl(id: string, impersonating: ImpersonatingUser | null, shareToken?: string): string {
   const params = new URLSearchParams();
@@ -19,6 +20,7 @@ interface SidebarProps {
   impersonating: ImpersonatingUser | null;
   orgMembers: Member[];
   isOwner: boolean;
+  isAdmin: boolean;
   reviewRequests?: ReviewRequest[];
 }
 
@@ -29,6 +31,7 @@ export function Sidebar({
   impersonating,
   orgMembers,
   isOwner,
+  isAdmin,
   reviewRequests = [],
 }: SidebarProps) {
   const { id: currentConversationId } = useParams();
@@ -163,7 +166,7 @@ export function Sidebar({
         </nav>
       </div>
 
-      <AccountMenu user={user} isOwner={isOwner} orgMembers={orgMembers} impersonating={impersonating} />
+      <AccountMenu user={user} isOwner={isOwner} isAdmin={isAdmin} orgMembers={orgMembers} impersonating={impersonating} />
 
       <CommandPalette
         conversations={conversations}
@@ -387,11 +390,12 @@ function ConversationItem({ conversation, readOnly = false, impersonating }: Con
 interface AccountMenuProps {
   user: User;
   isOwner: boolean;
+  isAdmin: boolean;
   orgMembers: Member[];
   impersonating: ImpersonatingUser | null;
 }
 
-function AccountMenu({ user, isOwner, orgMembers, impersonating }: AccountMenuProps) {
+function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: AccountMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isImpersonateHovered, setIsImpersonateHovered] = useState(false);
   const navigate = useNavigate();
@@ -416,8 +420,12 @@ function AccountMenu({ user, isOwner, orgMembers, impersonating }: AccountMenuPr
     fetcher.submit(null, { method: "post", action: "/logout" });
   };
 
-  const otherMembers = orgMembers.filter((m) => m.userId !== user.id);
-  const showImpersonate = isOwner && otherMembers.length > 0;
+  const userRole: Role | undefined = user.membership?.role as Role | undefined;
+  const canManageOrg = canManageOrganization(userRole);
+  const impersonatableMembers = orgMembers.filter(
+    (m) => m.userId !== user.id && canImpersonate(userRole, m.role)
+  );
+  const showImpersonate = canManageOrg && impersonatableMembers.length > 0;
 
   if (impersonating) {
     return (
@@ -509,7 +517,7 @@ function AccountMenu({ user, isOwner, orgMembers, impersonating }: AccountMenuPr
                 {isImpersonateHovered && (
                   <div className="absolute left-full top-0 -ml-2 pl-3 pt-0">
                     <div className="w-48 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto">
-                      {otherMembers.map((member) => (
+                      {impersonatableMembers.map((member) => (
                         <Link
                           key={member.userId}
                           to={`/?impersonate=${member.userId}`}
