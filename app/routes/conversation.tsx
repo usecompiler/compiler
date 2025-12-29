@@ -15,6 +15,7 @@ import {
   revokeShareLink,
   getConversationByShareToken,
   createReviewRequest,
+  hasPendingReviewRequest,
 } from "~/lib/conversations.server";
 
 export function meta() {
@@ -67,9 +68,15 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     shareLink = await getShareLink(params.id!);
   }
 
+  let isReviewRequest = false;
+  if (isSharedView) {
+    isReviewRequest = await hasPendingReviewRequest(params.id!, user.id);
+  }
+
   return {
     items,
     isSharedView,
+    isReviewRequest,
     ownsConversation,
     sharedByName,
     shareLink: shareLink ? { token: shareLink.token, createdAt: shareLink.createdAt.toISOString() } : null,
@@ -129,7 +136,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   const initialPrompt = searchParams.get("prompt");
   const hasProcessedInitialPrompt = useRef(false);
 
-  const { items, isSharedView, ownsConversation, sharedByName, shareLink } = loaderData;
+  const { items, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
 
   const handlePromptProcessed = () => {
@@ -186,6 +193,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
             onInitialPromptProcessed={handlePromptProcessed}
             readOnly={isReadOnly}
             isSharedView={isSharedView}
+            isReviewRequest={isReviewRequest}
             ownsConversation={ownsConversation}
             reviewers={filteredReviewers}
             shareLink={shareLink}

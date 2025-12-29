@@ -379,3 +379,22 @@ export async function dismissReviewRequest(
       )
     );
 }
+
+export async function hasPendingReviewRequest(
+  conversationId: string,
+  userId: string
+): Promise<boolean> {
+  const result = await db
+    .select({ id: reviewRequests.id })
+    .from(reviewRequests)
+    .where(
+      and(
+        eq(reviewRequests.conversationId, conversationId),
+        eq(reviewRequests.requestedToUserId, userId),
+        eq(reviewRequests.status, "pending")
+      )
+    )
+    .limit(1);
+
+  return result.length > 0;
+}

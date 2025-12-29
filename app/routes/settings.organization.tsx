@@ -135,7 +135,7 @@ export default function OrganizationSettings() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
           </Link>
-          <h1 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Organization Settings</h1>
+          <h1 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Settings</h1>
         </div>
       </header>
 
@@ -214,7 +214,7 @@ export default function OrganizationSettings() {
             </Form>
           </div>
 
-            {actionData?.newInviteToken && (
+          {actionData?.newInviteToken && (
             <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 mt-4">
               <p className="text-sm text-green-600 dark:text-green-400 mb-2">
                 Invitation created! Share this link:
@@ -292,11 +292,10 @@ function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwn
   return (
     <div className={`flex items-center justify-between px-4 py-3 ${isSubmitting ? "opacity-50" : ""} ${member.isDeactivated ? "bg-neutral-50 dark:bg-neutral-900/50" : ""}`}>
       <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-          member.isDeactivated
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${member.isDeactivated
             ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-400 dark:text-neutral-500"
             : "bg-neutral-300 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200"
-        }`}>
+          }`}>
           {initials}
         </div>
         <div>
@@ -327,17 +326,15 @@ function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwn
               <div className="absolute right-0 mt-1 w-28 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50">
                 <button
                   onClick={() => handleRoleChange("admin")}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-                    member.role === "admin" ? "font-medium" : ""
-                  }`}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${member.role === "admin" ? "font-medium" : ""
+                    }`}
                 >
                   Admin
                 </button>
                 <button
                   onClick={() => handleRoleChange("member")}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-                    member.role === "member" ? "font-medium" : ""
-                  }`}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 ${member.role === "member" ? "font-medium" : ""
+                    }`}
                 >
                   Member
                 </button>

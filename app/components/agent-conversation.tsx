@@ -19,6 +19,7 @@ interface AgentConversationProps {
   onInitialPromptProcessed?: () => void;
   readOnly?: boolean;
   isSharedView?: boolean;
+  isReviewRequest?: boolean;
   ownsConversation?: boolean;
   reviewers?: Member[];
   shareLink?: ShareLink | null;
@@ -33,6 +34,7 @@ export function AgentConversation({
   onInitialPromptProcessed,
   readOnly = false,
   isSharedView = false,
+  isReviewRequest = false,
   ownsConversation = false,
   reviewers = [],
   shareLink,
@@ -480,7 +482,7 @@ export function AgentConversation({
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
         <div className="max-w-3xl mx-auto">
           {readOnly ? (
-            isSharedView ? (
+            isReviewRequest ? (
               (() => {
                 let lastApprovalIndex = -1;
                 for (let i = items.length - 1; i >= 0; i--) {
