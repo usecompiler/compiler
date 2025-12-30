@@ -36,10 +36,31 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/");
   }
 
-  const stats = await getOrganizationAnalytics(user.organization.id, user.organization.createdAt);
+  const url = new URL(request.url);
+  const timezone = url.searchParams.get("tz") || "UTC";
+
+  const stats = await getOrganizationAnalytics(
+    user.organization.id,
+    user.organization.createdAt,
+    timezone
+  );
 
   return { stats };
 }
+
+export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
+  const url = new URL(request.url);
+
+  if (!url.searchParams.has("tz")) {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    url.searchParams.set("tz", timezone);
+    throw redirect(url.pathname + url.search);
+  }
+
+  return serverLoader();
+}
+
+clientLoader.hydrate = true;
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -393,6 +414,89 @@ function TokenUsageChart({ data }: { data: DailyStats[] }) {
   );
 }
 
+function ShareChart({ data }: { data: DailyStats[] }) {
+  const chartData = {
+    labels: data.map((d) => formatDate(d.date)),
+    datasets: [
+      {
+        label: "Shares",
+        data: data.map((d) => d.shareCount),
+        borderColor: "#ec4899",
+        backgroundColor: "rgba(236, 72, 153, 0.1)",
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: "index" as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: "#262626",
+        borderColor: "#404040",
+        borderWidth: 1,
+        titleColor: "#a3a3a3",
+        bodyColor: "#ec4899",
+        padding: 12,
+        cornerRadius: 8,
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: "#a3a3a3",
+          font: { size: 11 },
+          maxTicksLimit: 8,
+        },
+        border: {
+          display: false,
+        },
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: "rgba(82, 82, 82, 0.3)",
+        },
+        ticks: {
+          color: "#a3a3a3",
+          font: { size: 11 },
+          precision: 0,
+        },
+        border: {
+          display: false,
+        },
+      },
+    },
+  };
+
+  return (
+    <section>
+      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
+        Conversation Shares
+      </h2>
+      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
+        <div style={{ height: "300px" }}>
+          <Line data={chartData} options={options} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Analytics() {
   const { stats } = useLoaderData<typeof loader>();
 
@@ -416,6 +520,7 @@ export default function Analytics() {
         <DailyActiveUsersChart data={stats} />
         <ConversationChart data={stats} />
         <MessageChart data={stats} />
+        <ShareChart data={stats} />
         <TokenUsageChart data={stats} />
       </main>
     </div>
