@@ -4,6 +4,7 @@ export default [
   // Auth routes (no layout)
   route("login", "routes/login.tsx"),
   route("signup", "routes/signup.tsx"),
+  route("setup", "routes/setup.tsx"),
   route("logout", "routes/logout.tsx"),
 
   // Deactivated user page (no layout)
