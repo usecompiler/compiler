@@ -63,6 +63,7 @@ export function createLogoutCookie(): string {
 export interface Organization {
   id: string;
   onboardingCompleted: boolean;
+  createdAt: Date;
 }
 
 export interface Membership {
@@ -91,6 +92,7 @@ export async function getUser(request: Request): Promise<User | null> {
       userName: users.name,
       orgId: organizations.id,
       orgOnboardingCompleted: organizations.onboardingCompleted,
+      orgCreatedAt: organizations.createdAt,
       memberRole: members.role,
       memberDeactivatedAt: members.deactivatedAt,
     })
@@ -116,7 +118,7 @@ export async function getUser(request: Request): Promise<User | null> {
     email: session.userEmail,
     name: session.userName,
     organization: session.orgId
-      ? { id: session.orgId, onboardingCompleted: session.orgOnboardingCompleted ?? false }
+      ? { id: session.orgId, onboardingCompleted: session.orgOnboardingCompleted ?? false, createdAt: session.orgCreatedAt! }
       : null,
     membership: session.orgId
       ? {
@@ -160,6 +162,7 @@ export async function getUserByEmail(email: string) {
 
 export async function createOrganization(ownerId: string): Promise<Organization> {
   const orgId = crypto.randomUUID();
+  const createdAt = new Date();
 
   await db.insert(organizations).values({
     id: orgId,
@@ -172,7 +175,7 @@ export async function createOrganization(ownerId: string): Promise<Organization>
     role: "owner",
   });
 
-  return { id: orgId, onboardingCompleted: false };
+  return { id: orgId, onboardingCompleted: false, createdAt };
 }
 
 export async function createUser(

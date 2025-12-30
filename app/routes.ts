@@ -34,5 +34,6 @@ export default [
     route("settings", "routes/settings.tsx"),
     route("settings/repositories", "routes/settings.repositories.tsx"),
     route("settings/organization", "routes/settings.organization.tsx"),
+    route("analytics", "routes/analytics.tsx"),
   ]),
 ] satisfies RouteConfig;
