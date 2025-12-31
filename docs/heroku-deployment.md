@@ -19,7 +19,24 @@ Heroku dynos have ephemeral filesystems - any files written to disk are lost whe
 
 ## Setup
 
-### 1. Create a Wrapper Repository
+### 1. Create a GitHub App
+
+Create a GitHub App for your Heroku deployment:
+
+1. Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub App**
+2. Set the following fields:
+   - **GitHub App name**: Choose a unique name (e.g., `your-company-compiler`)
+   - **Homepage URL**: `https://your-app-name.herokuapp.com`
+   - **Callback URL**: `https://your-app-name.herokuapp.com/onboarding/github-callback`
+3. Set **Repository permissions**:
+   - **Contents**: Read-only
+   - **Metadata**: Read-only
+4. Click **Create GitHub App**
+5. Note the **App ID** from the app settings page
+6. Note the **App slug** from the URL (the part after `/apps/`)
+7. Generate a **Private key** and download it
+
+### 2. Create a Wrapper Repository
 
 Create a new repository with the following `heroku.yml`:
 
@@ -28,6 +45,7 @@ build:
   docker:
     web: Dockerfile
 release:
+  image: web
   command:
     - npx drizzle-kit migrate
 run:
@@ -37,17 +55,17 @@ run:
 And a `Dockerfile` that pulls the Compiler image:
 
 ```dockerfile
-FROM ghcr.io/usecompiler/compiler:latest
+FROM ghcr.io/usecompiler/compiler:main
 ```
 
-### 2. Create Heroku App
+### 3. Create Heroku App
 
 ```bash
 heroku create your-app-name
 heroku stack:set container -a your-app-name
 ```
 
-### 3. Add Heroku Postgres
+### 4. Add Heroku Postgres
 
 ```bash
 heroku addons:create heroku-postgresql:essential-0 -a your-app-name
@@ -55,7 +73,7 @@ heroku addons:create heroku-postgresql:essential-0 -a your-app-name
 
 This automatically sets the `DATABASE_URL` environment variable.
 
-### 4. Configure Environment Variables
+### 5. Configure Environment Variables
 
 ```bash
 heroku config:set ANTHROPIC_API_KEY=sk-ant-... -a your-app-name
@@ -66,9 +84,10 @@ heroku config:set GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 -----END RSA PRIVATE KEY-----" -a your-app-name
 heroku config:set TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") -a your-app-name
 heroku config:set REPOS_DIR=/tmp/repos -a your-app-name
+heroku config:set DATABASE_SSL=true -a your-app-name
 ```
 
-### 5. Deploy
+### 6. Deploy
 
 ```bash
 git push heroku main
@@ -76,15 +95,16 @@ git push heroku main
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Set automatically by Heroku Postgres add-on |
-| `ANTHROPIC_API_KEY` | API key from [console.anthropic.com](https://console.anthropic.com/) |
-| `GITHUB_APP_ID` | Your GitHub App ID |
-| `GITHUB_APP_SLUG` | Your GitHub App slug |
-| `GITHUB_PRIVATE_KEY` | GitHub App private key (PEM format) |
-| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens |
-| `REPOS_DIR` | Set to `/tmp/repos` for ephemeral storage |
+| Variable               | Description                                                          |
+| ---------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`         | Set automatically by Heroku Postgres add-on                          |
+| `ANTHROPIC_API_KEY`    | API key from [console.anthropic.com](https://console.anthropic.com/) |
+| `GITHUB_APP_ID`        | Your GitHub App ID                                                   |
+| `GITHUB_APP_SLUG`      | Your GitHub App slug                                                 |
+| `GITHUB_PRIVATE_KEY`   | GitHub App private key (PEM format)                                  |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens                             |
+| `REPOS_DIR`            | Set to `/tmp/repos` for ephemeral storage                            |
+| `DATABASE_SSL`         | Set to `true` for Heroku Postgres (requires SSL)                     |
 
 ## Behavior on Dyno Restart
 
@@ -140,6 +160,7 @@ heroku logs --tail -a your-app-name
 ```
 
 Common issues:
+
 - GitHub App permissions not set correctly
 - Private key format issues (ensure newlines are preserved)
 - TOKEN_ENCRYPTION_KEY not set
