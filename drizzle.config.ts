@@ -6,6 +6,8 @@ export default defineConfig({
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL!,
-    ssl: process.env.DATABASE_SSL !== "false",
+    ssl: {
+      rejectUnauthorized: false, // Essential for Heroku's self-signed certs
+    },
   },
 });
