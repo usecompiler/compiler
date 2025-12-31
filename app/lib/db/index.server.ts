@@ -8,8 +8,7 @@ if (!dbUrl) {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
-const sslEnabled = process.env.DATABASE_SSL !== "false";
-const connectionString = sslEnabled
+const connectionString = process.env.DATABASE_SSL === "true"
   ? (dbUrl.includes("?") ? `${dbUrl}&sslmode=require` : `${dbUrl}?sslmode=require`)
   : dbUrl;
 

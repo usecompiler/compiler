@@ -71,7 +71,11 @@ heroku stack:set container -a your-app-name
 heroku addons:create heroku-postgresql:essential-0 -a your-app-name
 ```
 
-This automatically sets the `DATABASE_URL` environment variable.
+This automatically sets the `DATABASE_URL` environment variable. Heroku Postgres requires SSL, so enable it:
+
+```bash
+heroku config:set DATABASE_SSL=true -a your-app-name
+```
 
 ### 5. Configure Environment Variables
 
@@ -97,6 +101,7 @@ git push heroku main
 | Variable               | Description                                                          |
 | ---------------------- | -------------------------------------------------------------------- |
 | `DATABASE_URL`         | Set automatically by Heroku Postgres add-on                          |
+| `DATABASE_SSL`         | Set to `true` for Heroku Postgres (appends `?sslmode=require`)       |
 | `ANTHROPIC_API_KEY`    | API key from [console.anthropic.com](https://console.anthropic.com/) |
 | `GITHUB_APP_ID`        | Your GitHub App ID                                                   |
 | `GITHUB_APP_SLUG`      | Your GitHub App slug                                                 |

@@ -4,7 +4,6 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://compiler:${POSTGRES_PASSWORD}@db:5432/compiler
-      - DATABASE_SSL=false
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
