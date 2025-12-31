@@ -7,6 +7,11 @@ export default [
   route("setup", "routes/setup.tsx"),
   route("logout", "routes/logout.tsx"),
 
+  // SAML routes
+  route("auth/saml", "routes/auth.saml.tsx"),
+  route("auth/saml/callback", "routes/auth.saml.callback.tsx"),
+  route("auth/saml/metadata", "routes/auth.saml.metadata.tsx"),
+
   // Deactivated user page (no layout)
   route("deactivated", "routes/deactivated.tsx"),
 
@@ -35,6 +40,7 @@ export default [
     route("settings", "routes/settings.tsx"),
     route("settings/repositories", "routes/settings.repositories.tsx"),
     route("settings/organization", "routes/settings.organization.tsx"),
+    route("settings/authentication", "routes/settings.authentication.tsx"),
     route("analytics", "routes/analytics.tsx"),
   ]),
 ] satisfies RouteConfig;

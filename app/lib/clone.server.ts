@@ -9,7 +9,7 @@ import {
   getAuthenticatedCloneUrl,
 } from "./github.server";
 
-const REPOS_BASE_DIR = "/repos";
+const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
 function getOrgRepoDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
@@ -254,23 +254,58 @@ export async function syncStaleRepos(
   const now = Date.now();
   const staleThreshold = staleMinutes * 60 * 1000;
 
-  const pullPromises = repos
+  const syncPromises = repos
     .filter((repo) => {
+      if (!repoExists(organizationId, repo.name)) return true;
       const lastSync = repo.lastSyncedAt || repo.clonedAt;
       if (!lastSync) return true;
       return now - lastSync.getTime() > staleThreshold;
     })
     .map(async (repo) => {
       try {
-        if (repo.githubRepoId) {
-          await pullRepository(organizationId, repo.name);
+        const exists = repoExists(organizationId, repo.name);
+        if (!exists) {
+          if (repo.isPrivate) {
+            await cloneRepository(
+              organizationId,
+              repo.id,
+              repo.name,
+              repo.cloneUrl
+            );
+          } else {
+            await clonePublicRepository(
+              organizationId,
+              repo.id,
+              repo.name,
+              repo.cloneUrl
+            );
+          }
         } else {
-          await pullPublicRepository(organizationId, repo.name);
+          if (repo.isPrivate) {
+            await pullRepository(organizationId, repo.name);
+          } else {
+            await pullPublicRepository(organizationId, repo.name);
+          }
         }
       } catch (error) {
         console.error(`Failed to sync ${repo.name}:`, error);
       }
     });
 
-  await Promise.all(pullPromises);
+  await Promise.all(syncPromises);
+}
+
+export async function prefetchAllRepos(): Promise<void> {
+  const allRepos = await db
+    .select()
+    .from(repositories)
+    .where(eq(repositories.cloneStatus, "completed"));
+
+  const orgIds = [...new Set(allRepos.map((r) => r.organizationId))];
+
+  console.log(`Prefetching repos for ${orgIds.length} organization(s)...`);
+
+  for (const orgId of orgIds) {
+    await syncStaleRepos(orgId, 0);
+  }
 }

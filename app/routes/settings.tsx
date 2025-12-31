@@ -6,11 +6,14 @@ import {
   updateUserPassword,
 } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions.server";
+import { getDefaultOrgSSOConfig } from "~/lib/saml.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
   const canManageOrg = canManageOrganization(user.membership?.role);
-  return { user, canManageOrg };
+  const ssoConfig = await getDefaultOrgSSOConfig();
+  const passwordLoginEnabled = ssoConfig?.allowPasswordLogin ?? true;
+  return { user, canManageOrg, passwordLoginEnabled };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -56,7 +59,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Settings() {
-  const { user, canManageOrg } = useLoaderData<typeof loader>();
+  const { user, canManageOrg, passwordLoginEnabled } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -86,16 +89,22 @@ export default function Settings() {
             {canManageOrg && (
               <>
                 <Link
-                  to="/settings/repositories"
+                  to="/settings/authentication"
                   className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
                 >
-                  Repositories
+                  Authentication
                 </Link>
                 <Link
                   to="/settings/organization"
                   className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
                 >
                   Organization
+                </Link>
+                <Link
+                  to="/settings/repositories"
+                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+                >
+                  Repositories
                 </Link>
               </>
             )}
@@ -169,81 +178,82 @@ export default function Settings() {
           </Form>
         </section>
 
-        {/* Password Section */}
-        <section>
-          <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-            Change Password
-          </h2>
+        {passwordLoginEnabled && (
+          <section>
+            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
+              Change Password
+            </h2>
 
-          <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 space-y-4">
-            <input type="hidden" name="intent" value="update-password" />
+            <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6 space-y-4">
+              <input type="hidden" name="intent" value="update-password" />
 
-            <div>
-              <label
-                htmlFor="currentPassword"
-                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
-              >
-                Current Password
-              </label>
-              <input
-                type="password"
-                id="currentPassword"
-                name="currentPassword"
-                required
-                autoComplete="current-password"
-                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="currentPassword"
+                  className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+                >
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  id="currentPassword"
+                  name="currentPassword"
+                  required
+                  autoComplete="current-password"
+                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+              </div>
 
-            <div>
-              <label
-                htmlFor="newPassword"
-                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
-              >
-                New Password
-              </label>
-              <input
-                type="password"
-                id="newPassword"
-                name="newPassword"
-                required
-                autoComplete="new-password"
-                minLength={8}
-                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
-              />
-              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-                Must be at least 8 characters
-              </p>
-            </div>
+              <div>
+                <label
+                  htmlFor="newPassword"
+                  className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+                >
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  id="newPassword"
+                  name="newPassword"
+                  required
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+                <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  Must be at least 8 characters
+                </p>
+              </div>
 
-            <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
-              >
-                Confirm New Password
-              </label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                required
-                autoComplete="new-password"
-                minLength={8}
-                className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1.5"
+                >
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  required
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+              </div>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
-              >
-                Update Password
-              </button>
-            </div>
-          </Form>
-        </section>
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+                >
+                  Update Password
+                </button>
+              </div>
+            </Form>
+          </section>
+        )}
       </main>
     </div>
   );

@@ -249,7 +249,10 @@ export async function updateUserPassword(
 
   if (result.length === 0) return false;
 
-  const valid = await verifyPassword(currentPassword, result[0].passwordHash);
+  const { passwordHash } = result[0];
+  if (!passwordHash) return false;
+
+  const valid = await verifyPassword(currentPassword, passwordHash);
   if (!valid) return false;
 
   const newHash = await hashPassword(newPassword);

@@ -258,15 +258,21 @@ export default function RepositoriesSettings({
             >
               Account
             </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Repositories
-            </span>
+            <Link
+              to="/settings/authentication"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Authentication
+            </Link>
             <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
             </Link>
+            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
+              Repositories
+            </span>
           </nav>
         </div>
       </div>

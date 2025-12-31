@@ -4,7 +4,7 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").unique().notNull(),
   name: text("name").notNull(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -130,4 +130,23 @@ export const repositories = pgTable("repositories", {
   clonedAt: timestamp("cloned_at"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const ssoConfigurations = pgTable("sso_configurations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  enabled: boolean("enabled").default(false).notNull(),
+  providerName: text("provider_name"),
+  idpEntityId: text("idp_entity_id"),
+  idpSsoUrl: text("idp_sso_url"),
+  idpCertificate: text("idp_certificate"),
+  spEntityId: text("sp_entity_id"),
+  spAcsUrl: text("sp_acs_url"),
+  allowPasswordLogin: boolean("allow_password_login").default(true).notNull(),
+  autoProvisionUsers: boolean("auto_provision_users").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
