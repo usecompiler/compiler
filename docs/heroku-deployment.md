@@ -84,7 +84,6 @@ heroku config:set GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 -----END RSA PRIVATE KEY-----" -a your-app-name
 heroku config:set TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") -a your-app-name
 heroku config:set REPOS_DIR=/tmp/repos -a your-app-name
-heroku config:set DATABASE_SSL=true -a your-app-name
 ```
 
 ### 6. Deploy
@@ -104,7 +103,6 @@ git push heroku main
 | `GITHUB_PRIVATE_KEY`   | GitHub App private key (PEM format)                                  |
 | `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens                             |
 | `REPOS_DIR`            | Set to `/tmp/repos` for ephemeral storage                            |
-| `DATABASE_SSL`         | Set to `true` for Heroku Postgres (requires SSL)                     |
 
 ## Behavior on Dyno Restart
 
