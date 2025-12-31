@@ -8,8 +8,7 @@ if (!connectionString) {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
-const isHeroku = !!process.env.DYNO;
 const client = postgres(connectionString, {
-  ssl: isHeroku || process.env.DATABASE_SSL === "true",
+  ssl: process.env.DATABASE_SSL !== "false",
 });
 export const db = drizzle(client, { schema });
