@@ -1,8 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
-
-const isUsingBedrock = process.env.CLAUDE_CODE_USE_BEDROCK === "1";
-console.log(`Agent provider: ${isUsingBedrock ? "AWS Bedrock" : "Anthropic API"}`);
+import { getAIProviderEnv } from "./ai-provider.server";
 
 const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
@@ -101,6 +99,7 @@ export async function* runAgent(
 ): AsyncGenerator<AgentEvent> {
   const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
   const orgReposDir = getOrgReposDir(organizationId);
+  const aiProviderEnv = await getAIProviderEnv(organizationId);
 
   try {
     let turnCount = 0;
@@ -116,6 +115,7 @@ export async function* runAgent(
         additionalDirectories: [orgReposDir],
         env: {
           ...process.env,
+          ...aiProviderEnv,
           SHELL: "/bin/bash",
         },
       },

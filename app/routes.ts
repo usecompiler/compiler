@@ -16,6 +16,7 @@ export default [
   route("deactivated", "routes/deactivated.tsx"),
 
   // Onboarding routes (no layout)
+  route("onboarding/ai-provider", "routes/onboarding.ai-provider.tsx"),
   route("onboarding/github-app", "routes/onboarding.github-app.tsx"),
   route("onboarding/github", "routes/onboarding.github.tsx"),
   route("onboarding/github-callback", "routes/onboarding.github-callback.tsx"),

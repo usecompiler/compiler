@@ -6,8 +6,6 @@ Deploy Compiler to Heroku using container-based deployment. This guide covers de
 
 - Heroku account with container registry access
 - Heroku CLI installed
-- GitHub App configured (see [Docker Deployment](./docker-deployment.md#creating-a-github-app))
-- Anthropic API key
 
 ## Overview
 
@@ -63,12 +61,9 @@ heroku config:set DATABASE_SSL=true -a your-app-name
 ### 4. Configure Environment Variables
 
 ```bash
-heroku config:set ANTHROPIC_API_KEY=sk-ant-... -a your-app-name
 heroku config:set TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") -a your-app-name
 heroku config:set REPOS_DIR=/tmp/repos -a your-app-name
 ```
-
-GitHub App credentials (App ID, Slug, Private Key) are configured through the onboarding flow after deployment.
 
 ### 5. Deploy
 
@@ -78,15 +73,14 @@ git push heroku main
 
 ## Environment Variables
 
-| Variable               | Description                                                          |
-| ---------------------- | -------------------------------------------------------------------- |
-| `DATABASE_URL`         | Set automatically by Heroku Postgres add-on                          |
-| `DATABASE_SSL`         | Set to `true` for Heroku Postgres (appends `?sslmode=require`)       |
-| `ANTHROPIC_API_KEY`    | API key from [console.anthropic.com](https://console.anthropic.com/) |
-| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens                             |
-| `REPOS_DIR`            | Set to `/tmp/repos` for ephemeral storage                            |
+| Variable               | Description                                                    |
+| ---------------------- | -------------------------------------------------------------- |
+| `DATABASE_URL`         | Set automatically by Heroku Postgres add-on                    |
+| `DATABASE_SSL`         | Set to `true` for Heroku Postgres (appends `?sslmode=require`) |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens                       |
+| `REPOS_DIR`            | Set to `/tmp/repos` for ephemeral storage                      |
 
-GitHub App credentials (App ID, Slug, Private Key) are configured through the onboarding flow, not as environment variables.
+AI provider (Anthropic API or AWS Bedrock) and GitHub App credentials are configured through the onboarding flow, not as environment variables.
 
 ## Behavior on Dyno Restart
 

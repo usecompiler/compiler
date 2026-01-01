@@ -164,3 +164,21 @@ export const githubAppConfigurations = pgTable("github_app_configurations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  provider: text("provider").notNull(),
+  encryptedAnthropicApiKey: text("encrypted_anthropic_api_key"),
+  anthropicApiKeyIv: text("anthropic_api_key_iv"),
+  awsRegion: text("aws_region"),
+  encryptedAwsAccessKeyId: text("encrypted_aws_access_key_id"),
+  awsAccessKeyIdIv: text("aws_access_key_id_iv"),
+  encryptedAwsSecretAccessKey: text("encrypted_aws_secret_access_key"),
+  awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

@@ -6,8 +6,6 @@ Deploy Compiler using Docker with automatic SSL via Caddy.
 
 - Server with Docker and Docker Compose installed
 - Domain name pointing to your server
-- GitHub App (see below)
-- Anthropic API key
 
 ## Quick Start
 
@@ -38,12 +36,11 @@ Deploy Compiler using Docker with automatic SSL via Caddy.
 
 ### Required Environment Variables
 
-| Variable               | Description                                                          |
-| ---------------------- | -------------------------------------------------------------------- |
-| `DOMAIN`               | Your domain (e.g., `compiler.example.com`)                           |
-| `ANTHROPIC_API_KEY`    | API key from [console.anthropic.com](https://console.anthropic.com/) |
-| `POSTGRES_PASSWORD`    | Database password (choose a secure one)                              |
-| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens                             |
+| Variable               | Description                                |
+| ---------------------- | ------------------------------------------ |
+| `DOMAIN`               | Your domain (e.g., `compiler.example.com`) |
+| `POSTGRES_PASSWORD`    | Database password (choose a secure one)    |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte hex string for encrypting tokens   |
 
 ### Generating TOKEN_ENCRYPTION_KEY
 

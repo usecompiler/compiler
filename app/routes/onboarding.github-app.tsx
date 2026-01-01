@@ -6,6 +6,7 @@ import {
   saveGitHubAppConfig,
   validateGitHubAppConfig,
 } from "~/lib/github.server";
+import { getAIProviderConfig } from "~/lib/ai-provider.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -20,6 +21,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   if (user.organization.onboardingCompleted) {
     return redirect("/");
+  }
+
+  const aiConfig = await getAIProviderConfig(user.organization.id);
+  if (!aiConfig) {
+    return redirect("/onboarding/ai-provider");
   }
 
   const config = await getGitHubAppConfig(user.organization.id);

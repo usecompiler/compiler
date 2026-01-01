@@ -20,15 +20,15 @@ The easiest way to get started is using a Dev Container, which provides a fully 
    ```
 
 3. Configure your `.env` with:
-   - AI provider (choose one):
-     - `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/)
-     - OR AWS Bedrock credentials (see AI Provider Configuration below)
-   - GitHub App credentials (see [docker-deployment.md](./docker-deployment.md#creating-a-github-app))
    - `TOKEN_ENCRYPTION_KEY` (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 
 4. Open in your Dev Container tool of choice
 
 5. The dev server starts automatically. Open [http://localhost:5173](http://localhost:5173)
+
+6. Complete the onboarding flow to configure:
+   - AI provider (Anthropic API or AWS Bedrock)
+   - GitHub App credentials
 
 ## Scripts
 
@@ -40,26 +40,6 @@ The easiest way to get started is using a Dev Container, which provides a fully 
 | `npm run typecheck`  | Run TypeScript type checking    |
 | `npm run db:migrate` | Run database migrations         |
 | `npm run db:push`    | Push schema changes to database |
-
-## AI Provider Configuration
-
-The app supports two AI providers:
-
-### Anthropic API (Default)
-
-Set `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/)
-
-### AWS Bedrock (Alternative)
-
-To use AWS Bedrock instead of the Anthropic API:
-
-1. Set `CLAUDE_CODE_USE_BEDROCK=1`
-2. Set `AWS_REGION` (e.g., `us-east-1`)
-3. Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-
-Optional Bedrock settings:
-- `ANTHROPIC_MODEL` - Override the default model (e.g., `us.anthropic.claude-sonnet-4-5-20250929-v1:0`)
-- `CLAUDE_CODE_MAX_OUTPUT_TOKENS` - Recommended: `4096` for Bedrock
 
 ## Running Without Docker
 

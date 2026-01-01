@@ -2,7 +2,6 @@ services:
   app:
     image: ghcr.io/usecompiler/compiler:latest
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://compiler:${POSTGRES_PASSWORD}@db:5432/compiler
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY}
     volumes:

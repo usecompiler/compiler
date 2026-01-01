@@ -12,27 +12,9 @@ An AI-powered tool that helps non-technical teams get answers about how an app w
 
 Create a `.env` file based on `.env.example`:
 
-### AI Provider (choose one)
-
-**Anthropic API (Default)**
-
 ```
-ANTHROPIC_API_KEY=       # Claude API key from console.anthropic.com
-```
-
-**AWS Bedrock (Alternative)**
-
-```
-CLAUDE_CODE_USE_BEDROCK=1    # Enable Bedrock mode
-AWS_REGION=us-east-1         # AWS region
-AWS_ACCESS_KEY_ID=           # AWS access key
-AWS_SECRET_ACCESS_KEY=       # AWS secret key
-```
-
-### Other Required Variables
-
-```
-TOKEN_ENCRYPTION_KEY=    # 32-byte hex string for token encryption
+DATABASE_URL=            # PostgreSQL connection string
+TOKEN_ENCRYPTION_KEY=    # 32-byte hex string for credential encryption
 ```
 
 ## Development

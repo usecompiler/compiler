@@ -58,7 +58,7 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await createUser(email, name, password);
   const sessionId = await createSession(user.id);
 
-  return redirect("/onboarding/github-app", {
+  return redirect("/onboarding/ai-provider", {
     headers: {
       "Set-Cookie": createSessionCookie(sessionId),
     },
