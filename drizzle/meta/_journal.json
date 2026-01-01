@@ -78,6 +78,13 @@
       "when": 1734562810000,
       "tag": "0010_create_repositories",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1767226067408,
+      "tag": "0011_create_sso_configurations",
+      "breakpoints": true
     }
   ]
 }
