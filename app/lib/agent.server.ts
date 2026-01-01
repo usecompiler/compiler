@@ -1,6 +1,9 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import { getAIProviderEnv } from "./ai-provider.server";
+import { db } from "./db/index.server";
+import { repositories } from "./db/schema";
+import { eq, and } from "drizzle-orm";
 
 const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
@@ -10,7 +13,23 @@ function getOrgReposDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
 }
 
-const SYSTEM_PROMPT = `You are a friendly assistant that helps people understand software projects. Your audience is non-technical, so you must:
+function getRepoPath(organizationId: string, repoName: string): string {
+  return path.join(getOrgReposDir(organizationId), repoName);
+}
+
+async function getCompletedRepos(organizationId: string) {
+  return db
+    .select({ name: repositories.name })
+    .from(repositories)
+    .where(
+      and(
+        eq(repositories.organizationId, organizationId),
+        eq(repositories.cloneStatus, "completed")
+      )
+    );
+}
+
+const BASE_SYSTEM_PROMPT = `You are a friendly assistant that helps people understand software projects. Your audience is non-technical, so you must:
 
 IMPORTANT - You are in read-only exploration mode:
 - You are ALWAYS in "plan mode" - you can explore and analyze but NEVER modify code
@@ -26,11 +45,9 @@ IMPORTANT - You are in read-only exploration mode:
 6. Avoid jargon - if you must use a technical term, explain it simply
 
 CRITICAL - Project scope:
-- Your current working directory IS the project you should explore
 - ONLY explore files and folders in your current directory and its subdirectories
 - NEVER use ".." or explore parent directories
 - NEVER look outside the current directory tree
-- Treat this as "the project"
 
 When exploring projects:
 - Describe what the project does and its purpose
@@ -55,6 +72,20 @@ CRITICAL - Never reveal libraries, packages, or dependencies:
 - Even if you see a Gemfile, package.json, requirements.txt, or similar, NEVER reveal the package names inside
 
 You have tools to explore behind the scenes, but the user should only see friendly, plain-language explanations about what the software does - never the technical implementation details.`;
+
+function buildSystemPrompt(repoNames: string[]): string {
+  if (repoNames.length <= 1) {
+    return BASE_SYSTEM_PROMPT + `\n\nYour current working directory IS the project you should explore.`;
+  }
+
+  return BASE_SYSTEM_PROMPT + `\n\nMULTIPLE PROJECTS AVAILABLE:
+You have access to ${repoNames.length} projects: ${repoNames.join(", ")}
+- Each project is in its own subdirectory
+- When the user asks about a specific project, first cd into that directory
+- For git commands (like git log, git blame), you MUST cd into the project directory first
+- If the user doesn't specify which project, ask them to clarify or explore all of them
+- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
+}
 
 export interface AgentStats {
   toolUses: number;
@@ -100,6 +131,12 @@ export async function* runAgent(
   const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
+  const completedRepos = await getCompletedRepos(organizationId);
+  const repoNames = completedRepos.map((r) => r.name);
+
+  const agentCwd = completedRepos.length === 1
+    ? getRepoPath(organizationId, completedRepos[0].name)
+    : orgReposDir;
 
   try {
     let turnCount = 0;
@@ -108,10 +145,10 @@ export async function* runAgent(
     for await (const message of query({
       prompt: fullPrompt,
       options: {
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: buildSystemPrompt(repoNames),
         allowedTools: ALLOWED_TOOLS,
         permissionMode: "plan",
-        cwd: orgReposDir,
+        cwd: agentCwd,
         additionalDirectories: [orgReposDir],
         env: {
           ...process.env,
