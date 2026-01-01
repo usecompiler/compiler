@@ -58,7 +58,7 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await createUser(email, name, password);
   const sessionId = await createSession(user.id);
 
-  return redirect("/onboarding/github", {
+  return redirect("/onboarding/github-app", {
     headers: {
       "Set-Cookie": createSessionCookie(sessionId),
     },
@@ -148,7 +148,7 @@ export default function Setup() {
             disabled={isSubmitting}
             className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-2.5 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50"
           >
-            {isSubmitting ? "Setting up..." : "Set up instance"}
+            {isSubmitting ? "Saving..." : "Save"}
           </button>
         </Form>
       </div>

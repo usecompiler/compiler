@@ -150,3 +150,17 @@ export const ssoConfigurations = pgTable("sso_configurations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const githubAppConfigurations = pgTable("github_app_configurations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  appId: text("app_id").notNull(),
+  appSlug: text("app_slug").notNull(),
+  encryptedPrivateKey: text("encrypted_private_key").notNull(),
+  privateKeyIv: text("private_key_iv").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

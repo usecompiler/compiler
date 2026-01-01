@@ -155,15 +155,15 @@ export default function OrganizationSettings() {
             >
               Authentication
             </Link>
+            <Link
+              to="/settings/github"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              GitHub
+            </Link>
             <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
               Organization
             </span>
-            <Link
-              to="/settings/repositories"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Repositories
-            </Link>
           </nav>
         </div>
       </div>

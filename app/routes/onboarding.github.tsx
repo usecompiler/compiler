@@ -2,7 +2,7 @@ import { redirect, useFetcher } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/onboarding.github";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { getInstallation } from "~/lib/github.server";
+import { getInstallation, getGitHubAppConfig } from "~/lib/github.server";
 import { db } from "~/lib/db/index.server";
 import { repositories, organizations } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -29,17 +29,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/");
   }
 
+  const appConfig = await getGitHubAppConfig(user.organization.id);
+  if (!appConfig) {
+    return redirect("/onboarding/github-app");
+  }
+
   const installation = await getInstallation(user.organization.id);
   if (installation) {
     return redirect("/onboarding/repos");
   }
 
-  const appSlug = process.env.GITHUB_APP_SLUG;
-  if (!appSlug) {
-    throw new Error("GITHUB_APP_SLUG environment variable is required");
-  }
-
-  return { appSlug, orgId: user.organization.id };
+  return { appSlug: appConfig.appSlug, orgId: user.organization.id };
 }
 
 export async function action({ request }: Route.ActionArgs) {

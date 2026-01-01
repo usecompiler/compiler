@@ -16,6 +16,7 @@ export default [
   route("deactivated", "routes/deactivated.tsx"),
 
   // Onboarding routes (no layout)
+  route("onboarding/github-app", "routes/onboarding.github-app.tsx"),
   route("onboarding/github", "routes/onboarding.github.tsx"),
   route("onboarding/github-callback", "routes/onboarding.github-callback.tsx"),
   route("onboarding/repos", "routes/onboarding.repos.tsx"),
@@ -38,7 +39,7 @@ export default [
     index("routes/home.tsx"),
     route("c/:id", "routes/conversation.tsx"),
     route("settings", "routes/settings.tsx"),
-    route("settings/repositories", "routes/settings.repositories.tsx"),
+    route("settings/github", "routes/settings.github.tsx"),
     route("settings/organization", "routes/settings.organization.tsx"),
     route("settings/authentication", "routes/settings.authentication.tsx"),
     route("analytics", "routes/analytics.tsx"),

@@ -95,16 +95,16 @@ export default function Settings() {
                   Authentication
                 </Link>
                 <Link
+                  to="/settings/github"
+                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+                >
+                  GitHub
+                </Link>
+                <Link
                   to="/settings/organization"
                   className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
                 >
                   Organization
-                </Link>
-                <Link
-                  to="/settings/repositories"
-                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-                >
-                  Repositories
                 </Link>
               </>
             )}

@@ -1,5 +1,5 @@
-import type { Route } from "./+types/settings.repositories";
-import { Await, Link, redirect, useFetcher, useSearchParams, useRevalidator } from "react-router";
+import type { Route } from "./+types/settings.github";
+import { Await, Form, Link, redirect, useFetcher, useSearchParams, useRevalidator, useActionData } from "react-router";
 import { Suspense, useState, useEffect } from "react";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -12,6 +12,9 @@ import {
   listInstallationRepos,
   getGitHubAppConfigureUrl,
   getGitHubAppInstallUrl,
+  getGitHubAppConfig,
+  saveGitHubAppConfig,
+  validateGitHubAppConfig,
   type GitHubRepo,
 } from "~/lib/github.server";
 import { canManageOrganization } from "~/lib/permissions.server";
@@ -40,22 +43,25 @@ export async function loader({ request }: Route.LoaderArgs) {
       hasGitHubConnection: false,
       githubConfigureUrl: null,
       githubInstallUrl: null,
+      appConfig: null,
     };
   }
 
-  const [repos, installation] = await Promise.all([
+  const [repos, installation, appConfig] = await Promise.all([
     db
       .select()
       .from(repositories)
       .where(eq(repositories.organizationId, user.organization.id))
       .orderBy(repositories.name),
     getInstallation(user.organization.id),
+    getGitHubAppConfig(user.organization.id),
   ]);
   let githubConfigureUrl: string | null = null;
+  let githubInstallUrl: string | null = null;
   let availableReposPromise: Promise<GitHubRepo[]>;
 
-  if (installation) {
-    githubConfigureUrl = getGitHubAppConfigureUrl();
+  if (installation && appConfig) {
+    githubConfigureUrl = await getGitHubAppConfigureUrl(user.organization.id);
     const existingGithubIds = new Set(repos.map((r) => r.githubRepoId));
     const orgId = user.organization.id;
 
@@ -69,6 +75,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     })();
   } else {
     availableReposPromise = Promise.resolve([]);
+    if (appConfig && !installation) {
+      githubInstallUrl = await getGitHubAppInstallUrl(user.organization.id);
+    }
   }
 
   return {
@@ -84,7 +93,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     availableReposPromise,
     hasGitHubConnection: !!installation,
     githubConfigureUrl,
-    githubInstallUrl: installation ? null : getGitHubAppInstallUrl(),
+    githubInstallUrl,
+    appConfig: appConfig ? { appId: appConfig.appId, appSlug: appConfig.appSlug } : null,
   };
 }
 
@@ -92,18 +102,49 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await requireActiveAuth(request);
 
   if (!user.organization || !canManageOrganization(user.membership?.role)) {
-    return { error: "Unauthorized" };
+    return { error: "Unauthorized", success: false, configSuccess: false };
   }
 
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  if (intent === "update-config") {
+    const appId = (formData.get("appId") as string)?.trim();
+    const appSlug = (formData.get("appSlug") as string)?.trim();
+    const privateKey = formData.get("privateKey") as string;
+
+    if (!appId || !appSlug || !privateKey) {
+      return { error: "All fields are required", success: false, configSuccess: false };
+    }
+
+    if (!/^\d+$/.test(appId)) {
+      return { error: "App ID must be a number", success: false, configSuccess: false };
+    }
+
+    if (!/^[a-z0-9-]+$/.test(appSlug)) {
+      return { error: "App Slug must contain only lowercase letters, numbers, and hyphens", success: false, configSuccess: false };
+    }
+
+    const normalizedKey = privateKey.replace(/\\n/g, "\n");
+    if (!normalizedKey.includes("-----BEGIN") || !normalizedKey.includes("PRIVATE KEY-----")) {
+      return { error: "Private key must be in PEM format", success: false, configSuccess: false };
+    }
+
+    const validation = validateGitHubAppConfig(appId, privateKey);
+    if (!validation.valid) {
+      return { error: validation.error || "Invalid private key", success: false, configSuccess: false };
+    }
+
+    await saveGitHubAppConfig(user.organization.id, appId, appSlug, privateKey);
+    return { error: null, success: true, configSuccess: true };
+  }
 
   if (intent === "remove") {
     const repoId = formData.get("repoId") as string;
     const repoName = formData.get("repoName") as string;
 
     await deleteRepository(user.organization.id, repoId, repoName);
-    return { success: true };
+    return { success: true, error: null, configSuccess: false };
   }
 
   if (intent === "add") {
@@ -137,10 +178,10 @@ export async function action({ request }: Route.ActionArgs) {
       ).catch(console.error);
     }
 
-    return { success: true };
+    return { success: true, error: null, configSuccess: false };
   }
 
-  return { error: "Invalid action" };
+  return { error: "Invalid action", success: false, configSuccess: false };
 }
 
 function CloneStatusBadge({ status }: { status: string }) {
@@ -176,11 +217,12 @@ function CloneStatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function RepositoriesSettings({
+export default function GitHubSettings({
   loaderData,
 }: Route.ComponentProps) {
-  const { repos, availableReposPromise, hasGitHubConnection, githubConfigureUrl, githubInstallUrl } =
+  const { repos, availableReposPromise, hasGitHubConnection, githubConfigureUrl, githubInstallUrl, appConfig } =
     loaderData;
+  const actionData = useActionData<typeof action>();
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [searchParams] = useSearchParams();
@@ -188,11 +230,18 @@ export default function RepositoriesSettings({
     hasGitHubConnection && searchParams.get("showAdd") === "true"
   );
   const [selectedRepos, setSelectedRepos] = useState<Set<number>>(new Set());
+  const [showEditConfig, setShowEditConfig] = useState(!appConfig);
 
   const isSubmitting = fetcher.state !== "idle";
   const hasInProgressClones = repos.some(
     (r: Repo) => r.cloneStatus === "pending" || r.cloneStatus === "cloning"
   );
+
+  useEffect(() => {
+    if (actionData?.configSuccess) {
+      setShowEditConfig(false);
+    }
+  }, [actionData]);
 
   useEffect(() => {
     if (!hasInProgressClones) return;
@@ -264,20 +313,120 @@ export default function RepositoriesSettings({
             >
               Authentication
             </Link>
+            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
+              GitHub
+            </span>
             <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
             </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Repositories
-            </span>
           </nav>
         </div>
       </div>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              GitHub App Configuration
+            </h2>
+            {appConfig && (
+              <button
+                type="button"
+                onClick={() => setShowEditConfig(!showEditConfig)}
+                className="text-sm text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
+              >
+                {showEditConfig ? "Cancel" : "Edit"}
+              </button>
+            )}
+          </div>
+
+          {actionData?.error && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-600 dark:text-red-400">
+              {actionData.error}
+            </div>
+          )}
+
+          {actionData?.configSuccess && (
+            <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-600 dark:text-green-400">
+              Configuration saved successfully
+            </div>
+          )}
+
+          {showEditConfig ? (
+            <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+              <input type="hidden" name="intent" value="update-config" />
+
+              <div>
+                <label htmlFor="appId" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  GitHub App ID
+                </label>
+                <input
+                  type="text"
+                  id="appId"
+                  name="appId"
+                  defaultValue={appConfig?.appId || ""}
+                  required
+                  className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-2 text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="appSlug" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  GitHub App Slug
+                </label>
+                <input
+                  type="text"
+                  id="appSlug"
+                  name="appSlug"
+                  defaultValue={appConfig?.appSlug || ""}
+                  required
+                  className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-2 text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="privateKey" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Private Key
+                </label>
+                <textarea
+                  id="privateKey"
+                  name="privateKey"
+                  rows={4}
+                  required
+                  placeholder="-----BEGIN RSA PRIVATE KEY-----"
+                  className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-2 text-neutral-900 dark:text-neutral-100 text-sm font-mono focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                />
+                <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {appConfig ? "Enter new private key to update" : "Paste the entire PEM file contents"}
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm font-medium bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+              >
+                {appConfig ? "Update Configuration" : "Save Configuration"}
+              </button>
+            </Form>
+          ) : appConfig ? (
+            <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-neutral-500 dark:text-neutral-400">App ID</span>
+                  <p className="text-neutral-900 dark:text-neutral-100 font-mono">{appConfig.appId}</p>
+                </div>
+                <div>
+                  <span className="text-neutral-500 dark:text-neutral-400">App Slug</span>
+                  <p className="text-neutral-900 dark:text-neutral-100 font-mono">{appConfig.appSlug}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">

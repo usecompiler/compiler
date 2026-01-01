@@ -23,12 +23,15 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (setupAction === "install" || setupAction === "update") {
-    const { token, expiresAt } = await getInstallationAccessToken(installationId);
+    const { token, expiresAt } = await getInstallationAccessToken(
+      user.organization.id,
+      installationId
+    );
     await saveInstallation(user.organization.id, installationId, token, expiresAt);
   }
 
   if (user.organization.onboardingCompleted) {
-    return redirect("/settings/repositories?showAdd=true");
+    return redirect("/settings/github?showAdd=true");
   }
 
   return redirect("/onboarding/repos");

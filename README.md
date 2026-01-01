@@ -32,9 +32,6 @@ AWS_SECRET_ACCESS_KEY=       # AWS secret key
 ### Other Required Variables
 
 ```
-GITHUB_APP_ID=           # GitHub App ID
-GITHUB_APP_SLUG=         # GitHub App slug
-GITHUB_PRIVATE_KEY=      # GitHub App private key (PEM format)
 TOKEN_ENCRYPTION_KEY=    # 32-byte hex string for token encryption
 ```
 

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "./db/index.server";
-import { githubInstallations } from "./db/schema";
+import { githubInstallations, githubAppConfigurations } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { encrypt, decrypt } from "./encryption.server";
 
@@ -15,20 +15,89 @@ export interface GitHubRepo {
   defaultBranch: string;
 }
 
-function getAppId(): string {
-  const appId = process.env.GITHUB_APP_ID;
-  if (!appId) {
-    throw new Error("GITHUB_APP_ID environment variable is required");
-  }
-  return appId;
+export interface GitHubAppConfig {
+  appId: string;
+  appSlug: string;
+  privateKey: string;
 }
 
-function getPrivateKey(): string {
-  const key = process.env.GITHUB_PRIVATE_KEY;
-  if (!key) {
-    throw new Error("GITHUB_PRIVATE_KEY environment variable is required");
+export async function getGitHubAppConfig(
+  organizationId: string
+): Promise<GitHubAppConfig | null> {
+  const result = await db
+    .select()
+    .from(githubAppConfigurations)
+    .where(eq(githubAppConfigurations.organizationId, organizationId))
+    .limit(1);
+
+  if (result.length === 0) return null;
+
+  const config = result[0];
+  const privateKey = decrypt(config.encryptedPrivateKey, config.privateKeyIv);
+
+  return {
+    appId: config.appId,
+    appSlug: config.appSlug,
+    privateKey: privateKey.replace(/\\n/g, "\n"),
+  };
+}
+
+export async function saveGitHubAppConfig(
+  organizationId: string,
+  appId: string,
+  appSlug: string,
+  privateKey: string
+): Promise<void> {
+  const { ciphertext, iv } = encrypt(privateKey);
+
+  const existing = await db
+    .select()
+    .from(githubAppConfigurations)
+    .where(eq(githubAppConfigurations.organizationId, organizationId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(githubAppConfigurations)
+      .set({
+        appId,
+        appSlug,
+        encryptedPrivateKey: ciphertext,
+        privateKeyIv: iv,
+        updatedAt: new Date(),
+      })
+      .where(eq(githubAppConfigurations.organizationId, organizationId));
+  } else {
+    await db.insert(githubAppConfigurations).values({
+      id: crypto.randomUUID(),
+      organizationId,
+      appId,
+      appSlug,
+      encryptedPrivateKey: ciphertext,
+      privateKeyIv: iv,
+    });
   }
-  return key.replace(/\\n/g, "\n");
+}
+
+export function validateGitHubAppConfig(
+  appId: string,
+  privateKey: string
+): { valid: boolean; error?: string } {
+  try {
+    const normalizedKey = privateKey.replace(/\\n/g, "\n");
+    const now = Math.floor(Date.now() / 1000);
+    const payload = { iat: now - 60, exp: now + 600, iss: appId };
+    const header = { alg: "RS256", typ: "JWT" };
+    const encodedHeader = base64url(Buffer.from(JSON.stringify(header)));
+    const encodedPayload = base64url(Buffer.from(JSON.stringify(payload)));
+    const signatureInput = `${encodedHeader}.${encodedPayload}`;
+    const sign = crypto.createSign("RSA-SHA256");
+    sign.update(signatureInput);
+    sign.sign(normalizedKey);
+    return { valid: true };
+  } catch {
+    return { valid: false, error: "Invalid private key format" };
+  }
 }
 
 function base64url(input: Buffer | string): string {
@@ -36,15 +105,17 @@ function base64url(input: Buffer | string): string {
   return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
-export function generateAppJWT(): string {
-  const appId = getAppId();
-  const privateKey = getPrivateKey();
+export async function generateAppJWT(organizationId: string): Promise<string> {
+  const config = await getGitHubAppConfig(organizationId);
+  if (!config) {
+    throw new Error("GitHub App not configured for this organization");
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     iat: now - 60,
     exp: now + 600,
-    iss: appId,
+    iss: config.appId,
   };
 
   const header = { alg: "RS256", typ: "JWT" };
@@ -54,15 +125,16 @@ export function generateAppJWT(): string {
 
   const sign = crypto.createSign("RSA-SHA256");
   sign.update(signatureInput);
-  const signature = sign.sign(privateKey);
+  const signature = sign.sign(config.privateKey);
 
   return `${signatureInput}.${base64url(signature)}`;
 }
 
 export async function getInstallationAccessToken(
+  organizationId: string,
   installationId: string
 ): Promise<{ token: string; expiresAt: Date }> {
-  const jwt = generateAppJWT();
+  const jwt = await generateAppJWT(organizationId);
 
   const response = await fetch(
     `${GITHUB_API_BASE}/app/installations/${installationId}/access_tokens`,
@@ -209,16 +281,26 @@ export async function getOrRefreshAccessToken(organizationId: string): Promise<s
     return installation.accessToken;
   }
 
-  const { token, expiresAt } = await getInstallationAccessToken(installation.installationId);
+  const { token, expiresAt } = await getInstallationAccessToken(
+    organizationId,
+    installation.installationId
+  );
   await saveInstallation(organizationId, installation.installationId, token, expiresAt);
   return token;
 }
 
-export function getGitHubAppInstallUrl(): string {
-  const appId = getAppId();
-  return `https://github.com/apps/${process.env.GITHUB_APP_SLUG || appId}/installations/new`;
+export async function getGitHubAppInstallUrl(organizationId: string): Promise<string> {
+  const config = await getGitHubAppConfig(organizationId);
+  if (!config) {
+    throw new Error("GitHub App not configured for this organization");
+  }
+  return `https://github.com/apps/${config.appSlug}/installations/new`;
 }
 
-export function getGitHubAppConfigureUrl(): string {
-  return `https://github.com/apps/${process.env.GITHUB_APP_SLUG}/installations/new`;
+export async function getGitHubAppConfigureUrl(organizationId: string): Promise<string> {
+  const config = await getGitHubAppConfig(organizationId);
+  if (!config) {
+    throw new Error("GitHub App not configured for this organization");
+  }
+  return `https://github.com/apps/${config.appSlug}/installations/new`;
 }
