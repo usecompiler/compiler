@@ -85,6 +85,20 @@
       "when": 1767226067408,
       "tag": "0011_create_sso_configurations",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1767254112432,
+      "tag": "0012_create_github_app_configurations",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1767254112433,
+      "tag": "0013_create_ai_provider_configurations",
+      "breakpoints": true
     }
   ]
 }
