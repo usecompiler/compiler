@@ -1,5 +1,5 @@
 import type { Route } from "./+types/settings.ai-provider";
-import { Form, Link, redirect, useActionData } from "react-router";
+import { Form, Link, redirect, useActionData, useFetcher } from "react-router";
 import { useState, useEffect } from "react";
 import { requireActiveAuth } from "~/lib/auth.server";
 import {
@@ -9,7 +9,17 @@ import {
   validateBedrockCredentials,
   type AIProvider,
 } from "~/lib/ai-provider.server";
+import {
+  getAvailableClaudeModels,
+  getModelConfig,
+  saveModelConfig,
+} from "~/lib/models.server";
 import { canManageOrganization } from "~/lib/permissions.server";
+
+interface ModelOption {
+  id: string;
+  displayName: string;
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -19,20 +29,27 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (!user.organization) {
-    return { config: null };
+    return { config: null, availableModels: [], modelConfig: null };
   }
 
   const config = await getAIProviderConfig(user.organization.id);
 
   if (!config) {
-    return { config: null };
+    return { config: null, availableModels: [], modelConfig: null };
   }
+
+  const [apiModels, modelConfig] = await Promise.all([
+    getAvailableClaudeModels(user.organization.id),
+    getModelConfig(user.organization.id),
+  ]);
 
   return {
     config: {
       provider: config.provider,
       awsRegion: config.awsRegion || null,
     },
+    availableModels: apiModels,
+    modelConfig,
   };
 }
 
@@ -40,30 +57,48 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await requireActiveAuth(request);
 
   if (!user.organization || !canManageOrganization(user.membership?.role)) {
-    return { error: "Unauthorized", success: false };
+    return { error: "Unauthorized", success: false, intent: "" };
   }
 
   const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  if (intent === "save-models") {
+    const selectedModels = formData.getAll("selectedModels") as string[];
+    const defaultModel = formData.get("defaultModel") as string;
+
+    if (selectedModels.length === 0) {
+      return { error: "At least one model must be selected", success: false, intent };
+    }
+
+    if (!defaultModel || !selectedModels.includes(defaultModel)) {
+      return { error: "Default model must be one of the selected models", success: false, intent };
+    }
+
+    await saveModelConfig(user.organization.id, selectedModels, defaultModel);
+    return { error: null, success: true, intent };
+  }
+
   const provider = formData.get("provider") as AIProvider;
 
   if (!provider || (provider !== "anthropic" && provider !== "bedrock")) {
-    return { error: "Please select a provider", success: false };
+    return { error: "Please select a provider", success: false, intent: "save-provider" };
   }
 
   if (provider === "anthropic") {
     const apiKey = (formData.get("anthropicApiKey") as string)?.trim();
 
     if (!apiKey) {
-      return { error: "API key is required", success: false };
+      return { error: "API key is required", success: false, intent: "save-provider" };
     }
 
     if (!apiKey.startsWith("sk-ant-")) {
-      return { error: "Invalid API key format", success: false };
+      return { error: "Invalid API key format", success: false, intent: "save-provider" };
     }
 
     const validation = await validateAnthropicKey(apiKey);
     if (!validation.valid) {
-      return { error: validation.error || "Invalid API key", success: false };
+      return { error: validation.error || "Invalid API key", success: false, intent: "save-provider" };
     }
 
     await saveAIProviderConfig(user.organization.id, "anthropic", {
@@ -75,12 +110,12 @@ export async function action({ request }: Route.ActionArgs) {
     const awsSecretAccessKey = (formData.get("awsSecretAccessKey") as string)?.trim();
 
     if (!awsRegion || !awsAccessKeyId || !awsSecretAccessKey) {
-      return { error: "All AWS fields are required", success: false };
+      return { error: "All AWS fields are required", success: false, intent: "save-provider" };
     }
 
     const validation = await validateBedrockCredentials(awsRegion, awsAccessKeyId, awsSecretAccessKey);
     if (!validation.valid) {
-      return { error: validation.error || "Invalid AWS credentials", success: false };
+      return { error: validation.error || "Invalid AWS credentials", success: false, intent: "save-provider" };
     }
 
     await saveAIProviderConfig(user.organization.id, "bedrock", {
@@ -90,20 +125,39 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
-  return { error: null, success: true };
+  return { error: null, success: true, intent: "save-provider" };
 }
 
 export default function AIProviderSettings({ loaderData }: Route.ComponentProps) {
-  const { config } = loaderData;
+  const { config, availableModels, modelConfig } = loaderData;
   const actionData = useActionData<typeof action>();
   const [showEdit, setShowEdit] = useState(!config);
   const [provider, setProvider] = useState<AIProvider>(config?.provider || "anthropic");
+  const [selectedModels, setSelectedModels] = useState<string[]>(
+    modelConfig?.availableModels || ["claude-sonnet-4-20250514"]
+  );
+  const [defaultModel, setDefaultModel] = useState<string>(
+    modelConfig?.defaultModel || "claude-sonnet-4-20250514"
+  );
 
   useEffect(() => {
-    if (actionData?.success) {
+    if (actionData?.success && actionData?.intent === "save-provider") {
       setShowEdit(false);
     }
   }, [actionData]);
+
+  const handleModelToggle = (modelId: string) => {
+    setSelectedModels((prev) => {
+      if (prev.includes(modelId)) {
+        const newModels = prev.filter((m) => m !== modelId);
+        if (defaultModel === modelId && newModels.length > 0) {
+          setDefaultModel(newModels[0]);
+        }
+        return newModels;
+      }
+      return [...prev, modelId];
+    });
+  };
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
@@ -184,13 +238,13 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
             )}
           </div>
 
-          {actionData?.error && (
+          {actionData?.intent === "save-provider" && actionData?.error && (
             <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-600 dark:text-red-400">
               {actionData.error}
             </div>
           )}
 
-          {actionData?.success && (
+          {actionData?.intent === "save-provider" && actionData?.success && (
             <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-600 dark:text-green-400">
               Configuration saved successfully
             </div>
@@ -198,6 +252,7 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
 
           {showEdit ? (
             <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+              <input type="hidden" name="intent" value="save-provider" />
               <div className="space-y-3">
                 <label
                   className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
@@ -344,6 +399,91 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
             </div>
           ) : null}
         </section>
+
+        {config && availableModels.length > 0 && (
+          <section className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                Model Availability
+              </h2>
+            </div>
+
+            <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+              <input type="hidden" name="intent" value="save-models" />
+
+              <div>
+                <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3">
+                  Select which models are available to users:
+                </p>
+                <div className="space-y-2">
+                  {availableModels.map((model: ModelOption) => (
+                    <label
+                      key={model.id}
+                      className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        name="selectedModels"
+                        value={model.id}
+                        checked={selectedModels.includes(model.id)}
+                        onChange={() => handleModelToggle(model.id)}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {model.displayName}
+                        </span>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                          {model.id}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Default Model
+                </label>
+                <select
+                  name="defaultModel"
+                  value={defaultModel}
+                  onChange={(e) => setDefaultModel(e.target.value)}
+                  className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-2 text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
+                >
+                  {selectedModels.map((modelId) => {
+                    const model = availableModels.find((m: ModelOption) => m.id === modelId);
+                    return (
+                      <option key={modelId} value={modelId}>
+                        {model?.displayName || modelId}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  The default model for new users
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={selectedModels.length === 0}
+                  className="px-4 py-2 text-sm font-medium bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save Model Settings
+                </button>
+                {actionData?.intent === "save-models" && actionData?.success && (
+                  <span className="text-sm text-green-600 dark:text-green-400">Saved</span>
+                )}
+                {actionData?.intent === "save-models" && actionData?.error && (
+                  <span className="text-sm text-red-600 dark:text-red-400">{actionData.error}</span>
+                )}
+              </div>
+            </Form>
+          </section>
+        )}
       </main>
     </div>
   );

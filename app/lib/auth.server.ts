@@ -67,6 +67,7 @@ export interface Organization {
 }
 
 export interface Membership {
+  id: string;
   organizationId: string;
   role: "owner" | "admin" | "member";
   isDeactivated: boolean;
@@ -93,6 +94,7 @@ export async function getUser(request: Request): Promise<User | null> {
       orgId: organizations.id,
       orgOnboardingCompleted: organizations.onboardingCompleted,
       orgCreatedAt: organizations.createdAt,
+      memberId: members.id,
       memberRole: members.role,
       memberDeactivatedAt: members.deactivatedAt,
     })
@@ -120,8 +122,9 @@ export async function getUser(request: Request): Promise<User | null> {
     organization: session.orgId
       ? { id: session.orgId, onboardingCompleted: session.orgOnboardingCompleted ?? false, createdAt: session.orgCreatedAt! }
       : null,
-    membership: session.orgId
+    membership: session.orgId && session.memberId
       ? {
+          id: session.memberId,
           organizationId: session.orgId,
           role: session.memberRole as "owner" | "admin" | "member",
           isDeactivated,
@@ -160,8 +163,9 @@ export async function getUserByEmail(email: string) {
   return result[0] || null;
 }
 
-export async function createOrganization(ownerId: string): Promise<Organization> {
+export async function createOrganization(ownerId: string): Promise<{ organization: Organization; memberId: string }> {
   const orgId = crypto.randomUUID();
+  const memberId = crypto.randomUUID();
   const createdAt = new Date();
 
   await db.insert(organizations).values({
@@ -169,13 +173,13 @@ export async function createOrganization(ownerId: string): Promise<Organization>
   });
 
   await db.insert(members).values({
-    id: crypto.randomUUID(),
+    id: memberId,
     userId: ownerId,
     organizationId: orgId,
     role: "owner",
   });
 
-  return { id: orgId, onboardingCompleted: false, createdAt };
+  return { organization: { id: orgId, onboardingCompleted: false, createdAt }, memberId };
 }
 
 export async function createUser(
@@ -193,7 +197,7 @@ export async function createUser(
     passwordHash,
   });
 
-  const organization = await createOrganization(id);
+  const { organization, memberId } = await createOrganization(id);
 
   return {
     id,
@@ -201,6 +205,7 @@ export async function createUser(
     name,
     organization,
     membership: {
+      id: memberId,
       organizationId: organization.id,
       role: "owner",
       isDeactivated: false,

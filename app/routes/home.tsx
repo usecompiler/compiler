@@ -36,7 +36,19 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Home() {
-  const { conversations, user, hasMore, impersonating, orgMembers, isOwner, isAdmin, reviewRequests } = useOutletContext<AppContext>();
+  const {
+    conversations,
+    user,
+    hasMore,
+    impersonating,
+    orgMembers,
+    isOwner,
+    isAdmin,
+    reviewRequests,
+    availableModels,
+    defaultModel,
+    userPreferredModel,
+  } = useOutletContext<AppContext>();
 
   return (
     <ConversationLayout
@@ -48,6 +60,9 @@ export default function Home() {
       isOwner={isOwner}
       isAdmin={isAdmin}
       reviewRequests={reviewRequests}
+      availableModels={availableModels}
+      defaultModel={defaultModel}
+      userPreferredModel={userPreferredModel}
     >
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />

@@ -34,6 +34,7 @@ export default [
   route("api/conversations", "routes/api.conversations.ts"),
   route("api/items", "routes/api.items.ts"),
   route("api/search", "routes/api.search.ts"),
+  route("api/user-model-preference", "routes/api.user-model-preference.tsx"),
 
   // App routes (with layout that handles auth + conversations)
   layout("routes/app-layout.tsx", [

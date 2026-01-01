@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Sidebar } from "./sidebar";
-import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest } from "~/routes/app-layout";
+import { ModelSelector } from "./model-selector";
+import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest, ModelOption } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
@@ -15,6 +16,9 @@ interface ConversationLayoutProps {
   headerRight?: React.ReactNode;
   children: React.ReactNode;
   reviewRequests?: ReviewRequest[];
+  availableModels?: ModelOption[];
+  defaultModel?: string;
+  userPreferredModel?: string | null;
 }
 
 export function ConversationLayout({
@@ -28,10 +32,29 @@ export function ConversationLayout({
   headerRight,
   children,
   reviewRequests = [],
+  availableModels = [],
+  defaultModel = "claude-sonnet-4-20250514",
+  userPreferredModel,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentModel, setCurrentModel] = useState(
+    userPreferredModel || defaultModel
+  );
   const location = useLocation();
   const navigate = useNavigate();
+
+  const handleModelChange = useCallback(async (modelId: string) => {
+    setCurrentModel(modelId);
+    try {
+      await fetch("/api/user-model-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId }),
+      });
+    } catch (error) {
+      console.error("Failed to save model preference:", error);
+    }
+  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -96,7 +119,11 @@ export function ConversationLayout({
                 />
               </svg>
             </button>
-            <span className="text-neutral-900 dark:text-neutral-100 text-lg">Compiler</span>
+            <ModelSelector
+              availableModels={availableModels}
+              currentModel={currentModel}
+              onModelChange={handleModelChange}
+            />
           </div>
           {headerRight && (
             <div className="flex items-center">

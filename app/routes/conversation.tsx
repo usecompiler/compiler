@@ -130,7 +130,20 @@ export async function action({ request, params }: Route.ActionArgs) {
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { conversations, user, hasMore, impersonating, orgMembers, reviewers, isOwner, isAdmin, reviewRequests } = useOutletContext<AppContext>();
+  const {
+    conversations,
+    user,
+    hasMore,
+    impersonating,
+    orgMembers,
+    reviewers,
+    isOwner,
+    isAdmin,
+    reviewRequests,
+    availableModels,
+    defaultModel,
+    userPreferredModel,
+  } = useOutletContext<AppContext>();
   const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
@@ -182,6 +195,9 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       isAdmin={isAdmin}
       headerRight={(ownsConversation || isSharedView) ? headerRight : undefined}
       reviewRequests={reviewRequests}
+      availableModels={availableModels}
+      defaultModel={defaultModel}
+      userPreferredModel={userPreferredModel}
     >
       <div className="flex flex-col h-full">
         <div className="flex-1 min-h-0">

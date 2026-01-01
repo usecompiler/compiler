@@ -22,6 +22,11 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const organizationId = user.organization.id;
+  const memberId = user.membership?.id;
+
+  if (!memberId) {
+    return new Response("Member not found", { status: 403 });
+  }
 
   await syncStaleRepos(organizationId);
 
@@ -30,7 +35,7 @@ export async function action({ request }: Route.ActionArgs) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(prompt, organizationId, history)) {
+        for await (const event of runAgent(prompt, organizationId, memberId, history)) {
           const data = `data: ${JSON.stringify(event)}\n\n`;
           controller.enqueue(encoder.encode(data));
         }

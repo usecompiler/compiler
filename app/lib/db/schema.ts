@@ -1,4 +1,11 @@
-import { pgTable, text, timestamp, jsonb, uniqueIndex, boolean } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  jsonb,
+  uniqueIndex,
+  boolean,
+} from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -24,8 +31,9 @@ export const members = pgTable(
     organizationId: text("organization_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    role: text("role").notNull().default("member"), // 'owner' | 'member'
-    deactivatedAt: timestamp("deactivated_at"), // null = active, set = deactivated
+    role: text("role").notNull().default("member"),
+    deactivatedAt: timestamp("deactivated_at"),
+    preferredModel: text("preferred_model"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [uniqueIndex("user_org_unique").on(table.userId, table.organizationId)]
@@ -179,6 +187,8 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   awsAccessKeyIdIv: text("aws_access_key_id_iv"),
   encryptedAwsSecretAccessKey: text("encrypted_aws_secret_access_key"),
   awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
+  availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-20250514"]),
+  defaultModel: text("default_model").default("claude-sonnet-4-20250514"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

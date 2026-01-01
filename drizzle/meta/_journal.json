@@ -99,6 +99,13 @@
       "when": 1767254112433,
       "tag": "0013_create_ai_provider_configurations",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1767340000000,
+      "tag": "0014_add_model_columns_to_ai_provider_configurations",
+      "breakpoints": true
     }
   ]
 }

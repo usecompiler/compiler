@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
-import { getAIProviderEnv } from "./ai-provider.server";
+import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
+import { getEffectiveModel, getBedrockModelId } from "./models.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
@@ -126,13 +127,20 @@ function formatHistory(messages: HistoryMessage[]): string {
 export async function* runAgent(
   prompt: string,
   organizationId: string,
+  memberId: string,
   history: HistoryMessage[] = []
 ): AsyncGenerator<AgentEvent> {
   const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
+  const aiProviderConfig = await getAIProviderConfig(organizationId);
   const completedRepos = await getCompletedRepos(organizationId);
   const repoNames = completedRepos.map((r) => r.name);
+
+  const effectiveModel = await getEffectiveModel(memberId, organizationId);
+  const modelId = aiProviderConfig?.provider === "bedrock"
+    ? getBedrockModelId(effectiveModel)
+    : effectiveModel;
 
   const agentCwd = completedRepos.length === 1
     ? getRepoPath(organizationId, completedRepos[0].name)
@@ -145,6 +153,7 @@ export async function* runAgent(
     for await (const message of query({
       prompt: fullPrompt,
       options: {
+        model: modelId,
         systemPrompt: buildSystemPrompt(repoNames),
         allowedTools: ALLOWED_TOOLS,
         permissionMode: "plan",
