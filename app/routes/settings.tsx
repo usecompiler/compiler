@@ -89,6 +89,12 @@ export default function Settings() {
             {canManageOrg && (
               <>
                 <Link
+                  to="/settings/ai-provider"
+                  className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+                >
+                  AI Provider
+                </Link>
+                <Link
                   to="/settings/authentication"
                   className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
                 >

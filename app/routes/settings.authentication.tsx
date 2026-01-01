@@ -154,6 +154,12 @@ export default function AuthenticationSettings() {
             >
               Account
             </Link>
+            <Link
+              to="/settings/ai-provider"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              AI Provider
+            </Link>
             <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
               Authentication
             </span>

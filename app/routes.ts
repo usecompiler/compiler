@@ -40,6 +40,7 @@ export default [
     index("routes/home.tsx"),
     route("c/:id", "routes/conversation.tsx"),
     route("settings", "routes/settings.tsx"),
+    route("settings/ai-provider", "routes/settings.ai-provider.tsx"),
     route("settings/github", "routes/settings.github.tsx"),
     route("settings/organization", "routes/settings.organization.tsx"),
     route("settings/authentication", "routes/settings.authentication.tsx"),
