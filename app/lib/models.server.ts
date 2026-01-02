@@ -288,3 +288,38 @@ export function getDisplayName(modelId: string): string {
 
   return modelId;
 }
+
+export const REQUIRED_TOOLS = ["Read", "Glob", "Grep"];
+
+export const OPTIONAL_TOOLS = [
+  { id: "Bash", description: "Execute shell commands" },
+  { id: "WebFetch", description: "Fetch web page content" },
+  { id: "WebSearch", description: "Search the web" },
+];
+
+export async function getToolConfig(organizationId: string): Promise<string[]> {
+  const result = await db
+    .select({ allowedTools: aiProviderConfigurations.allowedTools })
+    .from(aiProviderConfigurations)
+    .where(eq(aiProviderConfigurations.organizationId, organizationId))
+    .limit(1);
+
+  const optionalTools = result.length > 0 && result[0].allowedTools
+    ? (result[0].allowedTools as string[])
+    : ["Bash"];
+
+  return [...REQUIRED_TOOLS, ...optionalTools];
+}
+
+export async function saveToolConfig(
+  organizationId: string,
+  optionalTools: string[]
+): Promise<void> {
+  await db
+    .update(aiProviderConfigurations)
+    .set({
+      allowedTools: optionalTools,
+      updatedAt: new Date(),
+    })
+    .where(eq(aiProviderConfigurations.organizationId, organizationId));
+}

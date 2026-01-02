@@ -106,6 +106,13 @@
       "when": 1767340000000,
       "tag": "0014_add_model_columns_to_ai_provider_configurations",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1767350000000,
+      "tag": "0015_add_allowed_tools_to_ai_provider_configurations",
+      "breakpoints": true
     }
   ]
 }

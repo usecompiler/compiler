@@ -1,14 +1,12 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
-import { getEffectiveModel, getBedrockModelId } from "./models.server";
+import { getEffectiveModel, getBedrockModelId, getToolConfig } from "./models.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 
 const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
-
-const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 
 function getOrgReposDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
@@ -142,6 +140,8 @@ export async function* runAgent(
     ? getBedrockModelId(effectiveModel)
     : effectiveModel;
 
+  const allowedTools = await getToolConfig(organizationId);
+
   const agentCwd = completedRepos.length === 1
     ? getRepoPath(organizationId, completedRepos[0].name)
     : orgReposDir;
@@ -155,14 +155,13 @@ export async function* runAgent(
       options: {
         model: modelId,
         systemPrompt: buildSystemPrompt(repoNames),
-        allowedTools: ALLOWED_TOOLS,
+        allowedTools,
         permissionMode: "plan",
         cwd: agentCwd,
         additionalDirectories: [orgReposDir],
         env: {
           ...process.env,
           ...aiProviderEnv,
-          SHELL: "/bin/bash",
         },
       },
     })) {

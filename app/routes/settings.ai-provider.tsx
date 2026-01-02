@@ -13,8 +13,20 @@ import {
   getAvailableClaudeModels,
   getModelConfig,
   saveModelConfig,
+  getToolConfig,
+  saveToolConfig,
+  REQUIRED_TOOLS as SERVER_REQUIRED_TOOLS,
+  OPTIONAL_TOOLS as SERVER_OPTIONAL_TOOLS,
 } from "~/lib/models.server";
 import { canManageOrganization } from "~/lib/permissions.server";
+
+const REQUIRED_TOOLS = ["Read", "Glob", "Grep"];
+
+const OPTIONAL_TOOLS = [
+  { id: "Bash", description: "Execute shell commands" },
+  { id: "WebFetch", description: "Fetch web page content" },
+  { id: "WebSearch", description: "Search the web" },
+];
 
 interface ModelOption {
   id: string;
@@ -29,19 +41,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (!user.organization) {
-    return { config: null, availableModels: [], modelConfig: null };
+    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["Bash"] };
   }
 
   const config = await getAIProviderConfig(user.organization.id);
 
   if (!config) {
-    return { config: null, availableModels: [], modelConfig: null };
+    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["Bash"] };
   }
 
-  const [apiModels, modelConfig] = await Promise.all([
+  const [apiModels, modelConfig, toolConfig] = await Promise.all([
     getAvailableClaudeModels(user.organization.id),
     getModelConfig(user.organization.id),
+    getToolConfig(user.organization.id),
   ]);
+
+  const enabledOptionalTools = toolConfig.filter((t) => !SERVER_REQUIRED_TOOLS.includes(t));
 
   return {
     config: {
@@ -50,6 +65,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
     availableModels: apiModels,
     modelConfig,
+    enabledTools: enabledOptionalTools,
   };
 }
 
@@ -76,6 +92,15 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     await saveModelConfig(user.organization.id, selectedModels, defaultModel);
+    return { error: null, success: true, intent };
+  }
+
+  if (intent === "save-tools") {
+    const selectedTools = formData.getAll("selectedTools") as string[];
+    const validTools = selectedTools.filter((t) =>
+      SERVER_OPTIONAL_TOOLS.some((ot) => ot.id === t)
+    );
+    await saveToolConfig(user.organization.id, validTools);
     return { error: null, success: true, intent };
   }
 
@@ -129,7 +154,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function AIProviderSettings({ loaderData }: Route.ComponentProps) {
-  const { config, availableModels, modelConfig } = loaderData;
+  const { config, availableModels, modelConfig, enabledTools } = loaderData;
   const actionData = useActionData<typeof action>();
   const [showEdit, setShowEdit] = useState(!config);
   const [provider, setProvider] = useState<AIProvider>(config?.provider || "anthropic");
@@ -139,6 +164,7 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
   const [defaultModel, setDefaultModel] = useState<string>(
     modelConfig?.defaultModel || "claude-sonnet-4-20250514"
   );
+  const [selectedTools, setSelectedTools] = useState<string[]>(enabledTools);
 
   useEffect(() => {
     if (actionData?.success && actionData?.intent === "save-provider") {
@@ -156,6 +182,15 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
         return newModels;
       }
       return [...prev, modelId];
+    });
+  };
+
+  const handleToolToggle = (toolId: string) => {
+    setSelectedTools((prev) => {
+      if (prev.includes(toolId)) {
+        return prev.filter((t) => t !== toolId);
+      }
+      return [...prev, toolId];
     });
   };
 
@@ -478,6 +513,95 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                   <span className="text-sm text-green-600 dark:text-green-400">Saved</span>
                 )}
                 {actionData?.intent === "save-models" && actionData?.error && (
+                  <span className="text-sm text-red-600 dark:text-red-400">{actionData.error}</span>
+                )}
+              </div>
+            </Form>
+          </section>
+        )}
+
+        {config && (
+          <section className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                Agent Tools
+              </h2>
+            </div>
+
+            <Form method="post" className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+              <input type="hidden" name="intent" value="save-tools" />
+
+              <div>
+                <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3">
+                  Required tools (always enabled):
+                </p>
+                <div className="space-y-2 mb-4">
+                  {REQUIRED_TOOLS.map((tool) => (
+                    <label
+                      key={tool}
+                      className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg bg-neutral-50 dark:bg-neutral-700/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        disabled
+                        className="w-4 h-4 opacity-50"
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {tool}
+                        </span>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          {tool === "Read" && "Read file contents"}
+                          {tool === "Glob" && "Find files by pattern"}
+                          {tool === "Grep" && "Search file contents"}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3">
+                  Optional tools:
+                </p>
+                <div className="space-y-2">
+                  {OPTIONAL_TOOLS.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        name="selectedTools"
+                        value={tool.id}
+                        checked={selectedTools.includes(tool.id)}
+                        onChange={() => handleToolToggle(tool.id)}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {tool.id}
+                        </span>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          {tool.description}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+                >
+                  Save Tool Settings
+                </button>
+                {actionData?.intent === "save-tools" && actionData?.success && (
+                  <span className="text-sm text-green-600 dark:text-green-400">Saved</span>
+                )}
+                {actionData?.intent === "save-tools" && actionData?.error && (
                   <span className="text-sm text-red-600 dark:text-red-400">{actionData.error}</span>
                 )}
               </div>

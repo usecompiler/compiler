@@ -189,6 +189,7 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
   availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-20250514"]),
   defaultModel: text("default_model").default("claude-sonnet-4-20250514"),
+  allowedTools: jsonb("allowed_tools").$type<string[]>().default(["Bash"]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
