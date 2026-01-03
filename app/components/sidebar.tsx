@@ -85,7 +85,7 @@ export function Sidebar({
   const isLoadingMore = fetcher.state === "loading";
 
   return (
-    <aside className="w-64 h-full pt-safe pb-safe pl-safe bg-neutral-100 dark:bg-black flex flex-col border-r border-neutral-200 dark:border-neutral-800">
+    <aside className="w-64 h-full pl-safe bg-neutral-100 dark:bg-black flex flex-col border-r border-neutral-200 dark:border-neutral-800">
       <div className="p-3 space-y-1">
         {!impersonating && (
           <Link
@@ -514,10 +514,6 @@ function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: Acco
                 onMouseLeave={() => setIsImpersonateHovered(false)}
               >
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsImpersonateHovered((prev) => !prev);
-                  }}
                   className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
                 >
                   <div className="flex items-center gap-3">
