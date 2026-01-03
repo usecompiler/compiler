@@ -479,7 +479,7 @@ export function AgentConversation({
         </button>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-4 px-4">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-safe px-4">
         <div className="max-w-3xl mx-auto">
           {readOnly ? (
             isReviewRequest ? (
