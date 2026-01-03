@@ -514,6 +514,10 @@ function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: Acco
                 onMouseLeave={() => setIsImpersonateHovered(false)}
               >
                 <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsImpersonateHovered((prev) => !prev);
+                  }}
                   className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
                 >
                   <div className="flex items-center gap-3">
