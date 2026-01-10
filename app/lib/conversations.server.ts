@@ -155,8 +155,8 @@ export async function searchConversations(
 
       let snippet = "";
       if (matchIndex !== -1) {
-        const start = Math.max(0, matchIndex - 30);
-        const end = Math.min(contentText.length, matchIndex + query.length + 30);
+        const start = Math.max(0, matchIndex - 50);
+        const end = Math.min(contentText.length, matchIndex + query.length + 50);
         snippet = (start > 0 ? "..." : "") + contentText.slice(start, end) + (end < contentText.length ? "..." : "");
       }
 

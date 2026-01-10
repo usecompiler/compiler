@@ -143,7 +143,7 @@ export function CommandPalette({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-4 py-4">
@@ -214,7 +214,7 @@ export function CommandPalette({
                   to={buildConversationUrl(result.id, impersonateUserId)}
                   prefetch="intent"
                   onClick={onClose}
-                  className={`w-full flex items-start gap-3 px-3 py-2.5 text-left text-sm rounded-xl transition-colors overflow-hidden ${
+                  className={`w-full flex items-start gap-3 px-3 py-2.5 text-left text-sm rounded-xl transition-colors ${
                     isSelected
                       ? "bg-neutral-100 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
                       : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"

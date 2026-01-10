@@ -59,7 +59,7 @@ export async function action({ request }: Route.ActionArgs) {
           typeof item.content === "string"
             ? item.content
             : item.content?.text || "";
-        const newTitle = text.slice(0, 50).trim() + (text.length > 50 ? "..." : "");
+        const newTitle = text.trim();
         await db
           .update(conversations)
           .set({ title: newTitle, updatedAt: new Date() })

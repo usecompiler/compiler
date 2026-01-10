@@ -273,7 +273,7 @@ export function AgentConversation({
       };
 
       if (items.length === 0) {
-        const title = promptText.trim().slice(0, 50) + (promptText.length > 50 ? "..." : "");
+        const title = promptText.trim();
         fetch(`/api/conversations?id=${conversationId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
