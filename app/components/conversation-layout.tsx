@@ -19,6 +19,7 @@ interface ConversationLayoutProps {
   availableModels?: ModelOption[];
   defaultModel?: string;
   userPreferredModel?: string | null;
+  showHeaderBorder?: boolean;
 }
 
 export function ConversationLayout({
@@ -35,6 +36,7 @@ export function ConversationLayout({
   availableModels = [],
   defaultModel = "claude-sonnet-4-20250514",
   userPreferredModel,
+  showHeaderBorder = true,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(
@@ -99,7 +101,7 @@ export function ConversationLayout({
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <header className="h-14 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-800">
+        <header className={`h-14 flex items-center justify-between px-4 ${showHeaderBorder ? "border-b border-neutral-200 dark:border-neutral-800" : ""}`}>
           <div className="flex items-center">
             <button
               onClick={() => setSidebarOpen(true)}

@@ -20,7 +20,7 @@ import {
 } from "~/lib/models.server";
 import { canManageOrganization } from "~/lib/permissions.server";
 
-const REQUIRED_TOOLS = ["Read", "Glob", "Grep"];
+const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
 
 const OPTIONAL_TOOLS = [
   { id: "Bash", description: "Execute shell commands" },
@@ -290,11 +290,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
               <input type="hidden" name="intent" value="save-provider" />
               <div className="space-y-3">
                 <label
-                  className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    provider === "anthropic"
-                      ? "border-neutral-900 dark:border-neutral-100 bg-neutral-50 dark:bg-neutral-700"
-                      : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500"
-                  }`}
+                  className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${provider === "anthropic"
+                    ? "border-neutral-900 dark:border-neutral-100 bg-neutral-50 dark:bg-neutral-700"
+                    : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500"
+                    }`}
                 >
                   <input
                     type="radio"
@@ -315,11 +314,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                 </label>
 
                 <label
-                  className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    provider === "bedrock"
-                      ? "border-neutral-900 dark:border-neutral-100 bg-neutral-50 dark:bg-neutral-700"
-                      : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500"
-                  }`}
+                  className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${provider === "bedrock"
+                    ? "border-neutral-900 dark:border-neutral-100 bg-neutral-50 dark:bg-neutral-700"
+                    : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500"
+                    }`}
                 >
                   <input
                     type="radio"
@@ -555,6 +553,7 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                           {tool === "Read" && "Read file contents"}
                           {tool === "Glob" && "Find files by pattern"}
                           {tool === "Grep" && "Search file contents"}
+                          {tool === "Task" && "Spawn subagents for focused tasks"}
                         </p>
                       </div>
                     </label>

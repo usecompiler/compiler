@@ -63,6 +63,7 @@ export default function Home() {
       availableModels={availableModels}
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
+      showHeaderBorder={false}
     >
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />

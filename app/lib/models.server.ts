@@ -21,9 +21,21 @@ let modelCache: ModelCache | null = null;
 const CACHE_TTL = 60 * 60 * 1000;
 
 const FALLBACK_MODELS: ClaudeModel[] = [
-  { id: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4", createdAt: "2025-05-14T00:00:00Z" },
-  { id: "claude-opus-4-20250514", displayName: "Claude Opus 4", createdAt: "2025-05-14T00:00:00Z" },
-  { id: "claude-haiku-3-5-20241022", displayName: "Claude 3.5 Haiku", createdAt: "2024-10-22T00:00:00Z" },
+  {
+    id: "claude-sonnet-4-20250514",
+    displayName: "Claude Sonnet 4",
+    createdAt: "2025-05-14T00:00:00Z",
+  },
+  {
+    id: "claude-opus-4-20250514",
+    displayName: "Claude Opus 4",
+    createdAt: "2025-05-14T00:00:00Z",
+  },
+  {
+    id: "claude-haiku-3-5-20241022",
+    displayName: "Claude 3.5 Haiku",
+    createdAt: "2024-10-22T00:00:00Z",
+  },
 ];
 
 const BEDROCK_MODEL_MAP: Record<string, string> = {
@@ -32,7 +44,9 @@ const BEDROCK_MODEL_MAP: Record<string, string> = {
   "claude-haiku-3-5-20241022": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
 };
 
-export async function fetchModelsFromAnthropic(apiKey: string): Promise<ClaudeModel[]> {
+export async function fetchModelsFromAnthropic(
+  apiKey: string
+): Promise<ClaudeModel[]> {
   try {
     const response = await fetch("https://api.anthropic.com/v1/models", {
       method: "GET",
@@ -51,7 +65,11 @@ export async function fetchModelsFromAnthropic(apiKey: string): Promise<ClaudeMo
     const models: ClaudeModel[] = [];
 
     for (const model of data.data || []) {
-      if (model.id && model.id.startsWith("claude-") && !model.id.includes(":")) {
+      if (
+        model.id &&
+        model.id.startsWith("claude-") &&
+        !model.id.includes(":")
+      ) {
         models.push({
           id: model.id,
           displayName: model.display_name || model.id,
@@ -64,7 +82,10 @@ export async function fetchModelsFromAnthropic(apiKey: string): Promise<ClaudeMo
       return FALLBACK_MODELS;
     }
 
-    models.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    models.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return models;
   } catch (error) {
@@ -98,25 +119,50 @@ export async function fetchModelsFromBedrock(
     const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
     const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${crypto.createHash("sha256").update(canonicalRequest).digest("hex")}`;
 
-    const getSignatureKey = (key: string, dateStamp: string, regionName: string, serviceName: string) => {
-      const kDate = crypto.createHmac("sha256", `AWS4${key}`).update(dateStamp).digest();
-      const kRegion = crypto.createHmac("sha256", kDate).update(regionName).digest();
-      const kService = crypto.createHmac("sha256", kRegion).update(serviceName).digest();
-      const kSigning = crypto.createHmac("sha256", kService).update("aws4_request").digest();
+    const getSignatureKey = (
+      key: string,
+      dateStamp: string,
+      regionName: string,
+      serviceName: string
+    ) => {
+      const kDate = crypto
+        .createHmac("sha256", `AWS4${key}`)
+        .update(dateStamp)
+        .digest();
+      const kRegion = crypto
+        .createHmac("sha256", kDate)
+        .update(regionName)
+        .digest();
+      const kService = crypto
+        .createHmac("sha256", kRegion)
+        .update(serviceName)
+        .digest();
+      const kSigning = crypto
+        .createHmac("sha256", kService)
+        .update("aws4_request")
+        .digest();
       return kSigning;
     };
 
-    const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, service);
-    const signature = crypto.createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+    const signingKey = getSignatureKey(
+      secretAccessKey,
+      dateStamp,
+      region,
+      service
+    );
+    const signature = crypto
+      .createHmac("sha256", signingKey)
+      .update(stringToSign)
+      .digest("hex");
 
     const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
     const response = await fetch(endpoint, {
       method,
       headers: {
-        "Host": host,
+        Host: host,
         "x-amz-date": amzDate,
-        "Authorization": authorizationHeader,
+        Authorization: authorizationHeader,
       },
     });
 
@@ -155,7 +201,9 @@ export async function fetchModelsFromBedrock(
   }
 }
 
-export async function getAvailableClaudeModels(organizationId: string): Promise<ClaudeModel[]> {
+export async function getAvailableClaudeModels(
+  organizationId: string
+): Promise<ClaudeModel[]> {
   const config = await getAIProviderConfig(organizationId);
   if (!config) {
     return FALLBACK_MODELS;
@@ -215,7 +263,9 @@ export async function getModelConfig(
   if (result.length === 0) return null;
 
   return {
-    availableModels: (result[0].availableModels as string[]) || ["claude-sonnet-4-20250514"],
+    availableModels: (result[0].availableModels as string[]) || [
+      "claude-sonnet-4-20250514",
+    ],
     defaultModel: result[0].defaultModel || "claude-sonnet-4-20250514",
   };
 }
@@ -235,7 +285,9 @@ export async function saveModelConfig(
     .where(eq(aiProviderConfigurations.organizationId, organizationId));
 }
 
-export async function getUserPreferredModel(memberId: string): Promise<string | null> {
+export async function getUserPreferredModel(
+  memberId: string
+): Promise<string | null> {
   const result = await db
     .select({ preferredModel: members.preferredModel })
     .from(members)
@@ -246,7 +298,10 @@ export async function getUserPreferredModel(memberId: string): Promise<string | 
   return result[0].preferredModel;
 }
 
-export async function setUserPreferredModel(memberId: string, model: string): Promise<void> {
+export async function setUserPreferredModel(
+  memberId: string,
+  model: string
+): Promise<void> {
   await db
     .update(members)
     .set({ preferredModel: model })
@@ -289,7 +344,7 @@ export function getDisplayName(modelId: string): string {
   return modelId;
 }
 
-export const REQUIRED_TOOLS = ["Read", "Glob", "Grep"];
+export const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
 
 export const OPTIONAL_TOOLS = [
   { id: "Bash", description: "Execute shell commands" },
@@ -304,9 +359,10 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
     .where(eq(aiProviderConfigurations.organizationId, organizationId))
     .limit(1);
 
-  const optionalTools = result.length > 0 && result[0].allowedTools
-    ? (result[0].allowedTools as string[])
-    : ["Bash"];
+  const optionalTools =
+    result.length > 0 && result[0].allowedTools
+      ? (result[0].allowedTools as string[])
+      : ["Bash"];
 
   return [...REQUIRED_TOOLS, ...optionalTools];
 }
