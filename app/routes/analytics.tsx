@@ -2,7 +2,7 @@ import { Link, useLoaderData, redirect } from "react-router";
 import type { Route } from "./+types/analytics";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions.server";
-import { getOrganizationAnalytics, type DailyStats } from "~/lib/analytics.server";
+import { getOrganizationAnalytics, type DailyStats, type AnalyticsSummary } from "~/lib/analytics.server";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,7 +11,6 @@ import {
   LineElement,
   Filler,
   Tooltip,
-  Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 
@@ -21,8 +20,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Filler,
-  Tooltip,
-  Legend
+  Tooltip
 );
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -39,13 +37,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const timezone = url.searchParams.get("tz") || "UTC";
 
-  const stats = await getOrganizationAnalytics(
+  const analytics = await getOrganizationAnalytics(
     user.organization.id,
     user.organization.createdAt,
     timezone
   );
 
-  return { stats };
+  return analytics;
 }
 
 export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
@@ -62,283 +60,39 @@ export async function clientLoader({ request, serverLoader }: Route.ClientLoader
 
 clientLoader.hydrate = true;
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function ConversationChart({ data }: { data: DailyStats[] }) {
-  const chartData = {
-    labels: data.map((d) => formatDate(d.date)),
-    datasets: [
-      {
-        label: "Conversations",
-        data: data.map((d) => d.conversationCount),
-        borderColor: "#3b82f6",
-        backgroundColor: "rgba(59, 130, 246, 0.1)",
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index" as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: "#262626",
-        borderColor: "#404040",
-        borderWidth: 1,
-        titleColor: "#a3a3a3",
-        bodyColor: "#3b82f6",
-        padding: 12,
-        cornerRadius: 8,
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          maxTicksLimit: 8,
-        },
-        border: {
-          display: false,
-        },
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(82, 82, 82, 0.3)",
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          precision: 0,
-        },
-        border: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  return (
-    <section>
-      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-        Conversations
-      </h2>
-      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
-        <div style={{ height: "300px" }}>
-          <Line data={chartData} options={options} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MessageChart({ data }: { data: DailyStats[] }) {
-  const chartData = {
-    labels: data.map((d) => formatDate(d.date)),
-    datasets: [
-      {
-        label: "Messages",
-        data: data.map((d) => d.messageCount),
-        borderColor: "#10b981",
-        backgroundColor: "rgba(16, 185, 129, 0.1)",
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index" as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: "#262626",
-        borderColor: "#404040",
-        borderWidth: 1,
-        titleColor: "#a3a3a3",
-        bodyColor: "#10b981",
-        padding: 12,
-        cornerRadius: 8,
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          maxTicksLimit: 8,
-        },
-        border: {
-          display: false,
-        },
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(82, 82, 82, 0.3)",
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          precision: 0,
-        },
-        border: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  return (
-    <section>
-      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-        Messages
-      </h2>
-      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
-        <div style={{ height: "300px" }}>
-          <Line data={chartData} options={options} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DailyActiveUsersChart({ data }: { data: DailyStats[] }) {
-  const chartData = {
-    labels: data.map((d) => formatDate(d.date)),
-    datasets: [
-      {
-        label: "Active Users",
-        data: data.map((d) => d.activeUserCount),
-        borderColor: "#8b5cf6",
-        backgroundColor: "rgba(139, 92, 246, 0.1)",
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index" as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: "#262626",
-        borderColor: "#404040",
-        borderWidth: 1,
-        titleColor: "#a3a3a3",
-        bodyColor: "#8b5cf6",
-        padding: 12,
-        cornerRadius: 8,
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          maxTicksLimit: 8,
-        },
-        border: {
-          display: false,
-        },
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(82, 82, 82, 0.3)",
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          precision: 0,
-        },
-        border: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  return (
-    <section>
-      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-        Daily Active Users
-      </h2>
-      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
-        <div style={{ height: "300px" }}>
-          <Line data={chartData} options={options} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
+function formatNumber(value: number): string {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`;
   }
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K`;
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
   }
-  return tokens.toString();
+  if (!Number.isInteger(value)) {
+    return value.toFixed(1);
+  }
+  return value.toLocaleString();
 }
 
-function TokenUsageChart({ data }: { data: DailyStats[] }) {
+interface DashboardCardProps {
+  title: string;
+  total: number;
+  data: DailyStats[];
+  dataKey: keyof DailyStats;
+  color: string;
+}
+
+function DashboardCard({ title, total, data, dataKey, color }: DashboardCardProps) {
   const chartData = {
-    labels: data.map((d) => formatDate(d.date)),
+    labels: data.map((d) => d.date),
     datasets: [
       {
-        label: "Tokens",
-        data: data.map((d) => d.tokenCount),
-        borderColor: "#f59e0b",
-        backgroundColor: "rgba(245, 158, 11, 0.1)",
+        data: data.map((d) => d[dataKey] as number),
+        borderColor: color,
+        backgroundColor: `${color}1a`,
         fill: true,
         tension: 0.3,
         pointRadius: 0,
-        pointHoverRadius: 4,
+        borderWidth: 2,
       },
     ],
   };
@@ -359,151 +113,54 @@ function TokenUsageChart({ data }: { data: DailyStats[] }) {
         borderColor: "#404040",
         borderWidth: 1,
         titleColor: "#a3a3a3",
-        bodyColor: "#f59e0b",
-        padding: 12,
-        cornerRadius: 8,
+        bodyColor: color,
+        padding: 8,
+        cornerRadius: 6,
+        displayColors: false,
         callbacks: {
+          title: (items: { label: string }[]) => {
+            const dateStr = items[0]?.label;
+            if (!dateStr) return "";
+            const date = new Date(dateStr);
+            return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          },
           label: (context: { parsed: { y: number | null } }) => {
-            return `Tokens: ${(context.parsed.y ?? 0).toLocaleString()}`;
+            return formatNumber(context.parsed.y ?? 0);
           },
         },
       },
     },
     scales: {
       x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          maxTicksLimit: 8,
-        },
-        border: {
-          display: false,
-        },
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(82, 82, 82, 0.3)",
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          callback: (value: number | string) => formatTokenCount(Number(value)),
-        },
-        border: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  return (
-    <section>
-      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-        Token Usage
-      </h2>
-      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
-        <div style={{ height: "300px" }}>
-          <Line data={chartData} options={options} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ShareChart({ data }: { data: DailyStats[] }) {
-  const chartData = {
-    labels: data.map((d) => formatDate(d.date)),
-    datasets: [
-      {
-        label: "Shares",
-        data: data.map((d) => d.shareCount),
-        borderColor: "#ec4899",
-        backgroundColor: "rgba(236, 72, 153, 0.1)",
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index" as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
         display: false,
       },
-      tooltip: {
-        backgroundColor: "#262626",
-        borderColor: "#404040",
-        borderWidth: 1,
-        titleColor: "#a3a3a3",
-        bodyColor: "#ec4899",
-        padding: 12,
-        cornerRadius: 8,
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          maxTicksLimit: 8,
-        },
-        border: {
-          display: false,
-        },
-      },
       y: {
+        display: false,
         beginAtZero: true,
-        grid: {
-          color: "rgba(82, 82, 82, 0.3)",
-        },
-        ticks: {
-          color: "#a3a3a3",
-          font: { size: 11 },
-          precision: 0,
-        },
-        border: {
-          display: false,
-        },
       },
     },
   };
 
   return (
-    <section>
-      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-        Conversation Shares
-      </h2>
-      <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
-        <div style={{ height: "300px" }}>
-          <Line data={chartData} options={options} />
-        </div>
+    <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-5">
+      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2">{title}</h3>
+      <div className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+        {formatNumber(total)}
       </div>
-    </section>
+      <div style={{ height: "80px" }}>
+        <Line data={chartData} options={options} />
+      </div>
+    </div>
   );
 }
 
 export default function Analytics() {
-  const { stats } = useLoaderData<typeof loader>();
+  const { stats, totals } = useLoaderData<typeof loader>() as AnalyticsSummary;
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
       <header className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4">
           <Link
             to="/"
             className="p-2 -ml-2 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
@@ -516,12 +173,72 @@ export default function Analytics() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-        <DailyActiveUsersChart data={stats} />
-        <ConversationChart data={stats} />
-        <MessageChart data={stats} />
-        <ShareChart data={stats} />
-        <TokenUsageChart data={stats} />
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <DashboardCard
+            title="Daily Active Users"
+            total={totals.dau}
+            data={stats}
+            dataKey="activeUserCount"
+            color="#8b5cf6"
+          />
+          <DashboardCard
+            title="Weekly Active Users"
+            total={totals.wau}
+            data={stats}
+            dataKey="wauCount"
+            color="#6366f1"
+          />
+          <DashboardCard
+            title="Monthly Active Users"
+            total={totals.mau}
+            data={stats}
+            dataKey="mauCount"
+            color="#a855f7"
+          />
+          <DashboardCard
+            title="Conversations"
+            total={totals.conversations}
+            data={stats}
+            dataKey="conversationCount"
+            color="#3b82f6"
+          />
+          <DashboardCard
+            title="Messages"
+            total={totals.messages}
+            data={stats}
+            dataKey="messageCount"
+            color="#10b981"
+          />
+          <DashboardCard
+            title="Avg Messages per User"
+            total={totals.avgMessagesPerUser}
+            data={stats}
+            dataKey="avgMessagesPerUser"
+            color="#0ea5e9"
+          />
+          <DashboardCard
+            title="Shares"
+            total={totals.shares}
+            data={stats}
+            dataKey="shareCount"
+            color="#ec4899"
+          />
+          <DashboardCard
+            title="Review Requests"
+            total={totals.reviewRequests}
+            data={stats}
+            dataKey="reviewRequestCount"
+            color="#14b8a6"
+          />
+          <DashboardCard
+            title="Token Usage"
+            total={totals.tokens}
+            data={stats}
+            dataKey="tokenCount"
+            color="#f59e0b"
+          />
+        </div>
       </main>
     </div>
   );
