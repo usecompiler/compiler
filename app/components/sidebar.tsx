@@ -211,7 +211,7 @@ function ReviewRequestItem({ request }: ReviewRequestItemProps) {
       className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
         isActive
           ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100"
+          : "text-neutral-900 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
       } ${isPending ? "opacity-50" : ""}`}
     >
       <span className="flex-1 truncate pr-6">{request.conversationTitle}</span>
@@ -329,7 +329,7 @@ function ConversationItem({ conversation, readOnly = false, impersonating }: Con
       className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
         isActive
           ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100"
+          : "text-neutral-900 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
       } ${isPending ? "opacity-50" : ""}`}
     >
       <span className={`flex-1 truncate ${readOnly ? "" : "pr-6"}`}>{conversation.title}</span>
