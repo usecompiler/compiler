@@ -29,9 +29,26 @@ Claude models on Bedrock are automatically enabled when first invoked. However, 
 
 5. Click **Open in playground** to test access
 
-6. If prompted, submit the required use case details for Anthropic models
+6. If prompted, submit the required use case details for Anthropic models (see below)
 
 Once you've successfully invoked a model, it's enabled account-wide for all users.
+
+### Anthropic Use Case Submission
+
+First-time users will see a form requesting use case details. Here's guidance on what to enter:
+
+| Field                   | What to Enter                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| **Company name**        | Your company or organization name                                                      |
+| **Company website URL** | Your company website                                                                   |
+| **Industry**            | Select the closest match (e.g., Technology, Software, Professional Services)           |
+| **Intended users**      | Select who will use the application (e.g., "Internal employees", "Business customers") |
+
+**Use case description example:**
+
+> Internal tool for analyzing and understanding how codebases work. Used by our team to explore software projects and get answers to questions about functionality.
+
+**Important:** Do not mention "Claude" in your description - AWS will automatically deny access if detected as it's flagged as Personally Identifiable Information.
 
 ## Step 2: Create an IAM Policy
 
