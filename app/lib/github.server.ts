@@ -15,6 +15,16 @@ export interface GitHubRepo {
   defaultBranch: string;
 }
 
+export interface GitHubAppInstallation {
+  id: number;
+  account: {
+    login: string;
+    id: number;
+    type: string;
+  };
+  repositorySelection: "all" | "selected";
+}
+
 export interface GitHubAppConfig {
   appId: string;
   appSlug: string;
@@ -128,6 +138,36 @@ export async function generateAppJWT(organizationId: string): Promise<string> {
   const signature = sign.sign(config.privateKey);
 
   return `${signatureInput}.${base64url(signature)}`;
+}
+
+export async function listAppInstallations(
+  organizationId: string
+): Promise<GitHubAppInstallation[]> {
+  const jwt = await generateAppJWT(organizationId);
+
+  const response = await fetch(`${GITHUB_API_BASE}/app/installations`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${jwt}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to list app installations: ${error}`);
+  }
+
+  const data = await response.json();
+  return data.map((inst: Record<string, unknown>) => ({
+    id: inst.id as number,
+    account: {
+      login: (inst.account as Record<string, unknown>).login as string,
+      id: (inst.account as Record<string, unknown>).id as number,
+      type: (inst.account as Record<string, unknown>).type as string,
+    },
+    repositorySelection: inst.repository_selection as "all" | "selected",
+  }));
 }
 
 export async function getInstallationAccessToken(

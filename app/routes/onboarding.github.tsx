@@ -2,7 +2,14 @@ import { redirect, useFetcher } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/onboarding.github";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { getInstallation, getGitHubAppConfig } from "~/lib/github.server";
+import {
+  getInstallation,
+  getGitHubAppConfig,
+  listAppInstallations,
+  getInstallationAccessToken,
+  saveInstallation,
+  type GitHubAppInstallation,
+} from "~/lib/github.server";
 import { db } from "~/lib/db/index.server";
 import { repositories, organizations } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -14,7 +21,13 @@ const PUBLIC_REPOS = [
   { fullName: "signalapp/Signal-iOS", name: "Signal-iOS", cloneUrl: "https://github.com/signalapp/Signal-iOS.git" },
 ];
 
-export async function loader({ request }: Route.LoaderArgs) {
+type LoaderData =
+  | { status: "no_installation"; appSlug: string; orgId: string }
+  | { status: "single_installation"; installation: GitHubAppInstallation; orgId: string }
+  | { status: "multiple_installations"; installations: GitHubAppInstallation[]; orgId: string }
+  | { status: "check_failed"; appSlug: string; orgId: string };
+
+export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData | Response> {
   const user = await requireActiveAuth(request);
 
   if (!user.organization) {
@@ -39,7 +52,22 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/onboarding/repos");
   }
 
-  return { appSlug: appConfig.appSlug, orgId: user.organization.id };
+  try {
+    const installations = await listAppInstallations(user.organization.id);
+
+    if (installations.length === 0) {
+      return { status: "no_installation", appSlug: appConfig.appSlug, orgId: user.organization.id };
+    }
+
+    if (installations.length === 1) {
+      return { status: "single_installation", installation: installations[0], orgId: user.organization.id };
+    }
+
+    return { status: "multiple_installations", installations, orgId: user.organization.id };
+  } catch (error) {
+    console.error("Failed to check GitHub installations:", error);
+    return { status: "check_failed", appSlug: appConfig.appSlug, orgId: user.organization.id };
+  }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -50,6 +78,28 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  if (intent === "link_installation") {
+    const installationId = formData.get("installationId") as string;
+
+    if (!installationId) {
+      return { error: "Missing installation ID" };
+    }
+
+    try {
+      const { token, expiresAt } = await getInstallationAccessToken(
+        user.organization.id,
+        installationId
+      );
+      await saveInstallation(user.organization.id, installationId, token, expiresAt);
+      return redirect("/onboarding/repos");
+    } catch (error) {
+      console.error("Failed to link installation:", error);
+      return { error: "Failed to connect to GitHub. Please try again." };
+    }
+  }
+
   const selectedRepo = formData.get("repos") as string;
 
   if (!selectedRepo) {
@@ -85,8 +135,136 @@ export async function action({ request }: Route.ActionArgs) {
   return redirect("/onboarding/syncing");
 }
 
-export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
-  const { appSlug, orgId } = loaderData;
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+    </svg>
+  );
+}
+
+function SingleInstallationView({
+  installation,
+  orgId,
+}: {
+  installation: GitHubAppInstallation;
+  orgId: string;
+}) {
+  const fetcher = useFetcher();
+  const isSubmitting = fetcher.state !== "idle";
+  const error = fetcher.data?.error;
+
+  return (
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+            <GitHubIcon className="w-8 h-8 text-neutral-600 dark:text-neutral-400" />
+          </div>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            GitHub App Found
+          </h1>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            We detected an existing installation on <strong>{installation.account.login}</strong>.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        <fetcher.Form method="post">
+          <input type="hidden" name="intent" value="link_installation" />
+          <input type="hidden" name="installationId" value={installation.id.toString()} />
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50"
+          >
+            {isSubmitting ? "Connecting..." : `Connect to ${installation.account.login}`}
+          </button>
+        </fetcher.Form>
+      </div>
+    </div>
+  );
+}
+
+function MultipleInstallationsView({
+  installations,
+  orgId,
+}: {
+  installations: GitHubAppInstallation[];
+  orgId: string;
+}) {
+  const fetcher = useFetcher();
+  const [selected, setSelected] = useState<string | null>(null);
+  const isSubmitting = fetcher.state !== "idle";
+  const error = fetcher.data?.error;
+
+  return (
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+            <GitHubIcon className="w-8 h-8 text-neutral-600 dark:text-neutral-400" />
+          </div>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            Select GitHub Organization
+          </h1>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            Your GitHub App is installed on multiple organizations. Select which one to connect.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        <fetcher.Form method="post">
+          <input type="hidden" name="intent" value="link_installation" />
+          <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg overflow-hidden mb-4">
+            <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+              {installations.map((inst) => (
+                <label
+                  key={inst.id}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 cursor-pointer"
+                >
+                  <input
+                    type="radio"
+                    name="installationId"
+                    value={inst.id.toString()}
+                    checked={selected === inst.id.toString()}
+                    onChange={() => setSelected(inst.id.toString())}
+                    className="w-4 h-4 border-neutral-300 dark:border-neutral-600"
+                  />
+                  <span className="text-neutral-900 dark:text-neutral-100">
+                    {inst.account.login}
+                  </span>
+                  <span className="text-xs text-neutral-400">
+                    ({inst.account.type})
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={isSubmitting || !selected}
+            className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? "Connecting..." : "Continue"}
+          </button>
+        </fetcher.Form>
+      </div>
+    </div>
+  );
+}
+
+function NoInstallationView({ appSlug, orgId }: { appSlug: string; orgId: string }) {
   const installUrl = `https://github.com/apps/${appSlug}/installations/new?state=${orgId}`;
   const fetcher = useFetcher();
   const [selected, setSelected] = useState<string | null>(null);
@@ -99,9 +277,7 @@ export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-            <svg className="w-8 h-8 text-neutral-600 dark:text-neutral-400" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-            </svg>
+            <GitHubIcon className="w-8 h-8 text-neutral-600 dark:text-neutral-400" />
           </div>
           <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
             Connect to GitHub
@@ -115,9 +291,7 @@ export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
           href={installUrl}
           className="inline-flex items-center justify-center gap-2 w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
         >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
+          <GitHubIcon className="w-5 h-5" />
           Install GitHub App
         </a>
 
@@ -181,4 +355,26 @@ export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
       </div>
     </div>
   );
+}
+
+export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
+  if (loaderData.status === "single_installation") {
+    return (
+      <SingleInstallationView
+        installation={loaderData.installation}
+        orgId={loaderData.orgId}
+      />
+    );
+  }
+
+  if (loaderData.status === "multiple_installations") {
+    return (
+      <MultipleInstallationsView
+        installations={loaderData.installations}
+        orgId={loaderData.orgId}
+      />
+    );
+  }
+
+  return <NoInstallationView appSlug={loaderData.appSlug} orgId={loaderData.orgId} />;
 }
