@@ -2,7 +2,20 @@
 
 An AI-powered tool that helps non-technical teams get answers about how an app works without needing to ask engineers.
 
-![UdlGRSs4yShAWnICAr9je1LWag png](https://github.com/user-attachments/assets/da1e08d7-a280-4c60-bbbe-9f0e313f0148)
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/da1e08d7-a280-4c60-bbbe-9f0e313f0148"
+    alt="Compiler example reading the Basecamp Fizzy repo"
+    width="700"
+  />
+</p>
+
+<p align="center">
+  <em>
+    Compiler answering questions about the
+    <a href="https://github.com/basecamp/fizzy" target="_blank">Basecamp Fizzy codebase</a>
+  </em>
+</p>
 
 ## Stack
 
