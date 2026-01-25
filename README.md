@@ -2,6 +2,8 @@
 
 An AI-powered tool that helps non-technical teams get answers about how an app works without needing to ask engineers.
 
+![UdlGRSs4yShAWnICAr9je1LWag png](https://github.com/user-attachments/assets/da1e08d7-a280-4c60-bbbe-9f0e313f0148)
+
 ## Stack
 
 - **Frontend**: React 19, React Router 7, TailwindCSS 4
