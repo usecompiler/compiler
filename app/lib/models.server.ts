@@ -53,15 +53,53 @@ const FALLBACK_MODELS: ClaudeModel[] = [
   },
 ];
 
-const BEDROCK_MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-20250514": "anthropic.claude-sonnet-4-20250514-v1:0",
-  "claude-sonnet-4-5-20250929": "anthropic.claude-sonnet-4-5-20250929-v1:0",
-  "claude-opus-4-5-20251101": "anthropic.claude-opus-4-5-20251101-v1:0",
-  "claude-haiku-4-5-20251001": "anthropic.claude-haiku-4-5-20251001-v1:0",
-  "claude-3-7-sonnet-20250219": "anthropic.claude-3-7-sonnet-20250219-v1:0",
-  "claude-3-5-sonnet-20241022": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-  "claude-3-5-sonnet-20240620": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-};
+interface ModelMappingCache {
+  anthropicToBedrock: Map<string, string>;
+  fetchedAt: number;
+}
+let modelMappingCache: ModelMappingCache | null = null;
+
+function parseBedrockIdToAnthropic(bedrockId: string): string | null {
+  const prefixes = ["anthropic.", "au.anthropic.", "apac.anthropic.", "eu.anthropic.", "us.anthropic."];
+  let withoutPrefix: string | null = null;
+
+  for (const prefix of prefixes) {
+    if (bedrockId.startsWith(prefix)) {
+      withoutPrefix = bedrockId.slice(prefix.length);
+      break;
+    }
+  }
+
+  if (!withoutPrefix) return null;
+
+  const match = withoutPrefix.match(/^(.+)-v\d+:\d+$/);
+  return match ? match[1] : null;
+}
+
+function getRegionPrefix(region: string): string {
+  if (region.startsWith("us-east-1") || region.startsWith("us-west-2")) {
+    return "";
+  }
+  if (region.startsWith("ap-southeast-2") || region.startsWith("ap-south")) {
+    return "apac.";
+  }
+  if (region.startsWith("eu-")) {
+    return "eu.";
+  }
+  if (region.startsWith("us-")) {
+    return "us.";
+  }
+  return "";
+}
+
+function getModelPrefix(anthropicId: string, region: string): string {
+  if (anthropicId.includes("4-5") || anthropicId.includes("4.5")) {
+    if (region.startsWith("ap-southeast-2")) {
+      return "au.";
+    }
+  }
+  return getRegionPrefix(region);
+}
 
 export async function fetchModelsFromAnthropic(
   apiKey: string
@@ -193,13 +231,20 @@ export async function fetchModelsFromBedrock(
     const data = await response.json();
     const models: ClaudeModel[] = [];
 
+    modelMappingCache = {
+      anthropicToBedrock: new Map(),
+      fetchedAt: Date.now(),
+    };
+
     for (const model of data.modelSummaries || []) {
       if (model.modelId && model.modelId.includes("claude")) {
-        const anthropicId = Object.entries(BEDROCK_MODEL_MAP).find(
-          ([, bedrockId]) => bedrockId === model.modelId
-        )?.[0];
+        const anthropicId = parseBedrockIdToAnthropic(model.modelId);
 
         if (anthropicId) {
+          const prefix = getModelPrefix(anthropicId, region);
+          const bedrockIdWithPrefix = `${prefix}${model.modelId}`;
+          modelMappingCache.anthropicToBedrock.set(anthropicId, bedrockIdWithPrefix);
+
           models.push({
             id: anthropicId,
             displayName: model.modelName || anthropicId,
@@ -345,8 +390,17 @@ export async function getEffectiveModel(
   return modelConfig.defaultModel || "claude-sonnet-4-20250514";
 }
 
-export function getBedrockModelId(anthropicModelId: string): string {
-  return BEDROCK_MODEL_MAP[anthropicModelId] || anthropicModelId;
+export function getBedrockModelId(anthropicModelId: string, region?: string): string {
+  if (modelMappingCache?.anthropicToBedrock.has(anthropicModelId)) {
+    return modelMappingCache.anthropicToBedrock.get(anthropicModelId)!;
+  }
+
+  const prefix = region ? getModelPrefix(anthropicModelId, region) : "";
+  const versionSuffix = anthropicModelId.includes("3-5-sonnet-20241022") ? "-v2:0" : "-v1:0";
+  const constructedId = `${prefix}anthropic.${anthropicModelId}${versionSuffix}`;
+
+  console.warn(`Constructing Bedrock ID for ${anthropicModelId}: ${constructedId}`);
+  return constructedId;
 }
 
 export function getDisplayName(modelId: string): string {

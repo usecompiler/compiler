@@ -143,7 +143,7 @@ export async function* runAgent(
 
   const effectiveModel = await getEffectiveModel(memberId, organizationId);
   const modelId = aiProviderConfig?.provider === "bedrock"
-    ? getBedrockModelId(effectiveModel)
+    ? getBedrockModelId(effectiveModel, aiProviderConfig.awsRegion)
     : effectiveModel;
 
   const allowedTools = await getToolConfig(organizationId);
