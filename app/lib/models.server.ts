@@ -22,26 +22,45 @@ const CACHE_TTL = 60 * 60 * 1000;
 
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
+    id: "claude-sonnet-4-5-20250929",
+    displayName: "Claude Sonnet 4.5",
+    createdAt: "2025-09-29T00:00:00Z",
+  },
+  {
+    id: "claude-opus-4-5-20251101",
+    displayName: "Claude Opus 4.5",
+    createdAt: "2025-11-01T00:00:00Z",
+  },
+  {
+    id: "claude-haiku-4-5-20251001",
+    displayName: "Claude Haiku 4.5",
+    createdAt: "2025-10-01T00:00:00Z",
+  },
+  {
     id: "claude-sonnet-4-20250514",
     displayName: "Claude Sonnet 4",
     createdAt: "2025-05-14T00:00:00Z",
   },
   {
-    id: "claude-opus-4-20250514",
-    displayName: "Claude Opus 4",
-    createdAt: "2025-05-14T00:00:00Z",
+    id: "claude-3-7-sonnet-20250219",
+    displayName: "Claude 3.7 Sonnet",
+    createdAt: "2025-02-19T00:00:00Z",
   },
   {
-    id: "claude-haiku-3-5-20241022",
-    displayName: "Claude 3.5 Haiku",
+    id: "claude-3-5-sonnet-20241022",
+    displayName: "Claude 3.5 Sonnet v2",
     createdAt: "2024-10-22T00:00:00Z",
   },
 ];
 
 const BEDROCK_MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-20250514": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-  "claude-opus-4-20250514": "us.anthropic.claude-opus-4-20250514-v1:0",
-  "claude-haiku-3-5-20241022": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  "claude-sonnet-4-20250514": "anthropic.claude-sonnet-4-20250514-v1:0",
+  "claude-sonnet-4-5-20250929": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "claude-opus-4-5-20251101": "anthropic.claude-opus-4-5-20251101-v1:0",
+  "claude-haiku-4-5-20251001": "anthropic.claude-haiku-4-5-20251001-v1:0",
+  "claude-3-7-sonnet-20250219": "anthropic.claude-3-7-sonnet-20250219-v1:0",
+  "claude-3-5-sonnet-20241022": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "claude-3-5-sonnet-20240620": "anthropic.claude-3-5-sonnet-20240620-v1:0",
 };
 
 export async function fetchModelsFromAnthropic(
