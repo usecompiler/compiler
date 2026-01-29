@@ -62,6 +62,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     config: {
       provider: config.provider,
       awsRegion: config.awsRegion || null,
+      promptCachingEnabled: config.promptCachingEnabled ?? true,
     },
     availableModels: apiModels,
     modelConfig,
@@ -143,10 +144,13 @@ export async function action({ request }: Route.ActionArgs) {
       return { error: validation.error || "Invalid AWS credentials", success: false, intent: "save-provider" };
     }
 
+    const promptCachingEnabled = formData.get("promptCaching") === "true";
+
     await saveAIProviderConfig(user.organization.id, "bedrock", {
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
+      promptCachingEnabled,
     });
   }
 
@@ -403,6 +407,19 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                       {config ? "Enter credentials to update" : "AWS credentials with Bedrock access"}
                     </p>
                   </div>
+
+                  <label className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                    <input
+                      type="checkbox"
+                      name="promptCaching"
+                      value="true"
+                      defaultChecked={config?.promptCachingEnabled ?? true}
+                      className="w-4 h-4"
+                    />
+                    <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                      Prompt Caching
+                    </span>
+                  </label>
                 </div>
               )}
 

@@ -187,6 +187,7 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   awsAccessKeyIdIv: text("aws_access_key_id_iv"),
   encryptedAwsSecretAccessKey: text("encrypted_aws_secret_access_key"),
   awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
+  promptCachingEnabled: boolean("prompt_caching_enabled").default(true),
   availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-20250514"]),
   defaultModel: text("default_model").default("claude-sonnet-4-20250514"),
   allowedTools: jsonb("allowed_tools").$type<string[]>().default(["Bash"]),

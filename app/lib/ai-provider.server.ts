@@ -12,6 +12,7 @@ export interface AIProviderConfig {
   awsRegion?: string;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
+  promptCachingEnabled?: boolean;
 }
 
 export async function getAIProviderConfig(
@@ -52,6 +53,7 @@ export async function getAIProviderConfig(
       awsRegion: config.awsRegion,
       awsAccessKeyId: decrypt(config.encryptedAwsAccessKeyId, config.awsAccessKeyIdIv),
       awsSecretAccessKey: decrypt(config.encryptedAwsSecretAccessKey, config.awsSecretAccessKeyIv),
+      promptCachingEnabled: config.promptCachingEnabled ?? true,
     };
   }
 
@@ -66,6 +68,7 @@ export async function saveAIProviderConfig(
     awsRegion?: string;
     awsAccessKeyId?: string;
     awsSecretAccessKey?: string;
+    promptCachingEnabled?: boolean;
   }
 ): Promise<void> {
   const existing = await db
@@ -108,6 +111,7 @@ export async function saveAIProviderConfig(
       awsAccessKeyIdIv: accessKeyEncrypted.iv,
       encryptedAwsSecretAccessKey: secretKeyEncrypted.ciphertext,
       awsSecretAccessKeyIv: secretKeyEncrypted.iv,
+      promptCachingEnabled: credentials.promptCachingEnabled ?? true,
     };
   }
 
@@ -237,12 +241,18 @@ export async function getAIProviderEnv(
     config.awsAccessKeyId &&
     config.awsSecretAccessKey
   ) {
-    return {
+    const env: Record<string, string> = {
       CLAUDE_CODE_USE_BEDROCK: "1",
       AWS_REGION: config.awsRegion,
       AWS_ACCESS_KEY_ID: config.awsAccessKeyId,
       AWS_SECRET_ACCESS_KEY: config.awsSecretAccessKey,
     };
+
+    if (!config.promptCachingEnabled) {
+      env.DISABLE_PROMPT_CACHING = "1";
+    }
+
+    return env;
   }
 
   return {};

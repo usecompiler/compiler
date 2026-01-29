@@ -76,31 +76,6 @@ function parseBedrockIdToAnthropic(bedrockId: string): string | null {
   return match ? match[1] : null;
 }
 
-function getRegionPrefix(region: string): string {
-  if (region.startsWith("us-east-1") || region.startsWith("us-west-2")) {
-    return "";
-  }
-  if (region.startsWith("ap-southeast-2") || region.startsWith("ap-south")) {
-    return "apac.";
-  }
-  if (region.startsWith("eu-")) {
-    return "eu.";
-  }
-  if (region.startsWith("us-")) {
-    return "us.";
-  }
-  return "";
-}
-
-function getModelPrefix(anthropicId: string, region: string): string {
-  if (anthropicId.includes("4-5") || anthropicId.includes("4.5")) {
-    if (region.startsWith("ap-southeast-2")) {
-      return "au.";
-    }
-  }
-  return getRegionPrefix(region);
-}
-
 export async function fetchModelsFromAnthropic(
   apiKey: string
 ): Promise<ClaudeModel[]> {
@@ -241,9 +216,7 @@ export async function fetchModelsFromBedrock(
         const anthropicId = parseBedrockIdToAnthropic(model.modelId);
 
         if (anthropicId) {
-          const prefix = getModelPrefix(anthropicId, region);
-          const bedrockIdWithPrefix = `${prefix}${model.modelId}`;
-          modelMappingCache.anthropicToBedrock.set(anthropicId, bedrockIdWithPrefix);
+          modelMappingCache.anthropicToBedrock.set(anthropicId, model.modelId);
 
           models.push({
             id: anthropicId,
@@ -388,19 +361,6 @@ export async function getEffectiveModel(
   }
 
   return modelConfig.defaultModel || "claude-sonnet-4-20250514";
-}
-
-export function getBedrockModelId(anthropicModelId: string, region?: string): string {
-  if (modelMappingCache?.anthropicToBedrock.has(anthropicModelId)) {
-    return modelMappingCache.anthropicToBedrock.get(anthropicModelId)!;
-  }
-
-  const prefix = region ? getModelPrefix(anthropicModelId, region) : "";
-  const versionSuffix = anthropicModelId.includes("3-5-sonnet-20241022") ? "-v2:0" : "-v1:0";
-  const constructedId = `${prefix}anthropic.${anthropicModelId}${versionSuffix}`;
-
-  console.warn(`Constructing Bedrock ID for ${anthropicModelId}: ${constructedId}`);
-  return constructedId;
 }
 
 export function getDisplayName(modelId: string): string {

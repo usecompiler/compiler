@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
-import { getEffectiveModel, getBedrockModelId, getToolConfig } from "./models.server";
+import { getEffectiveModel, getToolConfig } from "./models.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
@@ -142,9 +142,6 @@ export async function* runAgent(
   const repoNames = completedRepos.map((r) => r.name);
 
   const effectiveModel = await getEffectiveModel(memberId, organizationId);
-  const modelId = aiProviderConfig?.provider === "bedrock"
-    ? getBedrockModelId(effectiveModel, aiProviderConfig.awsRegion)
-    : effectiveModel;
 
   const allowedTools = await getToolConfig(organizationId);
 
@@ -159,7 +156,7 @@ export async function* runAgent(
     for await (const message of query({
       prompt: fullPrompt,
       options: {
-        model: modelId,
+        model: effectiveModel,
         systemPrompt: buildSystemPrompt(repoNames),
         allowedTools,
         permissionMode: "plan",

@@ -69,13 +69,25 @@ First-time users will see a form requesting use case details. Here's guidance on
          ],
          "Resource": [
            "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
-           "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-*"
+           "arn:aws:bedrock:*:*:inference-profile/*"
          ]
        },
        {
-         "Sid": "BedrockListModels",
+         "Sid": "BedrockListAccess",
          "Effect": "Allow",
-         "Action": "bedrock:ListFoundationModels",
+         "Action": [
+           "bedrock:ListFoundationModels",
+           "bedrock:ListInferenceProfiles"
+         ],
+         "Resource": "*"
+       },
+       {
+         "Sid": "MarketplaceAccess",
+         "Effect": "Allow",
+         "Action": [
+           "aws-marketplace:ViewSubscriptions",
+           "aws-marketplace:Subscribe"
+         ],
          "Resource": "*"
        }
      ]
@@ -139,3 +151,25 @@ First-time users will see a form requesting use case details. Here's guidance on
 5. Click **Save Configuration**
 
    The app will validate your credentials by calling the Bedrock API.
+
+## Troubleshooting
+
+### "Unsupported model or your request did not allow prompt caching"
+
+This error occurs when prompt caching is not available in your AWS region. The application automatically disables prompt caching for Bedrock connections to avoid this issue.
+
+If you're still seeing this error after updating, ensure you're running the latest version of the application.
+
+### Organization SCP Blocking Cross-Region Access
+
+If your AWS Organization has Service Control Policies (SCPs) that restrict Bedrock to specific regions:
+
+1. Use a region where your organization allows Bedrock access (check with your AWS administrator)
+2. Use direct foundation model IDs (e.g., `anthropic.claude-3-5-sonnet-20241022-v2:0`) rather than inference profiles
+3. Cross-region inference profiles (`apac.*`, `global.*`, `us.*`) will not work if SCPs block those regions
+
+### Access Denied Errors
+
+1. Verify your IAM policy includes all required permissions (see Step 2)
+2. Ensure Claude models are enabled in your selected region (see Step 1)
+3. Check if your organization has SCPs limiting Bedrock access

@@ -113,6 +113,13 @@
       "when": 1767350000000,
       "tag": "0015_add_allowed_tools_to_ai_provider_configurations",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1769716792849,
+      "tag": "0016_add_prompt_caching_enabled_to_ai_provider_configurations",
+      "breakpoints": true
     }
   ]
 }
