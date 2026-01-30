@@ -1,6 +1,6 @@
 {
-  "id": "d38cce1b-67ad-4f78-8f31-50d9a5af96bf",
-  "prevId": "b60f3d8c-0399-5877-95f1-bf7699bdc5f0",
+  "id": "b60f3d8c-0399-5877-95f1-bf7699bdc5f0",
+  "prevId": "a59e2c7b-9288-4766-84f0-ae6588accb4f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -68,19 +68,26 @@
           "primaryKey": false,
           "notNull": false
         },
-        "prompt_caching_enabled": {
-          "name": "prompt_caching_enabled",
-          "type": "boolean",
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
-          "default": true
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "available_models": {
           "name": "available_models",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false,
-          "default": "'[\"claude-sonnet-4-20250514\"]'::jsonb"
+          "default": "[\"claude-sonnet-4-20250514\"]"
         },
         "default_model": {
           "name": "default_model",
@@ -95,20 +102,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'[\"Bash\"]'::jsonb"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {},
@@ -620,18 +613,18 @@
           "primaryKey": false,
           "notNull": false
         },
-        "preferred_model": {
-          "name": "preferred_model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "preferred_model": {
+          "name": "preferred_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
