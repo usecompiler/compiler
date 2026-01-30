@@ -117,8 +117,8 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1769716792849,
-      "tag": "0016_add_prompt_caching_enabled_to_ai_provider_configurations",
+      "when": 1769731184127,
+      "tag": "0016_add_prompt_caching_enabled",
       "breakpoints": true
     }
   ]

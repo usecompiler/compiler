@@ -1,5 +1,5 @@
 {
-  "id": "92d05dc2-f1df-4208-9a72-f400a31dd39b",
+  "id": "d38cce1b-67ad-4f78-8f31-50d9a5af96bf",
   "prevId": "a59e2c7b-9288-4766-84f0-ae6588accb4f",
   "version": "7",
   "dialect": "postgresql",
@@ -68,8 +68,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "disable_prompt_caching": {
-          "name": "disable_prompt_caching",
+        "prompt_caching_enabled": {
+          "name": "prompt_caching_enabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": false,
