@@ -69,6 +69,7 @@ export async function getOrganizationAnalytics(
       and(
         eq(members.organizationId, organizationId),
         eq(items.type, "message"),
+        eq(items.role, "user"),
         gte(items.createdAt, startDate)
       )
     )
