@@ -4,6 +4,7 @@ import type { Route } from "./+types/settings.authentication";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions";
 import { getSSOConfig, saveSSOConfig, generateSPMetadata } from "~/lib/saml.server";
+import { getPublicBaseUrl } from "~/lib/url.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -17,8 +18,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const config = await getSSOConfig(user.organization.id);
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = getPublicBaseUrl(request);
 
   const defaultConfig = {
     id: "",
@@ -54,8 +54,7 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "save") {
-    const url = new URL(request.url);
-    const baseUrl = `${url.protocol}//${url.host}`;
+    const baseUrl = getPublicBaseUrl(request);
 
     const enabled = formData.get("enabled") === "true";
     const allowPasswordLogin = formData.get("allowPasswordLogin") === "true";

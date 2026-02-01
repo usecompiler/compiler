@@ -5,6 +5,7 @@ import { db } from "~/lib/db/index.server";
 import { users, members, organizations } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createSession, createSessionCookie } from "~/lib/auth.server";
+import { getPublicBaseUrl } from "~/lib/url.server";
 
 export async function action({ request }: Route.ActionArgs) {
   const config = await getDefaultOrgSSOConfig();
@@ -21,8 +22,7 @@ export async function action({ request }: Route.ActionArgs) {
     throw redirect("/login?error=missing_saml_response");
   }
 
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = getPublicBaseUrl(request);
 
   try {
     const userInfo = await validateSAMLResponse(config, baseUrl, samlResponse);

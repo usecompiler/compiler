@@ -1,6 +1,7 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.saml";
 import { getDefaultOrgSSOConfig, generateAuthUrl } from "~/lib/saml.server";
+import { getPublicBaseUrl } from "~/lib/url.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const config = await getDefaultOrgSSOConfig();
@@ -10,7 +11,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = getPublicBaseUrl(request);
   const relayState = url.searchParams.get("redirect") || "/";
 
   try {

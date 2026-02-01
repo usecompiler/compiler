@@ -1,10 +1,10 @@
 import type { Route } from "./+types/auth.saml.metadata";
 import { getDefaultOrgSSOConfig, generateSPMetadata } from "~/lib/saml.server";
+import { getPublicBaseUrl } from "~/lib/url.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const config = await getDefaultOrgSSOConfig();
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = getPublicBaseUrl(request);
 
   const defaultConfig = {
     id: "",
