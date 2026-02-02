@@ -242,7 +242,6 @@ export async function reactivateMember(
   memberId: string,
   organizationId: string
 ): Promise<{ success: boolean; error?: string }> {
-  // Get the member to reactivate
   const memberToReactivate = await db
     .select()
     .from(members)
@@ -257,6 +256,39 @@ export async function reactivateMember(
     .update(members)
     .set({ deactivatedAt: null })
     .where(and(eq(members.id, memberId), eq(members.organizationId, organizationId)));
+
+  return { success: true };
+}
+
+export async function deleteUser(
+  memberId: string,
+  organizationId: string,
+  requesterId: string,
+  requesterRole: "owner" | "admin" | "member" = "member"
+): Promise<{ success: boolean; error?: string }> {
+  const memberToDelete = await db
+    .select()
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.organizationId, organizationId)))
+    .limit(1);
+
+  if (memberToDelete.length === 0) {
+    return { success: false, error: "Member not found" };
+  }
+
+  if (memberToDelete[0].userId === requesterId) {
+    return { success: false, error: "Cannot delete yourself" };
+  }
+
+  if (memberToDelete[0].role === "owner") {
+    return { success: false, error: "Cannot delete the owner" };
+  }
+
+  if (requesterRole === "admin" && memberToDelete[0].role === "admin") {
+    return { success: false, error: "Admins cannot delete other admins" };
+  }
+
+  await db.delete(users).where(eq(users.id, memberToDelete[0].userId));
 
   return { success: true };
 }

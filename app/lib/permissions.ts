@@ -38,6 +38,23 @@ export function canDeactivateMember(
   return false;
 }
 
+export function canDeleteUser(
+  actorRole: Role | undefined,
+  targetRole: Role
+): boolean {
+  if (!actorRole) return false;
+
+  if (actorRole === "owner") {
+    return targetRole !== "owner";
+  }
+
+  if (actorRole === "admin") {
+    return targetRole === "member";
+  }
+
+  return false;
+}
+
 export function canCreateInvitationWithRole(
   actorRole: Role | undefined,
   inviteRole: Role

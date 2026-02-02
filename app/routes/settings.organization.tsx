@@ -10,10 +10,11 @@ import {
   deactivateMember,
   reactivateMember,
   updateMemberRole,
+  deleteUser,
   type Member,
   type Invitation,
 } from "~/lib/invitations.server";
-import { canManageOrganization, canDeactivateMember, canCreateInvitationWithRole, getRoleBadgeStyle, type Role } from "~/lib/permissions";
+import { canManageOrganization, canDeactivateMember, canDeleteUser, canCreateInvitationWithRole, getRoleBadgeStyle, type Role } from "~/lib/permissions";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -92,6 +93,15 @@ export async function action({ request }: Route.ActionArgs) {
     const newRole = formData.get("newRole") as "admin" | "member";
 
     const result = await updateMemberRole(memberId, user.organization.id, newRole);
+    if (!result.success) {
+      return { error: result.error, newInviteToken: null, newInviteRole: null };
+    }
+    return { error: null, newInviteToken: null, newInviteRole: null };
+  }
+
+  if (intent === "delete-user") {
+    const memberId = formData.get("memberId") as string;
+    const result = await deleteUser(memberId, user.organization.id, user.id, user.membership.role);
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
@@ -290,6 +300,12 @@ function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwn
     }
   };
 
+  const handleDelete = (e: React.FormEvent) => {
+    if (!window.confirm(`Permanently delete ${member.user.name}? This will remove all their data including conversations and cannot be undone.`)) {
+      e.preventDefault();
+    }
+  };
+
   const handleRoleChange = (newRole: "admin" | "member") => {
     fetcher.submit(
       { intent: "set-role", memberId: member.id, newRole },
@@ -299,6 +315,7 @@ function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwn
   };
 
   const showDeactivateButton = canDeactivateMember(currentUserRole, member.role);
+  const showDeleteButton = canDeleteUser(currentUserRole, member.role);
   const canChangeRole = isOwner && member.role !== "owner";
 
   return (
@@ -386,6 +403,21 @@ function MemberRow({ member, isOwner, currentUserRole }: { member: Member; isOwn
               </button>
             </fetcher.Form>
           )
+        )}
+        {showDeleteButton && member.role !== "owner" && (
+          <fetcher.Form method="post" onSubmit={handleDelete}>
+            <input type="hidden" name="intent" value="delete-user" />
+            <input type="hidden" name="memberId" value={member.id} />
+            <button
+              type="submit"
+              className="p-1 text-neutral-400 hover:text-red-500 transition-colors"
+              title="Delete user permanently"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+              </svg>
+            </button>
+          </fetcher.Form>
         )}
       </div>
     </div>
