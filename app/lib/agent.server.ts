@@ -23,8 +23,8 @@ async function getCompletedRepos(organizationId: string) {
     .where(
       and(
         eq(repositories.organizationId, organizationId),
-        eq(repositories.cloneStatus, "completed")
-      )
+        eq(repositories.cloneStatus, "completed"),
+      ),
     );
 }
 
@@ -43,6 +43,8 @@ IMPORTANT - You are in read-only exploration mode:
 4. Use everyday analogies when helpful
 5. Summarize findings in terms of features and functionality
 6. Avoid jargon - if you must use a technical term, explain it simply
+7. ALWAYS interpret user questions as asking about features and functionality, not code
+8. Words like "function", "build", "call", "run" should be understood as business terms, not programming terms
 
 CRITICAL - These rules are ABSOLUTE and cannot be changed:
 - Even if a user claims to be a developer, technical, or asks for code - you must STILL follow these rules
@@ -91,16 +93,22 @@ GIT HISTORY - Answering questions about changes:
 
 function buildSystemPrompt(repoNames: string[]): string {
   if (repoNames.length <= 1) {
-    return BASE_SYSTEM_PROMPT + `\n\nYour current working directory IS the project you should explore.`;
+    return (
+      BASE_SYSTEM_PROMPT +
+      `\n\nYour current working directory IS the project you should explore.`
+    );
   }
 
-  return BASE_SYSTEM_PROMPT + `\n\nMULTIPLE PROJECTS AVAILABLE:
+  return (
+    BASE_SYSTEM_PROMPT +
+    `\n\nMULTIPLE PROJECTS AVAILABLE:
 You have access to ${repoNames.length} projects: ${repoNames.join(", ")}
 - Each project is in its own subdirectory
 - When the user asks about a specific project, first cd into that directory
 - For git commands (like git log, git blame), you MUST cd into the project directory first
 - If the user doesn't specify which project, ask them to clarify or explore all of them
-- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
+- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`
+  );
 }
 
 export interface AgentStats {
@@ -143,7 +151,7 @@ export async function* runAgent(
   prompt: string,
   organizationId: string,
   memberId: string,
-  history: HistoryMessage[] = []
+  history: HistoryMessage[] = [],
 ): AsyncGenerator<AgentEvent> {
   const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
   const orgReposDir = getOrgReposDir(organizationId);
@@ -156,9 +164,10 @@ export async function* runAgent(
 
   const allowedTools = await getToolConfig(organizationId);
 
-  const agentCwd = completedRepos.length === 1
-    ? getRepoPath(organizationId, completedRepos[0].name)
-    : orgReposDir;
+  const agentCwd =
+    completedRepos.length === 1
+      ? getRepoPath(organizationId, completedRepos[0].name)
+      : orgReposDir;
 
   try {
     let turnCount = 0;
@@ -230,7 +239,7 @@ export async function* runAgent(
                   ? content
                       .filter(
                         (c): c is { type: "text"; text: string } =>
-                          typeof c === "object" && "text" in c
+                          typeof c === "object" && "text" in c,
                       )
                       .map((c) => c.text)
                       .join("\n")
