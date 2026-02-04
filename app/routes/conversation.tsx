@@ -6,6 +6,7 @@ import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
 import { ShareModal } from "~/components/share-modal";
 import { requireActiveAuth } from "~/lib/auth.server";
+import { canManageOrganization } from "~/lib/permissions";
 import {
   getConversation,
   getConversationItems,
@@ -30,6 +31,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const isOwner = user.membership?.role === "owner";
   const url = new URL(request.url);
   const shareToken = url.searchParams.get("share");
+  const impersonateUserId = url.searchParams.get("impersonate");
 
   const conversation = await getConversation(params.id!);
   if (!conversation) {
@@ -53,8 +55,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     }
   }
 
-  if (!canAccess && isOwner && user.organization) {
-    canAccess = await isUserInOrg(conversation.userId, user.organization.id);
+  if (!canAccess && canManageOrganization(user.membership?.role) && user.organization) {
+    if (impersonateUserId && conversation.userId === impersonateUserId) {
+      canAccess = await isUserInOrg(impersonateUserId, user.organization.id);
+    } else if (isOwner) {
+      canAccess = await isUserInOrg(conversation.userId, user.organization.id);
+    }
   }
 
   if (!canAccess) {
