@@ -1,5 +1,5 @@
 import { Form, redirect, useOutletContext } from "react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
@@ -74,8 +74,22 @@ export default function Home() {
   );
 }
 
+const suggestedPrompts = [
+  "What changes have been made over the last week?",
+  "What bugs were fixed recently?",
+  "What's currently being worked on?",
+];
+
 function HomePromptInput() {
   const [input, setInput] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const handlePromptClick = (prompt: string) => {
+    setInput(prompt);
+    setTimeout(() => {
+      formRef.current?.requestSubmit();
+    }, 0);
+  };
 
   return (
     <div className="flex flex-col h-full items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4">
@@ -83,7 +97,7 @@ function HomePromptInput() {
         What can I help with?
       </h1>
 
-      <Form method="post" className="w-full max-w-3xl">
+      <Form ref={formRef} method="post" className="w-full max-w-3xl">
         <PromptInput
           name="prompt"
           value={input}
@@ -92,6 +106,19 @@ function HomePromptInput() {
           autoFocus
         />
       </Form>
+
+      <div className="flex flex-wrap justify-center gap-2 mt-6 max-w-3xl">
+        {suggestedPrompts.map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => handlePromptClick(prompt)}
+            className="px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-full transition-colors cursor-pointer"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
