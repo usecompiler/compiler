@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npx react-router typegen && npx tsc --noEmit
 
       - name: Run tests
         run: npm run test:run
