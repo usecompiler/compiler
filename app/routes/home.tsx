@@ -77,7 +77,7 @@ export default function Home() {
 const suggestedPrompts = [
   "What changes have been made over the last week?",
   "What bugs were fixed recently?",
-  "What's currently being worked on?",
+  "Walk me through one of the key features",
 ];
 
 function HomePromptInput() {
