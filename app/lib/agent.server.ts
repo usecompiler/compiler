@@ -8,6 +8,32 @@ import { eq, and } from "drizzle-orm";
 
 const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
+export interface PendingQuestionData {
+  question: string;
+  header?: string;
+  options: Array<{ label: string; description?: string }>;
+  multiSelect?: boolean;
+}
+
+interface PendingAnswer {
+  resolver: (answers: Record<string, string>) => void;
+  questions: PendingQuestionData[];
+}
+
+const pendingAnswers = new Map<string, PendingAnswer>();
+
+export function submitAnswer(conversationId: string, answers: Record<string, string>): boolean {
+  const pending = pendingAnswers.get(conversationId);
+  if (!pending) return false;
+  pending.resolver(answers);
+  return true;
+}
+
+export function getPendingQuestion(conversationId: string): PendingQuestionData[] | null {
+  const pending = pendingAnswers.get(conversationId);
+  return pending ? pending.questions : null;
+}
+
 function getOrgReposDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
 }
@@ -139,6 +165,7 @@ export async function* runAgent(
   prompt: string,
   organizationId: string,
   memberId: string,
+  conversationId: string,
   sessionId?: string | null,
   signal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
@@ -184,6 +211,22 @@ export async function* runAgent(
         fallbackModel: "claude-sonnet-4-20250514",
         ...(sessionId ? { resume: sessionId } : {}),
         abortController,
+        canUseTool: async (toolName: string, input: Record<string, unknown>) => {
+          if (toolName === "AskUserQuestion") {
+            const answers = await new Promise<Record<string, string>>((resolve) => {
+              pendingAnswers.set(conversationId, {
+                resolver: resolve,
+                questions: input.questions as PendingQuestionData[],
+              });
+            });
+            pendingAnswers.delete(conversationId);
+            return {
+              behavior: "allow" as const,
+              updatedInput: { ...input, answers },
+            };
+          }
+          return { behavior: "allow" as const, updatedInput: input };
+        },
         env: {
           ...process.env,
           ...aiProviderEnv,
@@ -204,7 +247,10 @@ export async function* runAgent(
           if ("text" in block && block.text) {
             yield { type: "text", content: block.text };
           } else if ("type" in block && block.type === "tool_use") {
-            toolUseCount++;
+            const toolName = (block as { name?: string }).name;
+            if (toolName !== "AskUserQuestion") {
+              toolUseCount++;
+            }
             yield {
               type: "tool_use",
               tool: (block as { name?: string }).name,
@@ -264,5 +310,7 @@ export async function* runAgent(
       type: "error",
       content: error instanceof Error ? error.message : "Unknown error",
     };
+  } finally {
+    pendingAnswers.delete(conversationId);
   }
 }

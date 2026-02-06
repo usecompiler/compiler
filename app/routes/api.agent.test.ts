@@ -231,6 +231,7 @@ describe("api.agent action", () => {
         "Hello",
         "org-1",
         "member-1",
+        "conv-1",
         "sdk-session-123",
         expect.anything(),
       );
@@ -246,6 +247,7 @@ describe("api.agent action", () => {
         "Hello",
         "org-1",
         "member-1",
+        "conv-1",
         null,
         expect.anything(),
       );
@@ -388,6 +390,132 @@ describe("api.agent action", () => {
       expect(parsed).toHaveLength(2);
       expect(parsed[0]).toMatchObject({ type: "text", content: "Hi" });
       expect(parsed[1]).toMatchObject({ type: "result" });
+    });
+  });
+
+  describe("AskUserQuestion handling", () => {
+    it("excludes AskUserQuestion from toolCalls in persisted content", async () => {
+      const events: AgentEvent[] = [
+        { type: "text", content: "Let me ask" },
+        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [{ question: "Pick one" }] } },
+        { type: "tool_result", content: "answered" },
+        { type: "new_turn" },
+        { type: "text", content: "Thanks" },
+        { type: "result", stats: { toolUses: 1, tokens: 50, durationMs: 200 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const completedUpdates = setCalls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
+      );
+      for (const update of completedUpdates) {
+        const content = (update[0] as Record<string, { toolCalls: unknown[] }>).content;
+        expect(content.toolCalls).toHaveLength(0);
+      }
+    });
+
+    it("skips tool_result when awaiting question answer", async () => {
+      const events: AgentEvent[] = [
+        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_result", content: "should be skipped" },
+        { type: "new_turn" },
+        { type: "text", content: "Response" },
+        { type: "result", stats: { toolUses: 1, tokens: 30, durationMs: 100 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const allContent = setCalls
+        .map((c: unknown[]) => (c[0] as Record<string, { toolCalls?: Array<{ result?: string }> }>).content)
+        .filter(Boolean);
+      for (const content of allContent) {
+        for (const tc of content.toolCalls || []) {
+          expect(tc.result).not.toBe("should be skipped");
+        }
+      }
+    });
+
+    it("splits assistant items on new_turn after AskUserQuestion", async () => {
+      const events: AgentEvent[] = [
+        { type: "text", content: "Before question" },
+        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_result", content: "answered" },
+        { type: "new_turn" },
+        { type: "text", content: "After answer" },
+        { type: "result", stats: { toolUses: 1, tokens: 50, durationMs: 200 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const insertCalls = mockDb._insertValues.mock.calls;
+      expect(insertCalls.length).toBe(3);
+      expect(insertCalls[2][0]).toMatchObject({
+        type: "message",
+        role: "assistant",
+        status: "in_progress",
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const completedUpdates = setCalls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
+      );
+      expect(completedUpdates.length).toBe(2);
+
+      const firstCompleted = (completedUpdates[0][0] as Record<string, { text: string }>).content;
+      expect(firstCompleted.text).toBe("Before question");
+
+      const secondCompleted = (completedUpdates[1][0] as Record<string, { text: string }>).content;
+      expect(secondCompleted.text).toBe("After answer");
+    });
+
+    it("does not split on new_turn without prior AskUserQuestion", async () => {
+      const events: AgentEvent[] = [
+        { type: "text", content: "First" },
+        { type: "new_turn" },
+        { type: "text", content: "Second" },
+        { type: "result", stats: { toolUses: 0, tokens: 20, durationMs: 100 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const insertCalls = mockDb._insertValues.mock.calls;
+      expect(insertCalls.length).toBe(2);
+    });
+
+    it("non-AskUserQuestion tool_use events are still tracked normally", async () => {
+      const events: AgentEvent[] = [
+        { type: "text", content: "Checking" },
+        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_result", content: "answered" },
+        { type: "new_turn" },
+        { type: "tool_use", tool: "Bash", input: { command: "ls" } },
+        { type: "tool_result", content: "files" },
+        { type: "text", content: "Done" },
+        { type: "result", stats: { toolUses: 2, tokens: 40, durationMs: 300 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const finalUpdate = setCalls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
+      ).pop();
+      const content = (finalUpdate![0] as Record<string, { toolCalls: Array<{ tool: string }> }>).content;
+      expect(content.toolCalls).toHaveLength(1);
+      expect(content.toolCalls[0].tool).toBe("Bash");
     });
   });
 });

@@ -128,13 +128,15 @@ export async function action({ request }: Route.ActionArgs) {
   let toolsStartIndex: number | null = null;
   let finalStats: { toolUses: number; tokens: number; durationMs: number } | null = null;
   let streamCompleted = false;
+  let activeItemId = assistantItemId;
+  let awaitingQuestionResult = false;
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conv[0].sessionId, request.signal)) {
+        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal)) {
           if (event.type === "session_init" && event.sessionId) {
             await db
               .update(conversations)
@@ -143,19 +145,51 @@ export async function action({ request }: Route.ActionArgs) {
           }
 
           if (event.type === "new_turn") {
-            currentText += "\n\n";
+            if (awaitingQuestionResult) {
+              awaitingQuestionResult = false;
+              await db
+                .update(items)
+                .set({
+                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                  status: "completed",
+                })
+                .where(eq(items.id, activeItemId));
+
+              currentText = "";
+              currentToolCalls = [];
+              toolsStartIndex = null;
+              activeItemId = crypto.randomUUID();
+              await db.insert(items).values({
+                id: activeItemId,
+                conversationId,
+                type: "message",
+                role: "assistant",
+                content: { text: "", toolCalls: [], stats: null },
+                status: "in_progress",
+                createdAt: new Date(),
+              });
+            } else {
+              currentText += "\n\n";
+            }
           } else if (event.type === "text") {
             currentText += event.content;
           } else if (event.type === "tool_use") {
-            if (toolsStartIndex === null) {
-              toolsStartIndex = currentText.length;
+            if (event.tool === "AskUserQuestion") {
+              awaitingQuestionResult = true;
+            } else {
+              if (toolsStartIndex === null) {
+                toolsStartIndex = currentText.length;
+              }
+              currentToolCalls = [...currentToolCalls, {
+                id: crypto.randomUUID(),
+                tool: event.tool!,
+                input: event.input,
+              }];
             }
-            currentToolCalls = [...currentToolCalls, {
-              id: crypto.randomUUID(),
-              tool: event.tool!,
-              input: event.input,
-            }];
           } else if (event.type === "tool_result") {
+            if (awaitingQuestionResult) {
+              continue;
+            }
             if (currentToolCalls.length > 0) {
               const updatedCalls = [...currentToolCalls];
               updatedCalls[updatedCalls.length - 1].result = event.content;
@@ -187,7 +221,7 @@ export async function action({ request }: Route.ActionArgs) {
                 content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: finalStats },
                 status: "completed",
               })
-              .where(eq(items.id, assistantItemId));
+              .where(eq(items.id, activeItemId));
           } else {
             await db
               .update(items)
@@ -195,7 +229,7 @@ export async function action({ request }: Route.ActionArgs) {
                 content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 status: "cancelled",
               })
-              .where(eq(items.id, assistantItemId));
+              .where(eq(items.id, activeItemId));
           }
 
           await db

@@ -4,12 +4,22 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
 import type { Member } from "~/lib/invitations.server";
+import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
 
 interface ShareLink {
   token: string;
   createdAt: string;
+}
+
+interface PendingQuestion {
+  questions: PendingQuestionData[];
+}
+
+interface AnsweredQuestion {
+  question: string;
+  answer: string;
 }
 
 interface AgentConversationProps {
@@ -25,6 +35,7 @@ interface AgentConversationProps {
   shareLink?: ShareLink | null;
   userName?: string;
   isOwner?: boolean;
+  initialPendingQuestion?: PendingQuestionData[] | null;
 }
 
 export function AgentConversation({
@@ -40,6 +51,7 @@ export function AgentConversation({
   shareLink,
   userName,
   isOwner = false,
+  initialPendingQuestion,
 }: AgentConversationProps) {
   const [items, setItems] = useState<Item[]>(initialItems);
   const [input, setInput] = useState("");
@@ -49,6 +61,10 @@ export function AgentConversation({
   const [copiedReviewer, setCopiedReviewer] = useState<string | null>(null);
   const [reviewInput, setReviewInput] = useState("");
   const [pendingReviewer, setPendingReviewer] = useState<Member | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(
+    initialPendingQuestion ? { questions: initialPendingQuestion } : null
+  );
+  const postAnswerAssistantIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -277,9 +293,9 @@ export function AgentConversation({
 
       revalidator.revalidate();
 
-      const assistantId = crypto.randomUUID();
+      let activeAssistantId: string = crypto.randomUUID();
       const assistantItem: Item = {
-        id: assistantId,
+        id: activeAssistantId,
         type: "message",
         role: "assistant",
         content: { text: "", toolCalls: [], stats: null },
@@ -298,7 +314,7 @@ export function AgentConversation({
             prompt: promptText.trim(),
             conversationId,
             userItem,
-            assistantItemId: assistantId,
+            assistantItemId: activeAssistantId,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -315,6 +331,7 @@ export function AgentConversation({
         let currentText = "";
         let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
         let toolsStartIndex: number | null = null;
+        let awaitingQuestionResult = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -331,13 +348,43 @@ export function AgentConversation({
 
               if (data.type === "session_init") {
               } else if (data.type === "new_turn") {
-                currentText += "\n\n";
+                if (awaitingQuestionResult) {
+                  awaitingQuestionResult = false;
+                  updateLocalItem(activeAssistantId, {
+                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                    status: "completed",
+                  });
+                  currentText = "";
+                  currentToolCalls = [];
+                  toolsStartIndex = null;
+                  if (postAnswerAssistantIdRef.current) {
+                    activeAssistantId = postAnswerAssistantIdRef.current;
+                    postAnswerAssistantIdRef.current = null;
+                  } else {
+                    activeAssistantId = crypto.randomUUID();
+                    addLocalItem({
+                      id: activeAssistantId,
+                      type: "message",
+                      role: "assistant",
+                      content: { text: "", toolCalls: [], stats: null },
+                      status: "in_progress",
+                      createdAt: Date.now() + 1,
+                    });
+                  }
+                } else {
+                  currentText += "\n\n";
+                }
               } else if (data.type === "text") {
                 currentText += data.content;
-                updateLocalItem(assistantId, {
+                updateLocalItem(activeAssistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "tool_use") {
+                if (data.tool === "AskUserQuestion" && data.input?.questions) {
+                  setPendingQuestion({ questions: data.input.questions });
+                  awaitingQuestionResult = true;
+                  continue;
+                }
                 if (toolsStartIndex === null) {
                   toolsStartIndex = currentText.length;
                 }
@@ -347,25 +394,28 @@ export function AgentConversation({
                   input: data.input,
                 };
                 currentToolCalls = [...currentToolCalls, toolCall];
-                updateLocalItem(assistantId, {
+                updateLocalItem(activeAssistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "tool_result") {
+                if (awaitingQuestionResult) {
+                  continue;
+                }
                 if (currentToolCalls.length > 0) {
                   const updatedCalls = [...currentToolCalls];
                   updatedCalls[updatedCalls.length - 1].result = data.content;
                   currentToolCalls = updatedCalls;
-                  updateLocalItem(assistantId, {
+                  updateLocalItem(activeAssistantId, {
                     content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                   });
                 }
               } else if (data.type === "error") {
                 currentText += `\n\nError: ${data.content}`;
-                updateLocalItem(assistantId, {
+                updateLocalItem(activeAssistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "result" && data.stats) {
-                updateLocalItem(assistantId, {
+                updateLocalItem(activeAssistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
                   status: "completed",
                 });
@@ -375,9 +425,9 @@ export function AgentConversation({
         }
       } catch (error) {
         if ((error as Error).name === "AbortError") {
-          updateLocalItem(assistantId, { status: "cancelled" });
+          updateLocalItem(activeAssistantId, { status: "cancelled" });
         } else {
-          updateLocalItem(assistantId, {
+          updateLocalItem(activeAssistantId, {
             content: {
               text: "\n\nConnection error.",
               toolCalls: [],
@@ -534,18 +584,61 @@ export function AgentConversation({
             )
           ) : (
             <>
-              <form onSubmit={handleSubmit}>
-                <PromptInput
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={handleSubmit}
-                  isStreaming={isStreaming}
-                  onStop={handleStop}
-                  autoFocus
-                  autoFocusKey={conversationId}
-                />
-              </form>
-              <div className="text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2">
+              {pendingQuestion ? (
+                <div className="pt-2">
+                  <QuestionCard
+                    pendingQuestion={pendingQuestion}
+                    conversationId={conversationId}
+                    onAnswered={(answered) => {
+                      const qaText = answered
+                        .map((aq) => `Q: ${aq.question}\nA: ${aq.answer}`)
+                        .join("\n\n");
+                      const answerItem: Item = {
+                        id: crypto.randomUUID(),
+                        type: "message",
+                        role: "user",
+                        content: qaText,
+                        createdAt: Date.now(),
+                      };
+                      addItem(answerItem);
+                      const newAssistantId = crypto.randomUUID();
+                      postAnswerAssistantIdRef.current = newAssistantId;
+                      addLocalItem({
+                        id: newAssistantId,
+                        type: "message",
+                        role: "assistant",
+                        content: { text: "", toolCalls: [], stats: null },
+                        status: "in_progress",
+                        createdAt: Date.now() + 1,
+                      });
+                      setPendingQuestion(null);
+                    }}
+                    onSkipped={() => {
+                      setPendingQuestion(null);
+                    }}
+                  />
+                  <div className="text-xs text-center text-neutral-500 dark:text-neutral-400 mt-2">
+                    <span className="text-neutral-400 dark:text-neutral-500">↑↓</span> to navigate
+                    <span className="mx-1.5">·</span>
+                    <span className="text-neutral-400 dark:text-neutral-500">Enter</span> to select
+                    <span className="mx-1.5">·</span>
+                    <span className="text-neutral-400 dark:text-neutral-500">Esc</span> to skip
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <PromptInput
+                    value={input}
+                    onChange={setInput}
+                    onSubmit={handleSubmit}
+                    isStreaming={isStreaming}
+                    onStop={handleStop}
+                    autoFocus
+                    autoFocusKey={conversationId}
+                  />
+                </form>
+              )}
+              <div className={`text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2${pendingQuestion ? " hidden" : ""}`}>
                 Compiler can make mistakes.{" "}
                 <div className="relative inline-block" ref={reviewerDropdownRef}>
                   <button
@@ -784,7 +877,7 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation }: ItemR
         </div>
       )}
 
-      {(hasToolCalls || (stats && stats.toolUses > 0) || (isCancelled && hasToolCalls)) && (
+      {hasToolCalls && (
         <div className="my-3 text-xs">
           <div className="flex items-center gap-2">
             <span className={stats ? "text-green-500" : isCancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
@@ -842,6 +935,314 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation }: ItemR
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface QuestionCardProps {
+  pendingQuestion: PendingQuestion;
+  conversationId: string;
+  onAnswered: (answered: AnsweredQuestion[]) => void;
+  onSkipped: () => void;
+}
+
+function QuestionCard({ pendingQuestion, conversationId, onAnswered, onSkipped }: QuestionCardProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [freeText, setFreeText] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [multiSelections, setMultiSelections] = useState<Set<string>>(new Set());
+  const [isFreeTextFocused, setIsFreeTextFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const freeTextRef = useRef<HTMLInputElement>(null);
+  const total = pendingQuestion.questions.length;
+  const question = pendingQuestion.questions[currentIndex];
+  const isMulti = question.multiSelect === true;
+  const optionCount = question.options.length;
+
+  const submitAllAnswers = useCallback(async (finalAnswers: Record<number, string>) => {
+    const answersPayload: Record<string, string> = {};
+    const answeredList: AnsweredQuestion[] = [];
+    pendingQuestion.questions.forEach((q, i) => {
+      const key = q.header || q.question;
+      answersPayload[key] = finalAnswers[i] || "";
+      if (finalAnswers[i]) {
+        answeredList.push({ question: q.question, answer: finalAnswers[i] });
+      }
+    });
+
+    await fetch("/api/agent/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, answers: answersPayload }),
+    });
+
+    onAnswered(answeredList);
+  }, [conversationId, pendingQuestion.questions, onAnswered]);
+
+  const advanceOrSubmit = useCallback((updated: Record<number, string>) => {
+    setSelectedOption(null);
+    setHighlightedIndex(0);
+    setMultiSelections(new Set());
+    setFreeText("");
+
+    if (currentIndex < total - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      submitAllAnswers(updated);
+    }
+  }, [currentIndex, total, submitAllAnswers]);
+
+  const handleSelect = useCallback((optionLabel: string) => {
+    if (isMulti) {
+      setMultiSelections((prev) => {
+        const next = new Set(prev);
+        if (next.has(optionLabel)) {
+          next.delete(optionLabel);
+        } else {
+          next.add(optionLabel);
+        }
+        return next;
+      });
+      return;
+    }
+    const updated = { ...answers, [currentIndex]: optionLabel };
+    setAnswers(updated);
+    advanceOrSubmit(updated);
+  }, [isMulti, answers, currentIndex, advanceOrSubmit]);
+
+  const handleMultiSubmit = useCallback(() => {
+    const value = Array.from(multiSelections).join(", ");
+    const updated = { ...answers, [currentIndex]: value };
+    setAnswers(updated);
+    advanceOrSubmit(updated);
+  }, [multiSelections, answers, currentIndex, advanceOrSubmit]);
+
+  const handleFreeTextSubmit = useCallback(() => {
+    if (!freeText.trim()) return;
+    if (isMulti) {
+      setMultiSelections((prev) => {
+        const next = new Set(prev);
+        next.add(freeText.trim());
+        return next;
+      });
+      setFreeText("");
+      return;
+    }
+    const updated = { ...answers, [currentIndex]: freeText.trim() };
+    setAnswers(updated);
+    advanceOrSubmit(updated);
+  }, [freeText, isMulti, answers, currentIndex, advanceOrSubmit]);
+
+  const handleSkip = useCallback(() => {
+    const updated = { ...answers, [currentIndex]: "" };
+    setAnswers(updated);
+    setFreeText("");
+    setSelectedOption(null);
+    setHighlightedIndex(0);
+    setMultiSelections(new Set());
+
+    if (currentIndex < total - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      submitAllAnswers(updated);
+    }
+  }, [answers, currentIndex, total, submitAllAnswers]);
+
+  const handleDismiss = useCallback(async () => {
+    const emptyAnswers: Record<string, string> = {};
+    pendingQuestion.questions.forEach((q) => {
+      emptyAnswers[q.header || q.question] = "";
+    });
+
+    await fetch("/api/agent/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, answers: emptyAnswers }),
+    });
+
+    onSkipped();
+  }, [conversationId, pendingQuestion.questions, onSkipped]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.focus();
+  }, [currentIndex]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isFreeTextFocused) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          freeTextRef.current?.blur();
+          setIsFreeTextFocused(false);
+          containerRef.current?.focus();
+        }
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.min(prev + 1, optionCount - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (isMulti && multiSelections.size > 0) {
+          handleMultiSubmit();
+        } else if (highlightedIndex < question.options.length) {
+          if (isMulti) {
+            handleSelect(question.options[highlightedIndex].label);
+          } else {
+            setSelectedOption(highlightedIndex);
+            const label = question.options[highlightedIndex].label;
+            setTimeout(() => handleSelect(label), 150);
+          }
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        handleSkip();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [highlightedIndex, optionCount, question.options, handleSelect, handleSkip, isFreeTextFocused, isMulti, multiSelections, handleMultiSubmit]);
+
+  return (
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      className="rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 overflow-hidden focus:outline-none"
+    >
+      <div className="flex items-start justify-between px-5 pt-4 pb-3">
+        <p className="text-sm text-neutral-900 dark:text-neutral-100 flex-1 pr-4">
+          {question.question}{isMulti ? " (Select all that apply)" : ""}
+        </p>
+        <div className="flex items-center gap-3 shrink-0">
+          {total > 1 && (
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">
+              {currentIndex + 1} of {total}
+            </span>
+          )}
+          <button
+            onClick={handleDismiss}
+            className="p-0.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="px-3">
+        {question.options.map((option, i) => {
+          const isChecked = isMulti && multiSelections.has(option.label);
+          return (
+            <div key={i}>
+              <button
+                onClick={() => {
+                  setHighlightedIndex(i);
+                  if (isMulti) {
+                    handleSelect(option.label);
+                  } else {
+                    setSelectedOption(i);
+                    setTimeout(() => handleSelect(option.label), 150);
+                  }
+                }}
+                onMouseEnter={() => setHighlightedIndex(i)}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
+                  selectedOption === i
+                    ? "bg-neutral-100 dark:bg-neutral-700"
+                    : highlightedIndex === i || isChecked
+                      ? "bg-neutral-50 dark:bg-neutral-700/50"
+                      : ""
+                }`}
+              >
+                <span className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium shrink-0 ${
+                  selectedOption === i || highlightedIndex === i || isChecked
+                    ? "bg-neutral-800 dark:bg-neutral-200 text-white dark:text-neutral-900"
+                    : "border border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400"
+                }`}>
+                  {isChecked ? (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span className="flex-1 text-sm text-neutral-900 dark:text-neutral-100">{option.label}</span>
+                {!isMulti && (selectedOption === i || highlightedIndex === i) && (
+                  <svg className="w-4 h-4 text-neutral-500 dark:text-neutral-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                )}
+              </button>
+              {i < question.options.length && (
+                <div className="mx-3 border-b border-neutral-100 dark:border-neutral-700/50" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mx-3 border-b border-neutral-100 dark:border-neutral-700/50" />
+
+      <div className="px-3 py-3">
+        <div className="flex items-center gap-3 px-3">
+          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-neutral-300 dark:border-neutral-600 shrink-0">
+            <svg className="w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
+            </svg>
+          </span>
+          <input
+            ref={freeTextRef}
+            type="text"
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            onFocus={() => {
+              setIsFreeTextFocused(true);
+              setHighlightedIndex(question.options.length);
+            }}
+            onBlur={() => setIsFreeTextFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleFreeTextSubmit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                freeTextRef.current?.blur();
+                setIsFreeTextFocused(false);
+                containerRef.current?.focus();
+              }
+            }}
+            placeholder="Something else"
+            className="flex-1 bg-transparent text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 px-5 pb-4">
+        {isMulti && multiSelections.size > 0 && (
+          <button
+            onClick={handleMultiSubmit}
+            className="px-4 py-1.5 text-xs font-medium text-white dark:text-neutral-900 bg-neutral-800 dark:bg-neutral-200 rounded-lg hover:bg-neutral-700 dark:hover:bg-neutral-300 transition-colors"
+          >
+            Submit ({multiSelections.size})
+          </button>
+        )}
+        <button
+          onClick={handleSkip}
+          className="px-4 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+        >
+          Skip
+        </button>
+      </div>
     </div>
   );
 }

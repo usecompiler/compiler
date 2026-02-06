@@ -31,6 +31,7 @@ export default [
 
   // API routes
   route("api/agent", "routes/api.agent.ts"),
+  route("api/agent/answer", "routes/api.agent.answer.ts"),
   route("api/conversations", "routes/api.conversations.ts"),
   route("api/items", "routes/api.items.ts"),
   route("api/search", "routes/api.search.ts"),

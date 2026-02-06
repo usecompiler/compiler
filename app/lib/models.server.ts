@@ -377,7 +377,7 @@ export function getDisplayName(modelId: string): string {
   return modelId;
 }
 
-export const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
+export const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task", "AskUserQuestion"];
 
 export const OPTIONAL_TOOLS = [
   { id: "Bash", description: "Execute shell commands" },
