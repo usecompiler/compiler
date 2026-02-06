@@ -136,6 +136,10 @@ export function AgentConversation({
     return () => document.removeEventListener("click", handleClick);
   }, [reviewerDropdownOpen]);
 
+  const addLocalItem = useCallback((item: Item) => {
+    setItems(prev => [...prev, item]);
+  }, []);
+
   const addItem = useCallback(async (item: Item, token?: string | null) => {
     setItems(prev => [...prev, item]);
     await fetch("/api/items", {
@@ -145,13 +149,8 @@ export function AgentConversation({
     });
   }, [conversationId]);
 
-  const updateItem = useCallback((itemId: string, updates: Partial<Item>) => {
+  const updateLocalItem = useCallback((itemId: string, updates: Partial<Item>) => {
     setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
-    fetch(`/api/items?id=${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
   }, []);
 
   useEffect(() => {
@@ -272,16 +271,7 @@ export function AgentConversation({
         createdAt: Date.now(),
       };
 
-      if (items.length === 0) {
-        const title = promptText.trim();
-        fetch(`/api/conversations?id=${conversationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title }),
-        });
-      }
-
-      addItem(userItem);
+      addLocalItem(userItem);
       isAtBottomRef.current = true;
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -296,7 +286,7 @@ export function AgentConversation({
         status: "in_progress",
         createdAt: Date.now() + 1,
       };
-      addItem(assistantItem);
+      addLocalItem(assistantItem);
 
       abortControllerRef.current = new AbortController();
 
@@ -318,6 +308,9 @@ export function AgentConversation({
           body: JSON.stringify({
             prompt: promptText.trim(),
             history,
+            conversationId,
+            userItem,
+            assistantItemId: assistantId,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -352,7 +345,7 @@ export function AgentConversation({
                 currentText += "\n\n";
               } else if (data.type === "text") {
                 currentText += data.content;
-                updateItem(assistantId, {
+                updateLocalItem(assistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "tool_use") {
@@ -365,7 +358,7 @@ export function AgentConversation({
                   input: data.input,
                 };
                 currentToolCalls = [...currentToolCalls, toolCall];
-                updateItem(assistantId, {
+                updateLocalItem(assistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "tool_result") {
@@ -373,17 +366,17 @@ export function AgentConversation({
                   const updatedCalls = [...currentToolCalls];
                   updatedCalls[updatedCalls.length - 1].result = data.content;
                   currentToolCalls = updatedCalls;
-                  updateItem(assistantId, {
+                  updateLocalItem(assistantId, {
                     content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                   });
                 }
               } else if (data.type === "error") {
                 currentText += `\n\nError: ${data.content}`;
-                updateItem(assistantId, {
+                updateLocalItem(assistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                 });
               } else if (data.type === "result" && data.stats) {
-                updateItem(assistantId, {
+                updateLocalItem(assistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
                   status: "completed",
                 });
@@ -393,9 +386,9 @@ export function AgentConversation({
         }
       } catch (error) {
         if ((error as Error).name === "AbortError") {
-          updateItem(assistantId, { status: "cancelled" });
+          updateLocalItem(assistantId, { status: "cancelled" });
         } else {
-          updateItem(assistantId, {
+          updateLocalItem(assistantId, {
             content: {
               text: "\n\nConnection error.",
               toolCalls: [],
@@ -410,7 +403,7 @@ export function AgentConversation({
         abortControllerRef.current = null;
       }
     },
-    [conversationId, items, addItem, updateItem, isStreaming]
+    [conversationId, items, addLocalItem, updateLocalItem, isStreaming]
   );
 
   const handleSubmit = useCallback(

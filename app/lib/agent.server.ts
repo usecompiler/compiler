@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
 import { getEffectiveModel, getToolConfig } from "./models.server";
@@ -138,14 +138,29 @@ export interface HistoryMessage {
   content: string;
 }
 
-function formatHistory(messages: HistoryMessage[]): string {
-  if (messages.length === 0) return "";
+async function* createPromptStream(
+  prompt: string,
+  history: HistoryMessage[],
+): AsyncIterable<SDKUserMessage> {
+  const historyPrefix =
+    history.length > 0
+      ? history
+          .map(
+            (m) =>
+              `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
+          )
+          .join("\n\n") + "\n\n"
+      : "";
 
-  const formatted = messages
-    .map((m) => `${m.role === "user" ? "Human" : "Assistant"}: ${m.content}`)
-    .join("\n\n");
-
-  return `Previous conversation:\n${formatted}\n\n`;
+  yield {
+    type: "user",
+    message: {
+      role: "user",
+      content: historyPrefix + prompt,
+    },
+    parent_tool_use_id: null,
+    session_id: crypto.randomUUID(),
+  };
 }
 
 export async function* runAgent(
@@ -154,7 +169,6 @@ export async function* runAgent(
   memberId: string,
   history: HistoryMessage[] = [],
 ): AsyncGenerator<AgentEvent> {
-  const fullPrompt = formatHistory(history) + `Human: ${prompt}`;
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
   const aiProviderConfig = await getAIProviderConfig(organizationId);
@@ -175,7 +189,7 @@ export async function* runAgent(
     let toolUseCount = 0;
 
     for await (const message of query({
-      prompt: fullPrompt,
+      prompt: createPromptStream(prompt, history),
       options: {
         model: effectiveModel,
         systemPrompt: buildSystemPrompt(repoNames),

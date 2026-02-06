@@ -53,71 +53,10 @@ export async function action({ request }: Route.ActionArgs) {
       await markReviewRequestAsReviewed(conversationId, user.id);
     }
 
-    if (item.type === "message" && item.role === "user") {
-      if (conv[0]?.title === "New Chat") {
-        const text =
-          typeof item.content === "string"
-            ? item.content
-            : item.content?.text || "";
-        const newTitle = text.trim();
-        await db
-          .update(conversations)
-          .set({ title: newTitle, updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
-      } else {
-        await db
-          .update(conversations)
-          .set({ updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
-      }
-    } else {
-      await db
-        .update(conversations)
-        .set({ updatedAt: new Date() })
-        .where(eq(conversations.id, conversationId));
-    }
-
-    return Response.json({ success: true });
-  }
-
-  if (request.method === "PATCH") {
-    const url = new URL(request.url);
-    const id = url.searchParams.get("id");
-    const body = await request.json();
-
-    if (!id) {
-      return new Response("Missing item id", { status: 400 });
-    }
-
-    const itemResult = await db.select().from(items).where(eq(items.id, id));
-    if (itemResult.length === 0) {
-      return new Response("Item not found", { status: 404 });
-    }
-
-    const conv = await db
-      .select()
-      .from(conversations)
-      .where(
-        and(
-          eq(conversations.id, itemResult[0].conversationId),
-          eq(conversations.userId, user.id)
-        )
-      );
-
-    if (conv.length === 0) {
-      return new Response("Not authorized", { status: 403 });
-    }
-
-    const updates: Record<string, unknown> = {};
-    if (body.content !== undefined) updates.content = body.content;
-    if (body.status !== undefined) updates.status = body.status;
-
-    await db.update(items).set(updates).where(eq(items.id, id));
-
     await db
       .update(conversations)
       .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, itemResult[0].conversationId));
+      .where(eq(conversations.id, conversationId));
 
     return Response.json({ success: true });
   }
