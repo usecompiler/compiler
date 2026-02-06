@@ -120,6 +120,13 @@
       "when": 1769731184127,
       "tag": "0016_add_prompt_caching_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1769740000000,
+      "tag": "0017_add_session_id_to_conversations",
+      "breakpoints": true
     }
   ]
 }

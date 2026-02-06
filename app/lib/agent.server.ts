@@ -126,48 +126,21 @@ export interface AgentEvent {
     | "new_turn"
     | "result"
     | "error"
-    | "done";
+    | "done"
+    | "session_init";
   content?: string;
   tool?: string;
   input?: unknown;
   stats?: AgentStats;
-}
-
-export interface HistoryMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-async function* createPromptStream(
-  prompt: string,
-  history: HistoryMessage[],
-): AsyncIterable<SDKUserMessage> {
-  const historyPrefix =
-    history.length > 0
-      ? history
-          .map(
-            (m) =>
-              `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
-          )
-          .join("\n\n") + "\n\n"
-      : "";
-
-  yield {
-    type: "user",
-    message: {
-      role: "user",
-      content: historyPrefix + prompt,
-    },
-    parent_tool_use_id: null,
-    session_id: crypto.randomUUID(),
-  };
+  sessionId?: string;
 }
 
 export async function* runAgent(
   prompt: string,
   organizationId: string,
   memberId: string,
-  history: HistoryMessage[] = [],
+  sessionId?: string | null,
+  signal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
@@ -184,12 +157,21 @@ export async function* runAgent(
       ? getRepoPath(organizationId, completedRepos[0].name)
       : orgReposDir;
 
+  const abortController = new AbortController();
+  if (signal) {
+    if (signal.aborted) {
+      abortController.abort();
+    } else {
+      signal.addEventListener("abort", () => abortController.abort(), { once: true });
+    }
+  }
+
   try {
     let turnCount = 0;
     let toolUseCount = 0;
 
     for await (const message of query({
-      prompt: createPromptStream(prompt, history),
+      prompt,
       options: {
         model: effectiveModel,
         systemPrompt: buildSystemPrompt(repoNames),
@@ -197,15 +179,24 @@ export async function* runAgent(
         permissionMode: "plan",
         cwd: agentCwd,
         additionalDirectories: [orgReposDir],
+        maxTurns: 30,
+        maxBudgetUsd: 1.0,
+        fallbackModel: "claude-sonnet-4-20250514",
+        ...(sessionId ? { resume: sessionId } : {}),
+        abortController,
         env: {
           ...process.env,
           ...aiProviderEnv,
         },
       },
     })) {
-      if (message.type === "assistant" && message.message?.content) {
+      if (message.type === "system" && (message as { subtype?: string }).subtype === "init") {
+        yield {
+          type: "session_init",
+          sessionId: (message as { session_id?: string }).session_id,
+        };
+      } else if (message.type === "assistant" && message.message?.content) {
         turnCount++;
-        // Emit marker between assistant turns for paragraph breaks
         if (turnCount > 1) {
           yield { type: "new_turn" };
         }
@@ -222,7 +213,6 @@ export async function* runAgent(
           }
         }
       } else if (message.type === "result") {
-        // Emit final stats
         const usage = (
           message as {
             usage?: { input_tokens?: number; output_tokens?: number };

@@ -32,7 +32,8 @@ export function createMockDb(): MockDb {
     const idx = selectCallCount;
     selectCallCount++;
     const result = idx < selectResults.length ? selectResults[idx] : selectResults[selectResults.length - 1];
-    return Promise.resolve(result);
+    const promise = Promise.resolve(result);
+    return Object.assign(promise, { orderBy: vi.fn(() => promise) });
   });
   const selectFromFn = vi.fn(() => ({ where: selectWhereFn }));
   const selectFn = vi.fn(() => ({ from: selectFromFn }));

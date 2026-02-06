@@ -18,6 +18,7 @@ vi.mock("~/lib/clone.server", () => ({ syncStaleRepos }));
 vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
   and: (...args: unknown[]) => ({ _op: "and", args }),
+  asc: (...args: unknown[]) => ({ _op: "asc", args }),
 }));
 
 function mockUser(overrides: Record<string, unknown> = {}) {
@@ -68,7 +69,7 @@ beforeEach(() => {
 
   requireActiveAuth.mockResolvedValue(mockUser());
   runAgent.mockReturnValue(mockAgentStream([]));
-  mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
+  mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: null }]);
 });
 
 describe("api.agent action", () => {
@@ -152,7 +153,7 @@ describe("api.agent action", () => {
     });
 
     it("updates title to prompt text when conversation title is 'New Chat'", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "New Chat", userId: "user-1" }]);
+      mockDb._setSelectResult([{ id: "conv-1", title: "New Chat", userId: "user-1", sessionId: null }]);
       runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const body = validBody();
       body.userItem.content = { text: "My question" };
@@ -167,7 +168,7 @@ describe("api.agent action", () => {
     });
 
     it("does NOT change title when already set", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Title", userId: "user-1" }]);
+      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Title", userId: "user-1", sessionId: null }]);
       runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const request = buildRequest(validBody());
       const response = await callAction(request);
@@ -215,6 +216,89 @@ describe("api.agent action", () => {
         (c: unknown[]) => (c[0] as Record<string, unknown>).status === "cancelled"
       );
       expect(cancelUpdate).toBeDefined();
+    });
+  });
+
+  describe("session resumption", () => {
+    it("passes sessionId to runAgent when present", async () => {
+      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: "sdk-session-123" }]);
+      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      expect(runAgent).toHaveBeenCalledWith(
+        "Hello",
+        "org-1",
+        "member-1",
+        "sdk-session-123",
+        expect.anything(),
+      );
+    });
+
+    it("passes null sessionId to runAgent for new conversations", async () => {
+      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      expect(runAgent).toHaveBeenCalledWith(
+        "Hello",
+        "org-1",
+        "member-1",
+        null,
+        expect.anything(),
+      );
+    });
+
+    it("prepends text history when sessionId is null and prior messages exist", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: null }],
+        [
+          { role: "user", content: "What does this project do?" },
+          { role: "assistant", content: { text: "It manages widgets." } },
+        ],
+      ];
+      mockDb._selectCallCount = 0;
+      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const promptArg = runAgent.mock.calls[0][0];
+      expect(promptArg).toContain("User: What does this project do?");
+      expect(promptArg).toContain("Assistant: It manages widgets.");
+      expect(promptArg).toContain("User: Hello");
+    });
+
+    it("skips history fallback when sessionId is present", async () => {
+      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: "existing-session" }]);
+      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      expect(runAgent.mock.calls[0][0]).toBe("Hello");
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+    });
+
+    it("persists session_id from session_init event", async () => {
+      const events: AgentEvent[] = [
+        { type: "session_init", sessionId: "new-sdk-session-456" },
+        { type: "text", content: "Hello" },
+        { type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } },
+      ];
+      runAgent.mockReturnValue(mockAgentStream(events));
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+      await consumeSSEStream(response);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const sessionUpdate = setCalls.find(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).sessionId !== undefined
+      );
+      expect(sessionUpdate).toBeDefined();
+      expect((sessionUpdate![0] as Record<string, string>).sessionId).toBe("new-sdk-session-456");
     });
   });
 

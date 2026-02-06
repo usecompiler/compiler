@@ -290,24 +290,12 @@ export function AgentConversation({
 
       abortControllerRef.current = new AbortController();
 
-      const history = items
-        .filter((item) => item.type === "message")
-        .sort((a, b) => a.createdAt - b.createdAt)
-        .map((item) => ({
-          role: item.role!,
-          content:
-            typeof item.content === "string"
-              ? item.content
-              : (item.content as { text?: string })?.text || "",
-        }));
-
       try {
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: promptText.trim(),
-            history,
             conversationId,
             userItem,
             assistantItemId: assistantId,
@@ -341,7 +329,8 @@ export function AgentConversation({
             if (line.startsWith("data: ")) {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === "new_turn") {
+              if (data.type === "session_init") {
+              } else if (data.type === "new_turn") {
                 currentText += "\n\n";
               } else if (data.type === "text") {
                 currentText += data.content;
@@ -403,7 +392,7 @@ export function AgentConversation({
         abortControllerRef.current = null;
       }
     },
-    [conversationId, items, addLocalItem, updateLocalItem, isStreaming]
+    [conversationId, addLocalItem, updateLocalItem, isStreaming]
   );
 
   const handleSubmit = useCallback(

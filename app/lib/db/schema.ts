@@ -65,6 +65,7 @@ export const conversations = pgTable("conversations", {
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
   title: text("title").notNull(),
+  sessionId: text("session_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

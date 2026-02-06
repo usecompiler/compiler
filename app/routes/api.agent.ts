@@ -1,10 +1,10 @@
 import type { Route } from "./+types/api.agent";
-import { runAgent, type HistoryMessage } from "~/lib/agent.server";
+import { runAgent } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { syncStaleRepos } from "~/lib/clone.server";
 import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -18,7 +18,6 @@ export async function action({ request }: Route.ActionArgs) {
 
   const body = await request.json();
   const prompt = body.prompt;
-  const history: HistoryMessage[] = body.history || [];
   const conversationId: string | undefined = body.conversationId;
   const userItem: {
     id: string;
@@ -46,7 +45,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const conv = await db
-    .select()
+    .select({
+      id: conversations.id,
+      title: conversations.title,
+      userId: conversations.userId,
+      sessionId: conversations.sessionId,
+    })
     .from(conversations)
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
 
@@ -92,25 +96,51 @@ export async function action({ request }: Route.ActionArgs) {
 
   await syncStaleRepos(organizationId);
 
+  let effectivePrompt = prompt;
+  if (!conv[0].sessionId) {
+    const priorItems = await db
+      .select({
+        role: items.role,
+        content: items.content,
+      })
+      .from(items)
+      .where(and(eq(items.conversationId, conversationId), eq(items.type, "message")))
+      .orderBy(asc(items.createdAt));
+
+    if (priorItems.length > 0) {
+      const historyLines = priorItems
+        .filter((item) => item.role === "user" || item.role === "assistant")
+        .map((item) => {
+          const text =
+            typeof item.content === "string"
+              ? item.content
+              : (item.content as { text?: string })?.text || "";
+          return `${item.role === "user" ? "User" : "Assistant"}: ${text}`;
+        });
+      if (historyLines.length > 0) {
+        effectivePrompt = historyLines.join("\n\n") + "\n\nUser: " + prompt;
+      }
+    }
+  }
+
   let currentText = "";
   let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
   let toolsStartIndex: number | null = null;
   let finalStats: { toolUses: number; tokens: number; durationMs: number } | null = null;
   let streamCompleted = false;
-  let aborted = false;
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
 
-      const onAbort = () => {
-        aborted = true;
-      };
-      request.signal.addEventListener("abort", onAbort);
-
       try {
-        for await (const event of runAgent(prompt, organizationId, memberId, history)) {
-          if (aborted) break;
+        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conv[0].sessionId, request.signal)) {
+          if (event.type === "session_init" && event.sessionId) {
+            await db
+              .update(conversations)
+              .set({ sessionId: event.sessionId })
+              .where(eq(conversations.id, conversationId));
+          }
 
           if (event.type === "new_turn") {
             currentText += "\n\n";
@@ -149,8 +179,6 @@ export async function action({ request }: Route.ActionArgs) {
           encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`)
         );
       } finally {
-        request.signal.removeEventListener("abort", onAbort);
-
         try {
           if (streamCompleted && finalStats) {
             await db
