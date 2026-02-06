@@ -10,7 +10,9 @@
     "typecheck": "react-router typegen && tsc",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "prefetch": "node build/prefetch.js"
+    "prefetch": "node build/prefetch.js",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.19",
@@ -44,6 +46,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^4.0.18"
   }
 }
