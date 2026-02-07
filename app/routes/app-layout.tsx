@@ -5,6 +5,7 @@ import { getConversations, isUserInOrg, getReviewRequestsForUser, type Conversat
 import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/models.server";
+import { getStorageConfigPublic } from "~/lib/storage.server";
 
 function getModelDisplayName(id: string): string {
   return getDisplayName(id);
@@ -40,8 +41,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   let availableModels: { id: string; displayName: string }[] = [];
   let defaultModel = "claude-sonnet-4-20250514";
   let userPreferredModel: string | null = null;
+  let hasStorageConfig = false;
 
   if (user.organization) {
+    const storageConfig = await getStorageConfigPublic(user.organization.id);
+    hasStorageConfig = storageConfig !== null;
     const allMembers = await getMembers(user.organization.id);
     reviewers = allMembers.filter((m) => !m.isDeactivated);
 
@@ -104,6 +108,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     availableModels,
     defaultModel,
     userPreferredModel,
+    hasStorageConfig,
   };
 }
 
@@ -131,6 +136,7 @@ export interface AppContext {
   availableModels: ModelOption[];
   defaultModel: string;
   userPreferredModel: string | null;
+  hasStorageConfig: boolean;
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
@@ -147,6 +153,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     availableModels: loaderData.availableModels,
     defaultModel: loaderData.defaultModel,
     userPreferredModel: loaderData.userPreferredModel,
+    hasStorageConfig: loaderData.hasStorageConfig,
   };
 
   return <Outlet context={context} />;

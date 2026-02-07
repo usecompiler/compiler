@@ -11,6 +11,7 @@ import { getPendingQuestion, type PendingQuestionData } from "~/lib/agent.server
 import {
   getConversation,
   getConversationItems,
+  getConversationBlobs,
   isUserInOrg,
   getShareLink,
   createShareLink,
@@ -68,7 +69,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     throw redirect("/");
   }
 
-  const items = await getConversationItems(params.id!);
+  const [items, blobsByItemId] = await Promise.all([
+    getConversationItems(params.id!),
+    getConversationBlobs(params.id!),
+  ]);
 
   let shareLink = null;
   if (ownsConversation) {
@@ -84,6 +88,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   return {
     items,
+    blobsByItemId,
     isSharedView,
     isReviewRequest,
     ownsConversation,
@@ -153,17 +158,19 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     availableModels,
     defaultModel,
     userPreferredModel,
+    hasStorageConfig,
   } = useOutletContext<AppContext>();
   const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
+  const initialBlobIds = searchParams.get("blobIds") || undefined;
   const hasProcessedInitialPrompt = useRef(false);
 
-  const { items, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink, pendingQuestion: initialPendingQuestion } = loaderData;
+  const { items, blobsByItemId, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink, pendingQuestion: initialPendingQuestion } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
 
   const handlePromptProcessed = () => {
-    if (initialPrompt && !hasProcessedInitialPrompt.current) {
+    if ((initialPrompt || initialBlobIds) && !hasProcessedInitialPrompt.current) {
       hasProcessedInitialPrompt.current = true;
       const newParams = new URLSearchParams();
       if (impersonating) {
@@ -226,6 +233,9 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
             userName={user.name}
             isOwner={isOwner}
             initialPendingQuestion={initialPendingQuestion}
+            initialBlobsByItemId={blobsByItemId}
+            initialBlobIds={isReadOnly ? undefined : initialBlobIds}
+            hasStorageConfig={hasStorageConfig}
           />
         </div>
       </div>

@@ -3,8 +3,9 @@ import { runAgent } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { syncStaleRepos } from "~/lib/clone.server";
 import { db } from "~/lib/db/index.server";
-import { conversations, items } from "~/lib/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { conversations, items, blobs } from "~/lib/db/schema";
+import { eq, and, asc, inArray } from "drizzle-orm";
+import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -28,8 +29,13 @@ export async function action({ request }: Route.ActionArgs) {
     createdAt: number;
   } | undefined = body.userItem;
   const assistantItemId: string | undefined = body.assistantItemId;
+  const blobIds: string[] | undefined = body.blobIds;
 
-  if (!prompt || typeof prompt !== "string") {
+  if (typeof prompt !== "string") {
+    return new Response("Missing prompt", { status: 400 });
+  }
+
+  if (!prompt.trim() && (!blobIds || blobIds.length === 0)) {
     return new Response("Missing prompt", { status: 400 });
   }
 
@@ -68,6 +74,13 @@ export async function action({ request }: Route.ActionArgs) {
     createdAt: userItem.createdAt ? new Date(userItem.createdAt) : new Date(),
   });
 
+  if (blobIds && blobIds.length > 0) {
+    await db
+      .update(blobs)
+      .set({ itemId: userItem.id })
+      .where(and(inArray(blobs.id, blobIds), eq(blobs.organizationId, organizationId)));
+  }
+
   await db.insert(items).values({
     id: assistantItemId,
     conversationId,
@@ -79,13 +92,17 @@ export async function action({ request }: Route.ActionArgs) {
   });
 
   if (conv[0]?.title === "New Chat") {
-    const titleText =
+    let titleText =
       typeof userItem.content === "string"
         ? userItem.content
         : (userItem.content as { text?: string })?.text || "";
+    titleText = titleText.trim();
+    if (!titleText && blobIds && blobIds.length > 0) {
+      titleText = "File attachment";
+    }
     await db
       .update(conversations)
-      .set({ title: titleText.trim(), updatedAt: new Date() })
+      .set({ title: titleText || "New Chat", updatedAt: new Date() })
       .where(eq(conversations.id, conversationId));
   } else {
     await db
@@ -123,6 +140,27 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
+  let agentImages: Array<{ base64: string; mediaType: string; filename?: string }> | undefined;
+  if (blobIds && blobIds.length > 0) {
+    const storageConfig = await getStorageConfig(organizationId);
+    if (storageConfig) {
+      const blobRecords = await db
+        .select({ id: blobs.id, key: blobs.key, contentType: blobs.contentType, filename: blobs.filename })
+        .from(blobs)
+        .where(and(inArray(blobs.id, blobIds), eq(blobs.organizationId, organizationId)));
+
+      agentImages = [];
+      for (const blob of blobRecords) {
+        const { buffer } = await fetchFile(storageConfig, blob.key);
+        agentImages.push({
+          base64: buffer.toString("base64"),
+          mediaType: blob.contentType,
+          filename: blob.filename,
+        });
+      }
+    }
+  }
+
   let currentText = "";
   let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
   let toolsStartIndex: number | null = null;
@@ -137,7 +175,7 @@ export async function action({ request }: Route.ActionArgs) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal)) {
+        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal, agentImages)) {
           if (event.type === "session_init" && event.sessionId) {
             await db
               .update(conversations)

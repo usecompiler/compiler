@@ -19,6 +19,7 @@ vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
   and: (...args: unknown[]) => ({ _op: "and", args }),
   asc: (...args: unknown[]) => ({ _op: "asc", args }),
+  inArray: (...args: unknown[]) => ({ _op: "inArray", args }),
 }));
 
 function mockUser(overrides: Record<string, unknown> = {}) {
@@ -234,6 +235,7 @@ describe("api.agent action", () => {
         "conv-1",
         "sdk-session-123",
         expect.anything(),
+        undefined,
       );
     });
 
@@ -250,6 +252,7 @@ describe("api.agent action", () => {
         "conv-1",
         null,
         expect.anything(),
+        undefined,
       );
     });
 

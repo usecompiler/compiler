@@ -127,6 +127,20 @@
       "when": 1769740000000,
       "tag": "0017_add_session_id_to_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770496438324,
+      "tag": "0018_create_storage_configurations",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770496438325,
+      "tag": "0019_create_blobs",
+      "breakpoints": true
     }
   ]
 }

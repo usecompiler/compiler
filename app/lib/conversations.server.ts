@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "~/lib/db/index.server";
-import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, reviewRequests } from "~/lib/db/schema";
-import { eq, desc, and, isNull, or, ilike, sql } from "drizzle-orm";
+import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, reviewRequests, blobs as blobsTable } from "~/lib/db/schema";
+import { eq, desc, and, isNull, or, ilike, inArray, sql } from "drizzle-orm";
 import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
@@ -191,6 +191,36 @@ export async function getConversationItems(conversationId: string): Promise<Item
     status: item.status as "in_progress" | "completed" | "cancelled" | undefined,
     createdAt: item.createdAt.getTime(),
   }));
+}
+
+export async function getConversationBlobs(
+  conversationId: string
+): Promise<Record<string, Array<{ id: string; contentType: string; filename: string }>>> {
+  const conversationItems = await db
+    .select({ id: itemsTable.id })
+    .from(itemsTable)
+    .where(eq(itemsTable.conversationId, conversationId));
+
+  const itemIds = conversationItems.map((i) => i.id);
+  if (itemIds.length === 0) return {};
+
+  const rows = await db
+    .select({
+      id: blobsTable.id,
+      contentType: blobsTable.contentType,
+      filename: blobsTable.filename,
+      itemId: blobsTable.itemId,
+    })
+    .from(blobsTable)
+    .where(inArray(blobsTable.itemId, itemIds));
+
+  const result: Record<string, Array<{ id: string; contentType: string; filename: string }>> = {};
+  for (const row of rows) {
+    if (!row.itemId) continue;
+    if (!result[row.itemId]) result[row.itemId] = [];
+    result[row.itemId].push({ id: row.id, contentType: row.contentType, filename: row.filename });
+  }
+  return result;
 }
 
 export interface ShareLink {

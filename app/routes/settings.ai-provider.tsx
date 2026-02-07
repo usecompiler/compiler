@@ -251,6 +251,12 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
               GitHub
             </Link>
             <Link
+              to="/settings/storage"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Storage
+            </Link>
+            <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >

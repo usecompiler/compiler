@@ -1,9 +1,9 @@
-import { Form, redirect, useOutletContext } from "react-router";
-import { useRef, useState } from "react";
+import { Form, redirect, useOutletContext, useNavigate } from "react-router";
+import { useRef, useState, useCallback } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
-import { PromptInput } from "~/components/prompt-input";
+import { PromptInput, type PendingFile } from "~/components/prompt-input";
 import { requireAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
 import { conversations } from "~/lib/db/schema";
@@ -19,8 +19,9 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await requireAuth(request);
   const formData = await request.formData();
   const prompt = formData.get("prompt")?.toString() || "";
+  const blobIds = formData.get("blobIds")?.toString() || "";
 
-  if (!prompt.trim()) {
+  if (!prompt.trim() && !blobIds) {
     return { error: "Please enter a message" };
   }
 
@@ -32,7 +33,11 @@ export async function action({ request }: Route.ActionArgs) {
     title: "New Chat",
   });
 
-  return redirect(`/c/${id}?prompt=${encodeURIComponent(prompt)}`);
+  const params = new URLSearchParams();
+  if (prompt.trim()) params.set("prompt", prompt);
+  if (blobIds) params.set("blobIds", blobIds);
+
+  return redirect(`/c/${id}?${params.toString()}`);
 }
 
 export default function Home() {
@@ -48,6 +53,7 @@ export default function Home() {
     availableModels,
     defaultModel,
     userPreferredModel,
+    hasStorageConfig,
   } = useOutletContext<AppContext>();
 
   return (
@@ -68,7 +74,7 @@ export default function Home() {
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />
       ) : (
-        <HomePromptInput />
+        <HomePromptInput hasStorageConfig={hasStorageConfig} />
       )}
     </ConversationLayout>
   );
@@ -80,9 +86,11 @@ const suggestedPrompts = [
   "Walk me through one of the key features",
 ];
 
-function HomePromptInput() {
+function HomePromptInput({ hasStorageConfig }: { hasStorageConfig: boolean }) {
   const [input, setInput] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
+  const blobIdsInputRef = useRef<HTMLInputElement>(null);
 
   const handlePromptClick = (prompt: string) => {
     setInput(prompt);
@@ -91,19 +99,77 @@ function HomePromptInput() {
     }, 0);
   };
 
+  const handleFilesChange = useCallback((files: File[]) => {
+    const remaining = 5 - pendingFiles.length;
+    const filesToAdd = files.slice(0, remaining);
+    if (filesToAdd.length === 0) return;
+
+    const newFiles: PendingFile[] = filesToAdd.map((file) => ({
+      file,
+      uploading: true,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    setPendingFiles((prev) => [...prev, ...newFiles]);
+
+    filesToAdd.forEach((file) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      fetch("/api/upload", { method: "POST", body: formData })
+        .then((res) => res.json())
+        .then((data: { blobId?: string; error?: string }) => {
+          if (data.blobId) {
+            setPendingFiles((prev) =>
+              prev.map((f) =>
+                f.file === file ? { ...f, blobId: data.blobId, uploading: false } : f
+              )
+            );
+          } else {
+            setPendingFiles((prev) => prev.filter((f) => f.file !== file));
+          }
+        })
+        .catch(() => {
+          setPendingFiles((prev) => prev.filter((f) => f.file !== file));
+        });
+    });
+  }, [pendingFiles.length]);
+
+  const handleRemoveFile = useCallback((index: number) => {
+    setPendingFiles((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  const handleSubmit = useCallback((e?: React.FormEvent) => {
+    if (blobIdsInputRef.current) {
+      const ids = pendingFiles
+        .map((f) => f.blobId)
+        .filter((id): id is string => !!id)
+        .join(",");
+      blobIdsInputRef.current.value = ids;
+    }
+  }, [pendingFiles]);
+
   return (
     <div className="flex flex-col h-full items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4">
       <h1 className="text-3xl font-medium text-neutral-900 dark:text-neutral-100 mb-8">
         What can I help with?
       </h1>
 
-      <Form ref={formRef} method="post" className="w-full max-w-3xl">
+      <Form ref={formRef} method="post" className="w-full max-w-3xl" onSubmit={handleSubmit}>
+        <input type="hidden" ref={blobIdsInputRef} name="blobIds" />
         <PromptInput
           name="prompt"
           value={input}
           onChange={setInput}
           onSubmit={() => {}}
           autoFocus
+          files={pendingFiles}
+          onFilesChange={hasStorageConfig ? handleFilesChange : undefined}
+          onRemoveFile={hasStorageConfig ? handleRemoveFile : undefined}
         />
       </Form>
 

@@ -36,6 +36,9 @@ export default [
   route("api/items", "routes/api.items.ts"),
   route("api/search", "routes/api.search.ts"),
   route("api/user-model-preference", "routes/api.user-model-preference.tsx"),
+  route("api/upload", "routes/api.upload.ts"),
+  route("api/image/:blobId", "routes/api.image.$blobId.ts"),
+  route("api/blobs", "routes/api.blobs.ts"),
 
   // App routes (with layout that handles auth + conversations)
   layout("routes/app-layout.tsx", [
@@ -46,6 +49,7 @@ export default [
     route("settings/github", "routes/settings.github.tsx"),
     route("settings/organization", "routes/settings.organization.tsx"),
     route("settings/authentication", "routes/settings.authentication.tsx"),
+    route("settings/storage", "routes/settings.storage.tsx"),
     route("analytics", "routes/analytics.tsx"),
   ]),
 ] satisfies RouteConfig;

@@ -5,6 +5,7 @@ import {
   jsonb,
   uniqueIndex,
   boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -194,4 +195,35 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   allowedTools: jsonb("allowed_tools").$type<string[]>().default(["Bash"]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const storageConfigurations = pgTable("storage_configurations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  provider: text("provider").notNull(),
+  bucket: text("bucket").notNull(),
+  region: text("region"),
+  encryptedAccessKeyId: text("encrypted_access_key_id").notNull(),
+  accessKeyIdIv: text("access_key_id_iv").notNull(),
+  encryptedSecretAccessKey: text("encrypted_secret_access_key").notNull(),
+  secretAccessKeyIv: text("secret_access_key_iv").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const blobs = pgTable("blobs", {
+  id: text("id").primaryKey(),
+  key: text("key").unique().notNull(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  itemId: text("item_id")
+    .references(() => items.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

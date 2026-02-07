@@ -161,6 +161,20 @@ export interface AgentEvent {
   sessionId?: string;
 }
 
+const TEXT_MEDIA_TYPES = new Set([
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/typescript",
+  "application/x-yaml",
+  "application/x-sh",
+  "image/svg+xml",
+]);
+
+function isTextMediaType(mediaType: string): boolean {
+  return TEXT_MEDIA_TYPES.has(mediaType);
+}
+
 export async function* runAgent(
   prompt: string,
   organizationId: string,
@@ -168,6 +182,7 @@ export async function* runAgent(
   conversationId: string,
   sessionId?: string | null,
   signal?: AbortSignal,
+  images?: Array<{ base64: string; mediaType: string; filename?: string }>,
 ): AsyncGenerator<AgentEvent> {
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
@@ -204,8 +219,61 @@ export async function* runAgent(
     let turnCount = 0;
     let toolUseCount = 0;
 
+    let promptInput: string | AsyncIterable<SDKUserMessage> = prompt;
+    if (images && images.length > 0) {
+      const contentBlocks: Array<
+        | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+        | { type: "document"; source: { type: "base64"; media_type: string; data: string } }
+        | { type: "text"; text: string }
+      > = [];
+      const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+      for (const img of images) {
+        if (SUPPORTED_IMAGE_TYPES.has(img.mediaType)) {
+          contentBlocks.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: img.mediaType,
+              data: img.base64,
+            },
+          });
+        } else if (img.mediaType === "application/pdf") {
+          contentBlocks.push({
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: img.mediaType,
+              data: img.base64,
+            },
+          });
+        } else if (img.mediaType.startsWith("text/") || isTextMediaType(img.mediaType)) {
+          const text = Buffer.from(img.base64, "base64").toString("utf-8");
+          contentBlocks.push({
+            type: "text",
+            text: `[File: ${img.filename || "file"}]\n${text}`,
+          });
+        } else {
+          contentBlocks.push({
+            type: "text",
+            text: `[Attached file: ${img.filename || "file"} (${img.mediaType})]`,
+          });
+        }
+      }
+      contentBlocks.push({ type: "text", text: prompt || "Describe this file." });
+
+      async function* createUserStream(): AsyncIterable<SDKUserMessage> {
+        yield {
+          type: "user",
+          message: { role: "user", content: contentBlocks as SDKUserMessage["message"]["content"] },
+          parent_tool_use_id: null,
+          session_id: sessionId || "",
+        };
+      }
+      promptInput = createUserStream();
+    }
+
     for await (const message of query({
-      prompt,
+      prompt: promptInput,
       options: {
         model: effectiveModel,
         systemPrompt: buildSystemPrompt(repoNames),

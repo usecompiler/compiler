@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
 import type { Member } from "~/lib/invitations.server";
 import type { PendingQuestionData } from "~/lib/agent.server";
-import { PromptInput } from "./prompt-input";
+import { PromptInput, type PendingFile } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
 
 interface ShareLink {
@@ -22,6 +22,12 @@ interface AnsweredQuestion {
   answer: string;
 }
 
+export interface BlobMeta {
+  id: string;
+  contentType: string;
+  filename?: string;
+}
+
 interface AgentConversationProps {
   conversationId: string;
   initialItems: Item[];
@@ -36,6 +42,9 @@ interface AgentConversationProps {
   userName?: string;
   isOwner?: boolean;
   initialPendingQuestion?: PendingQuestionData[] | null;
+  initialBlobsByItemId?: Record<string, BlobMeta[]>;
+  initialBlobIds?: string;
+  hasStorageConfig?: boolean;
 }
 
 export function AgentConversation({
@@ -52,10 +61,15 @@ export function AgentConversation({
   userName,
   isOwner = false,
   initialPendingQuestion,
+  initialBlobsByItemId,
+  initialBlobIds,
+  hasStorageConfig = false,
 }: AgentConversationProps) {
   const [items, setItems] = useState<Item[]>(initialItems);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [blobsByItemId, setBlobsByItemId] = useState<Record<string, BlobMeta[]>>(initialBlobsByItemId || {});
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
   const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
   const [copiedReviewer, setCopiedReviewer] = useState<string | null>(null);
@@ -125,18 +139,64 @@ export function AgentConversation({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  const handleFilesChange = useCallback((files: File[]) => {
+    const remaining = 5 - pendingFiles.length;
+    const filesToAdd = files.slice(0, remaining);
+    if (filesToAdd.length === 0) return;
+
+    const newFiles: PendingFile[] = filesToAdd.map((file) => ({
+      file,
+      uploading: true,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    setPendingFiles((prev) => [...prev, ...newFiles]);
+
+    filesToAdd.forEach((file, i) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("conversationId", conversationId);
+
+      fetch("/api/upload", { method: "POST", body: formData })
+        .then((res) => res.json())
+        .then((data: { blobId?: string; error?: string }) => {
+          if (data.blobId) {
+            setPendingFiles((prev) =>
+              prev.map((f) =>
+                f.file === file ? { ...f, blobId: data.blobId, uploading: false } : f
+              )
+            );
+          } else {
+            setPendingFiles((prev) => prev.filter((f) => f.file !== file));
+          }
+        })
+        .catch(() => {
+          setPendingFiles((prev) => prev.filter((f) => f.file !== file));
+        });
+    });
+  }, [conversationId, pendingFiles.length]);
+
+  const handleRemoveFile = useCallback((index: number) => {
+    setPendingFiles((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
   useEffect(() => {
     const hasExistingMessages = items.length > 0;
 
+    const hasInitialContent = initialPrompt || initialBlobIds;
     if (
-      initialPrompt &&
+      hasInitialContent &&
       conversationId &&
       !hasProcessedInitialPrompt.current &&
       !hasExistingMessages &&
       !isStreaming
     ) {
       hasProcessedInitialPrompt.current = true;
-      handleSubmitWithPrompt(initialPrompt);
+      handleSubmitWithPrompt(initialPrompt || "", initialBlobIds);
       onInitialPromptProcessed?.();
     }
   }, [initialPrompt, conversationId, items.length, isStreaming]);
@@ -270,12 +330,22 @@ export function AgentConversation({
   }, [reviewInput, userName, addItem, shareToken]);
 
   const handleSubmitWithPrompt = useCallback(
-    async (promptText: string) => {
-      if (!promptText.trim() || isStreaming || !conversationId) {
+    async (promptText: string, extraBlobIds?: string) => {
+      const hasUploading = pendingFiles.some((f) => f.uploading);
+      const hasExtraBlobIds = extraBlobIds && extraBlobIds.length > 0;
+      if ((!promptText.trim() && pendingFiles.length === 0 && !hasExtraBlobIds) || isStreaming || !conversationId || hasUploading) {
         return;
       }
 
+      const pendingBlobIds = pendingFiles
+        .map((f) => f.blobId)
+        .filter((id): id is string => !!id);
+
+      const extraParsed = extraBlobIds ? extraBlobIds.split(",").filter(Boolean) : [];
+      const allBlobIds = [...pendingBlobIds, ...extraParsed];
+
       setInput("");
+      setPendingFiles([]);
       setIsStreaming(true);
       setStreamStartTime(Date.now());
 
@@ -288,6 +358,38 @@ export function AgentConversation({
       };
 
       addLocalItem(userItem);
+
+      if (allBlobIds.length > 0) {
+        const localMetas = pendingFiles
+          .filter((f) => f.blobId)
+          .map((f) => ({
+            id: f.blobId!,
+            contentType: f.file.type || "application/octet-stream",
+            filename: f.file.name,
+          }));
+
+        if (extraParsed.length > 0) {
+          const localIds = new Set(localMetas.map((m) => m.id));
+          const missingIds = extraParsed.filter((id) => !localIds.has(id));
+          if (missingIds.length > 0) {
+            fetch(`/api/blobs?ids=${missingIds.join(",")}`)
+              .then((res) => res.json())
+              .then((data: { blobs: BlobMeta[] }) => {
+                setBlobsByItemId((prev) => ({
+                  ...prev,
+                  [userItem.id]: [...(prev[userItem.id] || []), ...data.blobs],
+                }));
+              })
+              .catch(() => {});
+          }
+        }
+
+        setBlobsByItemId((prev) => ({
+          ...prev,
+          [userItem.id]: localMetas,
+        }));
+      }
+
       isAtBottomRef.current = true;
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -315,6 +417,7 @@ export function AgentConversation({
             conversationId,
             userItem,
             assistantItemId: activeAssistantId,
+            blobIds: allBlobIds.length > 0 ? allBlobIds : undefined,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -448,7 +551,7 @@ export function AgentConversation({
         abortControllerRef.current = null;
       }
     },
-    [conversationId, addLocalItem, updateLocalItem, isStreaming]
+    [conversationId, addLocalItem, updateLocalItem, isStreaming, pendingFiles]
   );
 
   const handleSubmit = useCallback(
@@ -499,6 +602,7 @@ export function AgentConversation({
               }
               streamStartTime={streamStartTime}
               ownsConversation={ownsConversation}
+              itemBlobs={blobsByItemId[item.id]}
             />
           ))}
           <div ref={messagesEndRef} />
@@ -643,6 +747,9 @@ export function AgentConversation({
                     onStop={handleStop}
                     autoFocus
                     autoFocusKey={conversationId}
+                    files={pendingFiles}
+                    onFilesChange={hasStorageConfig ? handleFilesChange : undefined}
+                    onRemoveFile={hasStorageConfig ? handleRemoveFile : undefined}
                   />
                 </form>
               )}
@@ -704,6 +811,7 @@ interface ItemRowProps {
   isStreaming: boolean;
   streamStartTime?: number;
   ownsConversation?: boolean;
+  itemBlobs?: BlobMeta[];
 }
 
 interface AssistantContent {
@@ -713,7 +821,7 @@ interface AssistantContent {
   stats?: { toolUses: number; tokens: number; durationMs: number } | null;
 }
 
-function ItemRow({ item, isStreaming, streamStartTime, ownsConversation }: ItemRowProps) {
+function ItemRow({ item, isStreaming, streamStartTime, ownsConversation, itemBlobs }: ItemRowProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
 
@@ -817,13 +925,58 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation }: ItemR
   }
 
   if (isUser) {
+    const fileExtension = (filename: string) => {
+      const ext = filename.split(".").pop()?.toUpperCase();
+      return ext || "FILE";
+    };
+
     return (
       <div className="group mb-6">
-        <div className="flex justify-end">
-          <div className="bg-[#efefef] dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
-            <p className="whitespace-pre-wrap">{contentText}</p>
+        {itemBlobs && itemBlobs.length > 0 && (
+          <div className="flex justify-end mb-2">
+            <div className="flex gap-2 flex-wrap justify-end max-w-[85%]">
+              {itemBlobs.map((blob) =>
+                blob.contentType.startsWith("image/") ? (
+                  <a
+                    key={blob.id}
+                    href={`/api/image/${blob.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-[160px] h-[160px] rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700"
+                  >
+                    <img
+                      src={`/api/image/${blob.id}`}
+                      alt={blob.filename || "Attached image"}
+                      className="w-full h-full object-cover"
+                    />
+                  </a>
+                ) : (
+                  <a
+                    key={blob.id}
+                    href={`/api/image/${blob.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col justify-between w-[160px] h-[160px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 p-3 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                  >
+                    <span className="text-sm text-neutral-900 dark:text-neutral-100 break-words line-clamp-4 leading-snug">
+                      {blob.filename || "file"}
+                    </span>
+                    <span className="inline-flex self-start px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-600 rounded">
+                      {fileExtension(blob.filename || "file")}
+                    </span>
+                  </a>
+                )
+              )}
+            </div>
           </div>
-        </div>
+        )}
+        {contentText && (
+          <div className="flex justify-end">
+            <div className="bg-[#efefef] dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
+              <p className="whitespace-pre-wrap">{contentText}</p>
+            </div>
+          </div>
+        )}
         <div className="flex justify-end mt-1">
           <button
             onClick={handleCopy}
