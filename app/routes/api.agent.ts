@@ -130,6 +130,7 @@ export async function action({ request }: Route.ActionArgs) {
   let streamCompleted = false;
   let activeItemId = assistantItemId;
   let awaitingQuestionResult = false;
+  let pendingNewline = false;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -158,6 +159,7 @@ export async function action({ request }: Route.ActionArgs) {
               currentText = "";
               currentToolCalls = [];
               toolsStartIndex = null;
+              pendingNewline = false;
               activeItemId = crypto.randomUUID();
               await db.insert(items).values({
                 id: activeItemId,
@@ -169,9 +171,13 @@ export async function action({ request }: Route.ActionArgs) {
                 createdAt: new Date(),
               });
             } else {
-              currentText += "\n\n";
+              pendingNewline = true;
             }
           } else if (event.type === "text") {
+            if (pendingNewline) {
+              currentText += "\n\n";
+              pendingNewline = false;
+            }
             currentText += event.content;
           } else if (event.type === "tool_use") {
             if (event.tool === "AskUserQuestion") {

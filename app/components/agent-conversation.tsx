@@ -332,6 +332,7 @@ export function AgentConversation({
         let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
         let toolsStartIndex: number | null = null;
         let awaitingQuestionResult = false;
+        let pendingNewline = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -357,6 +358,7 @@ export function AgentConversation({
                   currentText = "";
                   currentToolCalls = [];
                   toolsStartIndex = null;
+                  pendingNewline = false;
                   if (postAnswerAssistantIdRef.current) {
                     activeAssistantId = postAnswerAssistantIdRef.current;
                     postAnswerAssistantIdRef.current = null;
@@ -372,9 +374,13 @@ export function AgentConversation({
                     });
                   }
                 } else {
-                  currentText += "\n\n";
+                  pendingNewline = true;
                 }
               } else if (data.type === "text") {
+                if (pendingNewline) {
+                  currentText += "\n\n";
+                  pendingNewline = false;
+                }
                 currentText += data.content;
                 updateLocalItem(activeAssistantId, {
                   content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
