@@ -590,17 +590,19 @@ export function AgentConversation({
                     pendingQuestion={pendingQuestion}
                     conversationId={conversationId}
                     onAnswered={(answered) => {
-                      const qaText = answered
-                        .map((aq) => `Q: ${aq.question}\nA: ${aq.answer}`)
-                        .join("\n\n");
-                      const answerItem: Item = {
-                        id: crypto.randomUUID(),
-                        type: "message",
-                        role: "user",
-                        content: qaText,
-                        createdAt: Date.now(),
-                      };
-                      addItem(answerItem);
+                      if (answered.length > 0) {
+                        const qaText = answered
+                          .map((aq) => `Q: ${aq.question}\nA: ${aq.answer}`)
+                          .join("\n\n");
+                        const answerItem: Item = {
+                          id: crypto.randomUUID(),
+                          type: "message",
+                          role: "user",
+                          content: qaText,
+                          createdAt: Date.now(),
+                        };
+                        addItem(answerItem);
+                      }
                       const newAssistantId = crypto.randomUUID();
                       postAnswerAssistantIdRef.current = newAssistantId;
                       addLocalItem({
