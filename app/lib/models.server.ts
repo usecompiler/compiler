@@ -53,29 +53,6 @@ const FALLBACK_MODELS: ClaudeModel[] = [
   },
 ];
 
-interface ModelMappingCache {
-  anthropicToBedrock: Map<string, string>;
-  fetchedAt: number;
-}
-let modelMappingCache: ModelMappingCache | null = null;
-
-function parseBedrockIdToAnthropic(bedrockId: string): string | null {
-  const prefixes = ["anthropic.", "au.anthropic.", "apac.anthropic.", "eu.anthropic.", "us.anthropic."];
-  let withoutPrefix: string | null = null;
-
-  for (const prefix of prefixes) {
-    if (bedrockId.startsWith(prefix)) {
-      withoutPrefix = bedrockId.slice(prefix.length);
-      break;
-    }
-  }
-
-  if (!withoutPrefix) return null;
-
-  const match = withoutPrefix.match(/^(.+)-v\d+:\d+$/);
-  return match ? match[1] : null;
-}
-
 export async function fetchModelsFromAnthropic(
   apiKey: string
 ): Promise<ClaudeModel[]> {
@@ -126,6 +103,44 @@ export async function fetchModelsFromAnthropic(
   }
 }
 
+function signAwsRequest(
+  method: string,
+  host: string,
+  canonicalUri: string,
+  canonicalQuerystring: string,
+  region: string,
+  service: string,
+  accessKeyId: string,
+  secretAccessKey: string
+): Record<string, string> {
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+
+  const canonicalHeaders = `host:${host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-date";
+  const payloadHash = crypto.createHash("sha256").update("").digest("hex");
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+  const algorithm = "AWS4-HMAC-SHA256";
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${crypto.createHash("sha256").update(canonicalRequest).digest("hex")}`;
+
+  const kDate = crypto.createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
+  const kRegion = crypto.createHmac("sha256", kDate).update(region).digest();
+  const kService = crypto.createHmac("sha256", kRegion).update(service).digest();
+  const kSigning = crypto.createHmac("sha256", kService).update("aws4_request").digest();
+
+  const signature = crypto.createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return {
+    Host: host,
+    "x-amz-date": amzDate,
+    Authorization: authorizationHeader,
+  };
+}
+
 export async function fetchModelsFromBedrock(
   region: string,
   accessKeyId: string,
@@ -134,96 +149,41 @@ export async function fetchModelsFromBedrock(
   try {
     const service = "bedrock";
     const host = `${service}.${region}.amazonaws.com`;
-    const endpoint = `https://${host}/foundation-models?byProvider=Anthropic`;
-    const method = "GET";
-    const now = new Date();
-    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-    const dateStamp = amzDate.slice(0, 8);
+    const canonicalUri = "/inference-profiles";
+    const endpoint = `https://${host}${canonicalUri}`;
 
-    const canonicalUri = "/foundation-models";
-    const canonicalQuerystring = "byProvider=Anthropic";
-    const canonicalHeaders = `host:${host}\nx-amz-date:${amzDate}\n`;
-    const signedHeaders = "host;x-amz-date";
-    const payloadHash = crypto.createHash("sha256").update("").digest("hex");
-    const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-
-    const algorithm = "AWS4-HMAC-SHA256";
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-    const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${crypto.createHash("sha256").update(canonicalRequest).digest("hex")}`;
-
-    const getSignatureKey = (
-      key: string,
-      dateStamp: string,
-      regionName: string,
-      serviceName: string
-    ) => {
-      const kDate = crypto
-        .createHmac("sha256", `AWS4${key}`)
-        .update(dateStamp)
-        .digest();
-      const kRegion = crypto
-        .createHmac("sha256", kDate)
-        .update(regionName)
-        .digest();
-      const kService = crypto
-        .createHmac("sha256", kRegion)
-        .update(serviceName)
-        .digest();
-      const kSigning = crypto
-        .createHmac("sha256", kService)
-        .update("aws4_request")
-        .digest();
-      return kSigning;
-    };
-
-    const signingKey = getSignatureKey(
-      secretAccessKey,
-      dateStamp,
+    const headers = signAwsRequest(
+      "GET",
+      host,
+      canonicalUri,
+      "",
       region,
-      service
+      service,
+      accessKeyId,
+      secretAccessKey
     );
-    const signature = crypto
-      .createHmac("sha256", signingKey)
-      .update(stringToSign)
-      .digest("hex");
-
-    const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
     const response = await fetch(endpoint, {
-      method,
-      headers: {
-        Host: host,
-        "x-amz-date": amzDate,
-        Authorization: authorizationHeader,
-      },
+      method: "GET",
+      headers,
     });
 
     if (!response.ok) {
-      console.error("Failed to fetch models from Bedrock:", response.status);
+      console.error("Failed to fetch inference profiles from Bedrock:", response.status);
       return FALLBACK_MODELS;
     }
 
     const data = await response.json();
     const models: ClaudeModel[] = [];
 
-    modelMappingCache = {
-      anthropicToBedrock: new Map(),
-      fetchedAt: Date.now(),
-    };
-
-    for (const model of data.modelSummaries || []) {
-      if (model.modelId && model.modelId.includes("claude")) {
-        const anthropicId = parseBedrockIdToAnthropic(model.modelId);
-
-        if (anthropicId) {
-          modelMappingCache.anthropicToBedrock.set(anthropicId, model.modelId);
-
-          models.push({
-            id: anthropicId,
-            displayName: model.modelName || anthropicId,
-            createdAt: new Date().toISOString(),
-          });
-        }
+    for (const profile of data.inferenceProfileSummaries || []) {
+      const profileId = profile.inferenceProfileId || "";
+      if (profileId.includes("claude")) {
+        models.push({
+          id: profileId,
+          displayName: profile.inferenceProfileName || profileId,
+          createdAt: profile.createdAt || new Date().toISOString(),
+        });
       }
     }
 
@@ -231,9 +191,14 @@ export async function fetchModelsFromBedrock(
       return FALLBACK_MODELS;
     }
 
+    models.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     return models;
   } catch (error) {
-    console.error("Error fetching models from Bedrock:", error);
+    console.error("Error fetching inference profiles from Bedrock:", error);
     return FALLBACK_MODELS;
   }
 }
@@ -353,6 +318,11 @@ export async function getEffectiveModel(
   const modelConfig = await getModelConfig(organizationId);
 
   if (!modelConfig) {
+    const config = await getAIProviderConfig(organizationId);
+    if (config?.provider === "bedrock") {
+      const models = await getAvailableClaudeModels(organizationId);
+      return models[0]?.id || "claude-sonnet-4-20250514";
+    }
     return "claude-sonnet-4-20250514";
   }
 
@@ -367,7 +337,13 @@ export function getDisplayName(modelId: string): string {
   const model = FALLBACK_MODELS.find((m) => m.id === modelId);
   if (model) return model.displayName;
 
-  const match = modelId.match(/^claude-(\w+)-(\d+(?:-\d+)?)-/);
+  let id = modelId;
+  const bedrockPrefixMatch = id.match(/^(?:[\w-]+\.)*anthropic\./);
+  if (bedrockPrefixMatch) {
+    id = id.slice(bedrockPrefixMatch[0].length).replace(/-v\d+:\d+$/, "");
+  }
+
+  const match = id.match(/^claude-(\w+)-(\d+(?:-\d+)?)-/);
   if (match) {
     const variant = match[1].charAt(0).toUpperCase() + match[1].slice(1);
     const version = match[2].replace("-", ".");

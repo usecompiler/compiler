@@ -1,7 +1,7 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
-import { getEffectiveModel, getToolConfig } from "./models.server";
+import { getEffectiveModel, getToolConfig, getAvailableClaudeModels } from "./models.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
@@ -177,6 +177,13 @@ export async function* runAgent(
 
   const effectiveModel = await getEffectiveModel(memberId, organizationId);
 
+  let fallbackModel = "claude-sonnet-4-20250514";
+  if (aiProviderConfig?.provider === "bedrock") {
+    const bedrockModels = await getAvailableClaudeModels(organizationId);
+    const nonEffective = bedrockModels.find((m) => m.id !== effectiveModel);
+    fallbackModel = nonEffective?.id || bedrockModels[0]?.id || effectiveModel;
+  }
+
   const allowedTools = await getToolConfig(organizationId);
 
   const agentCwd =
@@ -208,7 +215,7 @@ export async function* runAgent(
         additionalDirectories: [orgReposDir],
         maxTurns: 30,
         maxBudgetUsd: 1.0,
-        fallbackModel: "claude-sonnet-4-20250514",
+        fallbackModel,
         ...(sessionId ? { resume: sessionId } : {}),
         abortController,
         canUseTool: async (toolName: string, input: Record<string, unknown>) => {
