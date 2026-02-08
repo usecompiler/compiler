@@ -64,7 +64,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockDb._selectCallCount = 0;
   mockDb._selectResults = [[]];
-  mockDb._insertValues.mockResolvedValue(undefined);
+  mockDb._insertValues.mockImplementation(() => {
+    const p = Promise.resolve(undefined);
+    (p as unknown as Record<string, unknown>).onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+    return p;
+  });
   mockDb._updateSet.mockClear();
   mockDb._updateWhere.mockResolvedValue(undefined);
 

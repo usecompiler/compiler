@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 export interface PendingFile {
   file: File;
@@ -40,6 +40,7 @@ export function PromptInput({
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -87,6 +88,41 @@ export function PromptInput({
     [onFilesChange]
   );
 
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!onFilesChange) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(true);
+    },
+    [onFilesChange]
+  );
+
+  const handleDragLeave = useCallback(
+    (e: React.DragEvent) => {
+      if (!onFilesChange) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+    },
+    [onFilesChange]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!onFilesChange) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        onFilesChange(droppedFiles);
+      }
+      textareaRef.current?.focus();
+    },
+    [onFilesChange]
+  );
+
   const hasUploading = files.some((f) => f.uploading);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -106,7 +142,12 @@ export function PromptInput({
   const hasFiles = files.length > 0;
 
   return (
-    <div className="relative bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
+    <div
+      onDragOver={onFilesChange ? handleDragOver : undefined}
+      onDragLeave={onFilesChange ? handleDragLeave : undefined}
+      onDrop={onFilesChange ? handleDrop : undefined}
+      className={`relative bg-white dark:bg-neutral-800 border rounded-3xl ${isDragging ? "border-blue-500 dark:border-blue-400" : "border-neutral-300 dark:border-neutral-700"}`}
+    >
       {hasFiles && (
         <div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto">
           {files.map((f, i) => (

@@ -72,7 +72,7 @@ export async function action({ request }: Route.ActionArgs) {
     content: userItem.content || null,
     status: userItem.status || null,
     createdAt: userItem.createdAt ? new Date(userItem.createdAt) : new Date(),
-  });
+  }).onConflictDoNothing();
 
   if (blobIds && blobIds.length > 0) {
     await db
@@ -89,7 +89,7 @@ export async function action({ request }: Route.ActionArgs) {
     content: { text: "", toolCalls: [], stats: null },
     status: "in_progress",
     createdAt: new Date(userItem.createdAt + 1),
-  });
+  }).onConflictDoNothing();
 
   if (conv[0]?.title === "New Chat") {
     let titleText =

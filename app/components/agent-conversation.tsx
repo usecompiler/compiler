@@ -408,132 +408,153 @@ export function AgentConversation({
 
       abortControllerRef.current = new AbortController();
 
-      try {
-        const response = await fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: promptText.trim(),
-            conversationId,
-            userItem,
-            assistantItemId: activeAssistantId,
-            blobIds: allBlobIds.length > 0 ? allBlobIds : undefined,
-          }),
-          signal: abortControllerRef.current.signal,
-        });
+      const agentBody = JSON.stringify({
+        prompt: promptText.trim(),
+        conversationId,
+        userItem,
+        assistantItemId: activeAssistantId,
+        blobIds: allBlobIds.length > 0 ? allBlobIds : undefined,
+      });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+      const maxRetries = 2;
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (abortControllerRef.current?.signal.aborted) break;
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response body");
+        try {
+          const response = await fetch("/api/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: agentBody,
+            signal: abortControllerRef.current.signal,
+          });
 
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let currentText = "";
-        let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
-        let toolsStartIndex: number | null = null;
-        let awaitingQuestionResult = false;
-        let pendingNewline = false;
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          const reader = response.body?.getReader();
+          if (!reader) throw new Error("No response body");
 
-          buffer += decoder.decode(value, { stream: true });
+          lastError = null;
 
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() || "";
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let currentText = "";
+          let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
+          let toolsStartIndex: number | null = null;
+          let awaitingQuestionResult = false;
+          let pendingNewline = false;
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = JSON.parse(line.slice(6));
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-              if (data.type === "session_init") {
-              } else if (data.type === "new_turn") {
-                if (awaitingQuestionResult) {
-                  awaitingQuestionResult = false;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === "session_init") {
+                } else if (data.type === "new_turn") {
+                  if (awaitingQuestionResult) {
+                    awaitingQuestionResult = false;
+                    updateLocalItem(activeAssistantId, {
+                      content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                      status: "completed",
+                    });
+                    currentText = "";
+                    currentToolCalls = [];
+                    toolsStartIndex = null;
+                    pendingNewline = false;
+                    if (postAnswerAssistantIdRef.current) {
+                      activeAssistantId = postAnswerAssistantIdRef.current;
+                      postAnswerAssistantIdRef.current = null;
+                    } else {
+                      activeAssistantId = crypto.randomUUID();
+                      addLocalItem({
+                        id: activeAssistantId,
+                        type: "message",
+                        role: "assistant",
+                        content: { text: "", toolCalls: [], stats: null },
+                        status: "in_progress",
+                        createdAt: Date.now() + 1,
+                      });
+                    }
+                  } else {
+                    pendingNewline = true;
+                  }
+                } else if (data.type === "text") {
+                  if (pendingNewline) {
+                    currentText += "\n\n";
+                    pendingNewline = false;
+                  }
+                  currentText += data.content;
                   updateLocalItem(activeAssistantId, {
                     content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                    status: "completed",
                   });
-                  currentText = "";
-                  currentToolCalls = [];
-                  toolsStartIndex = null;
-                  pendingNewline = false;
-                  if (postAnswerAssistantIdRef.current) {
-                    activeAssistantId = postAnswerAssistantIdRef.current;
-                    postAnswerAssistantIdRef.current = null;
-                  } else {
-                    activeAssistantId = crypto.randomUUID();
-                    addLocalItem({
-                      id: activeAssistantId,
-                      type: "message",
-                      role: "assistant",
-                      content: { text: "", toolCalls: [], stats: null },
-                      status: "in_progress",
-                      createdAt: Date.now() + 1,
+                } else if (data.type === "tool_use") {
+                  if (data.tool === "AskUserQuestion" && data.input?.questions) {
+                    setPendingQuestion({ questions: data.input.questions });
+                    awaitingQuestionResult = true;
+                    continue;
+                  }
+                  if (toolsStartIndex === null) {
+                    toolsStartIndex = currentText.length;
+                  }
+                  const toolCall = {
+                    id: crypto.randomUUID(),
+                    tool: data.tool,
+                    input: data.input,
+                  };
+                  currentToolCalls = [...currentToolCalls, toolCall];
+                  updateLocalItem(activeAssistantId, {
+                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
+                  });
+                } else if (data.type === "tool_result") {
+                  if (awaitingQuestionResult) {
+                    continue;
+                  }
+                  if (currentToolCalls.length > 0) {
+                    const updatedCalls = [...currentToolCalls];
+                    updatedCalls[updatedCalls.length - 1].result = data.content;
+                    currentToolCalls = updatedCalls;
+                    updateLocalItem(activeAssistantId, {
+                      content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                     });
                   }
-                } else {
-                  pendingNewline = true;
-                }
-              } else if (data.type === "text") {
-                if (pendingNewline) {
-                  currentText += "\n\n";
-                  pendingNewline = false;
-                }
-                currentText += data.content;
-                updateLocalItem(activeAssistantId, {
-                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                });
-              } else if (data.type === "tool_use") {
-                if (data.tool === "AskUserQuestion" && data.input?.questions) {
-                  setPendingQuestion({ questions: data.input.questions });
-                  awaitingQuestionResult = true;
-                  continue;
-                }
-                if (toolsStartIndex === null) {
-                  toolsStartIndex = currentText.length;
-                }
-                const toolCall = {
-                  id: crypto.randomUUID(),
-                  tool: data.tool,
-                  input: data.input,
-                };
-                currentToolCalls = [...currentToolCalls, toolCall];
-                updateLocalItem(activeAssistantId, {
-                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                });
-              } else if (data.type === "tool_result") {
-                if (awaitingQuestionResult) {
-                  continue;
-                }
-                if (currentToolCalls.length > 0) {
-                  const updatedCalls = [...currentToolCalls];
-                  updatedCalls[updatedCalls.length - 1].result = data.content;
-                  currentToolCalls = updatedCalls;
+                } else if (data.type === "error") {
+                  currentText += `\n\nError: ${data.content}`;
                   updateLocalItem(activeAssistantId, {
                     content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                   });
+                } else if (data.type === "result" && data.stats) {
+                  updateLocalItem(activeAssistantId, {
+                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
+                    status: "completed",
+                  });
                 }
-              } else if (data.type === "error") {
-                currentText += `\n\nError: ${data.content}`;
-                updateLocalItem(activeAssistantId, {
-                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                });
-              } else if (data.type === "result" && data.stats) {
-                updateLocalItem(activeAssistantId, {
-                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
-                  status: "completed",
-                });
               }
             }
           }
+
+          break;
+        } catch (error) {
+          lastError = error;
+          if ((error as Error).name === "AbortError") break;
         }
-      } catch (error) {
-        if ((error as Error).name === "AbortError") {
+      }
+
+      if (lastError) {
+        if ((lastError as Error).name === "AbortError") {
           updateLocalItem(activeAssistantId, { status: "cancelled" });
         } else {
           updateLocalItem(activeAssistantId, {
@@ -545,11 +566,11 @@ export function AgentConversation({
             status: "cancelled",
           });
         }
-      } finally {
-        setIsStreaming(false);
-        setStreamStartTime(undefined);
-        abortControllerRef.current = null;
       }
+
+      setIsStreaming(false);
+      setStreamStartTime(undefined);
+      abortControllerRef.current = null;
     },
     [conversationId, addLocalItem, updateLocalItem, isStreaming, pendingFiles]
   );

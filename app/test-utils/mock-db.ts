@@ -25,7 +25,12 @@ export function createMockDb(): MockDb {
   const updateWhereFn = vi.fn().mockResolvedValue(undefined);
   const updateSetFn = vi.fn(() => ({ where: updateWhereFn }));
   const updateFn = vi.fn(() => ({ set: updateSetFn }));
-  const insertValuesFn = vi.fn().mockResolvedValue(undefined);
+  const onConflictDoNothingFn = vi.fn().mockResolvedValue(undefined);
+  const insertValuesFn = vi.fn(() => {
+    const p = Promise.resolve(undefined);
+    (p as unknown as Record<string, unknown>).onConflictDoNothing = onConflictDoNothingFn;
+    return p;
+  });
   const insertFn = vi.fn(() => ({ values: insertValuesFn }));
 
   const selectWhereFn = vi.fn(() => {
