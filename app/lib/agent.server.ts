@@ -278,6 +278,7 @@ export async function* runAgent(
         model: effectiveModel,
         systemPrompt: buildSystemPrompt(repoNames),
         allowedTools,
+        disallowedTools: ["Edit", "Write", "NotebookEdit"],
         permissionMode: "plan",
         cwd: agentCwd,
         additionalDirectories: [orgReposDir],
