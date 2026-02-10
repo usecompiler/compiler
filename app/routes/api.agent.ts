@@ -113,32 +113,32 @@ export async function action({ request }: Route.ActionArgs) {
 
   await syncStaleRepos(organizationId);
 
-  let effectivePrompt = prompt;
-  if (!conv[0].sessionId) {
-    const priorItems = await db
-      .select({
-        role: items.role,
-        content: items.content,
-      })
-      .from(items)
-      .where(and(eq(items.conversationId, conversationId), eq(items.type, "message")))
-      .orderBy(asc(items.createdAt));
+  const priorItems = await db
+    .select({
+      role: items.role,
+      content: items.content,
+    })
+    .from(items)
+    .where(and(eq(items.conversationId, conversationId), eq(items.type, "message")))
+    .orderBy(asc(items.createdAt));
 
-    if (priorItems.length > 0) {
-      const historyLines = priorItems
-        .filter((item) => item.role === "user" || item.role === "assistant")
-        .map((item) => {
-          const text =
-            typeof item.content === "string"
-              ? item.content
-              : (item.content as { text?: string })?.text || "";
-          return `${item.role === "user" ? "User" : "Assistant"}: ${text}`;
-        });
-      if (historyLines.length > 0) {
-        effectivePrompt = historyLines.join("\n\n") + "\n\nUser: " + prompt;
-      }
+  let historyPrompt: string | null = null;
+  if (priorItems.length > 0) {
+    const historyLines = priorItems
+      .filter((item) => item.role === "user" || item.role === "assistant")
+      .map((item) => {
+        const text =
+          typeof item.content === "string"
+            ? item.content
+            : (item.content as { text?: string })?.text || "";
+        return `${item.role === "user" ? "User" : "Assistant"}: ${text}`;
+      });
+    if (historyLines.length > 0) {
+      historyPrompt = historyLines.join("\n\n") + "\n\nUser: " + prompt;
     }
   }
+
+  const effectivePrompt = conv[0].sessionId ? prompt : (historyPrompt || prompt);
 
   let agentImages: Array<{ base64: string; mediaType: string; filename?: string }> | undefined;
   if (blobIds && blobIds.length > 0) {
@@ -175,7 +175,7 @@ export async function action({ request }: Route.ActionArgs) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal, agentImages)) {
+        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal, agentImages, historyPrompt)) {
           if (event.type === "session_init" && event.sessionId) {
             await db
               .update(conversations)

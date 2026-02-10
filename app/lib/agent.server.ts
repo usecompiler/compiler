@@ -190,6 +190,7 @@ export async function* runAgent(
   sessionId?: string | null,
   signal?: AbortSignal,
   images?: Array<{ base64: string; mediaType: string; filename?: string }>,
+  fallbackPrompt?: string | null,
 ): AsyncGenerator<AgentEvent> {
   const orgReposDir = getOrgReposDir(organizationId);
   const aiProviderEnv = await getAIProviderEnv(organizationId);
@@ -222,11 +223,41 @@ export async function* runAgent(
     }
   }
 
-  try {
-    let turnCount = 0;
-    let toolUseCount = 0;
+  const buildQueryOptions = (resumeSessionId?: string | null) => ({
+    model: effectiveModel,
+    systemPrompt: buildSystemPrompt(repoNames),
+    allowedTools,
+    disallowedTools: ["Edit", "Write", "NotebookEdit"],
+    permissionMode: "plan" as const,
+    cwd: agentCwd,
+    additionalDirectories: [orgReposDir],
+    maxBudgetUsd: 10.0,
+    fallbackModel,
+    ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+    abortController,
+    canUseTool: async (toolName: string, input: Record<string, unknown>) => {
+      if (toolName === "AskUserQuestion") {
+        const answers = await new Promise<Record<string, string>>((resolve) => {
+          pendingAnswers.set(conversationId, {
+            resolver: resolve,
+            questions: input.questions as PendingQuestionData[],
+          });
+        });
+        pendingAnswers.delete(conversationId);
+        return {
+          behavior: "allow" as const,
+          updatedInput: { ...input, answers },
+        };
+      }
+      return { behavior: "allow" as const, updatedInput: input };
+    },
+    env: {
+      ...process.env,
+      ...aiProviderEnv,
+    },
+  });
 
-    let promptInput: string | AsyncIterable<SDKUserMessage> = prompt;
+  const buildPromptInput = (promptText: string) => {
     if (images && images.length > 0) {
       const contentBlocks: Array<
         | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
@@ -266,7 +297,7 @@ export async function* runAgent(
           });
         }
       }
-      contentBlocks.push({ type: "text", text: prompt || "Describe this file." });
+      contentBlocks.push({ type: "text", text: promptText || "Describe this file." });
 
       async function* createUserStream(): AsyncIterable<SDKUserMessage> {
         yield {
@@ -276,100 +307,69 @@ export async function* runAgent(
           session_id: sessionId || "",
         };
       }
-      promptInput = createUserStream();
+      return createUserStream() as string | AsyncIterable<SDKUserMessage>;
     }
+    return promptText as string | AsyncIterable<SDKUserMessage>;
+  };
 
-    for await (const message of query({
-      prompt: promptInput,
-      options: {
-        model: effectiveModel,
-        systemPrompt: buildSystemPrompt(repoNames),
-        allowedTools,
-        disallowedTools: ["Edit", "Write", "NotebookEdit"],
-        permissionMode: "plan",
-        cwd: agentCwd,
-        additionalDirectories: [orgReposDir],
-        maxBudgetUsd: 10.0,
-        fallbackModel,
-        ...(sessionId ? { resume: sessionId } : {}),
-        abortController,
-        canUseTool: async (toolName: string, input: Record<string, unknown>) => {
-          if (toolName === "AskUserQuestion") {
-            const answers = await new Promise<Record<string, string>>((resolve) => {
-              pendingAnswers.set(conversationId, {
-                resolver: resolve,
-                questions: input.questions as PendingQuestionData[],
-              });
-            });
-            pendingAnswers.delete(conversationId);
-            return {
-              behavior: "allow" as const,
-              updatedInput: { ...input, answers },
-            };
-          }
-          return { behavior: "allow" as const, updatedInput: input };
-        },
-        env: {
-          ...process.env,
-          ...aiProviderEnv,
-        },
-      },
-    })) {
+  async function* processQueryMessages(
+    queryIterable: AsyncIterable<Record<string, unknown>>,
+    turnCount: { value: number },
+    toolUseCount: { value: number },
+  ): AsyncGenerator<AgentEvent> {
+    for await (const message of queryIterable) {
       if (message.type === "system" && (message as { subtype?: string }).subtype === "init") {
         yield {
           type: "session_init",
           sessionId: (message as { session_id?: string }).session_id,
         };
-      } else if (message.type === "assistant" && message.message?.content) {
-        turnCount++;
-        if (turnCount > 1) {
+      } else if (message.type === "assistant" && (message as { message?: { content?: unknown[] } }).message?.content) {
+        turnCount.value++;
+        if (turnCount.value > 1) {
           yield { type: "new_turn" };
         }
-        for (const block of message.message.content) {
+        const content = (message as { message: { content: Record<string, unknown>[] } }).message.content;
+        for (const block of content) {
           if ("text" in block && block.text) {
-            yield { type: "text", content: block.text };
+            yield { type: "text", content: block.text as string };
           } else if ("type" in block && block.type === "tool_use") {
-            const toolName = (block as { name?: string }).name;
+            const toolName = block.name as string | undefined;
             if (toolName !== "AskUserQuestion") {
-              toolUseCount++;
+              toolUseCount.value++;
             }
             yield {
               type: "tool_use",
-              tool: (block as { name?: string }).name,
-              input: (block as { input?: unknown }).input,
+              tool: block.name as string,
+              input: block.input,
             };
           }
         }
       } else if (message.type === "result") {
-        const usage = (
-          message as {
-            usage?: { input_tokens?: number; output_tokens?: number };
-          }
-        ).usage;
+        const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
         const tokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
-        const durationMs =
-          (message as { duration_ms?: number }).duration_ms || 0;
+        const durationMs = (message as { duration_ms?: number }).duration_ms || 0;
         yield {
           type: "result",
           stats: {
-            toolUses: toolUseCount,
+            toolUses: toolUseCount.value,
             tokens,
             durationMs,
           },
         };
-      } else if (message.type === "user" && message.message?.content) {
-        for (const block of message.message.content) {
+      } else if (message.type === "user" && (message as { message?: { content?: unknown[] } }).message?.content) {
+        const content = (message as { message: { content: Record<string, unknown>[] } }).message.content;
+        for (const block of content) {
           if (
             "type" in block &&
             block.type === "tool_result" &&
             "content" in block
           ) {
-            const content = block.content;
+            const blockContent = block.content;
             const text =
-              typeof content === "string"
-                ? content
-                : Array.isArray(content)
-                  ? content
+              typeof blockContent === "string"
+                ? blockContent
+                : Array.isArray(blockContent)
+                  ? (blockContent as Record<string, unknown>[])
                       .filter(
                         (c): c is { type: "text"; text: string } =>
                           typeof c === "object" && "text" in c,
@@ -383,6 +383,48 @@ export async function* runAgent(
             };
           }
         }
+      }
+    }
+  }
+
+  try {
+    const turnCount = { value: 0 };
+    const toolUseCount = { value: 0 };
+
+    let queryIterable: AsyncIterable<unknown>;
+    let sessionFailed = false;
+
+    if (sessionId) {
+      try {
+        const promptInput = buildPromptInput(prompt);
+        queryIterable = query({
+          prompt: promptInput,
+          options: buildQueryOptions(sessionId),
+        });
+        for await (const event of processQueryMessages(queryIterable as AsyncIterable<never>, turnCount, toolUseCount)) {
+          yield event;
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw error;
+        }
+        sessionFailed = true;
+      }
+    }
+
+    if (!sessionId || sessionFailed) {
+      const retryPrompt = sessionFailed ? (fallbackPrompt || prompt) : prompt;
+      const promptInput = buildPromptInput(retryPrompt);
+      if (sessionFailed) {
+        turnCount.value = 0;
+        toolUseCount.value = 0;
+      }
+      queryIterable = query({
+        prompt: promptInput,
+        options: buildQueryOptions(null),
+      });
+      for await (const event of processQueryMessages(queryIterable as AsyncIterable<never>, turnCount, toolUseCount)) {
+        yield event;
       }
     }
 
