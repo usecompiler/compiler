@@ -240,6 +240,7 @@ describe("api.agent action", () => {
         "sdk-session-123",
         expect.anything(),
         undefined,
+        null,
       );
     });
 
@@ -257,6 +258,7 @@ describe("api.agent action", () => {
         null,
         expect.anything(),
         undefined,
+        null,
       );
     });
 
@@ -288,7 +290,7 @@ describe("api.agent action", () => {
       await consumeSSEStream(response);
 
       expect(runAgent.mock.calls[0][0]).toBe("Hello");
-      expect(mockDb.select).toHaveBeenCalledTimes(1);
+      expect(mockDb.select).toHaveBeenCalledTimes(2);
     });
 
     it("persists session_id from session_init event", async () => {
