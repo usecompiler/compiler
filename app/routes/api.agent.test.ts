@@ -74,7 +74,7 @@ beforeEach(() => {
 
   requireActiveAuth.mockResolvedValue(mockUser());
   runAgent.mockReturnValue(mockAgentStream([]));
-  mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: null }]);
+  mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
 });
 
 describe("api.agent action", () => {
@@ -158,7 +158,7 @@ describe("api.agent action", () => {
     });
 
     it("updates title to prompt text when conversation title is 'New Chat'", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "New Chat", userId: "user-1", sessionId: null }]);
+      mockDb._setSelectResult([{ id: "conv-1", title: "New Chat", userId: "user-1" }]);
       runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const body = validBody();
       body.userItem.content = { text: "My question" };
@@ -173,7 +173,7 @@ describe("api.agent action", () => {
     });
 
     it("does NOT change title when already set", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Title", userId: "user-1", sessionId: null }]);
+      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Title", userId: "user-1" }]);
       runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const request = buildRequest(validBody());
       const response = await callAction(request);
@@ -224,47 +224,10 @@ describe("api.agent action", () => {
     });
   });
 
-  describe("session resumption", () => {
-    it("passes sessionId to runAgent when present", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: "sdk-session-123" }]);
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      expect(runAgent).toHaveBeenCalledWith(
-        "Hello",
-        "org-1",
-        "member-1",
-        "conv-1",
-        "sdk-session-123",
-        expect.anything(),
-        undefined,
-        null,
-      );
-    });
-
-    it("passes null sessionId to runAgent for new conversations", async () => {
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      expect(runAgent).toHaveBeenCalledWith(
-        "Hello",
-        "org-1",
-        "member-1",
-        "conv-1",
-        null,
-        expect.anything(),
-        undefined,
-        null,
-      );
-    });
-
-    it("prepends text history when sessionId is null and prior messages exist", async () => {
+  describe("message history", () => {
+    it("passes priorItems to runAgent", async () => {
       mockDb._selectResults = [
-        [{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: null }],
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [
           { role: "user", content: "What does this project do?" },
           { role: "assistant", content: { text: "It manages widgets." } },
@@ -276,40 +239,37 @@ describe("api.agent action", () => {
       const response = await callAction(request);
       await consumeSSEStream(response);
 
-      const promptArg = runAgent.mock.calls[0][0];
-      expect(promptArg).toContain("User: What does this project do?");
-      expect(promptArg).toContain("Assistant: It manages widgets.");
-      expect(promptArg).toContain("User: Hello");
+      const priorItemsArg = runAgent.mock.calls[0][6];
+      expect(priorItemsArg).toEqual([
+        { role: "user", content: "What does this project do?" },
+        { role: "assistant", content: { text: "It manages widgets." } },
+      ]);
     });
 
-    it("skips history fallback when sessionId is present", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1", sessionId: "existing-session" }]);
+    it("passes prompt directly to runAgent", async () => {
       runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const request = buildRequest(validBody());
       const response = await callAction(request);
       await consumeSSEStream(response);
 
       expect(runAgent.mock.calls[0][0]).toBe("Hello");
-      expect(mockDb.select).toHaveBeenCalledTimes(2);
     });
 
-    it("persists session_id from session_init event", async () => {
-      const events: AgentEvent[] = [
-        { type: "session_init", sessionId: "new-sdk-session-456" },
-        { type: "text", content: "Hello" },
-        { type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
+    it("calls runAgent with correct arguments", async () => {
+      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const request = buildRequest(validBody());
       const response = await callAction(request);
       await consumeSSEStream(response);
 
-      const setCalls = mockDb._updateSet.mock.calls;
-      const sessionUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).sessionId !== undefined
+      expect(runAgent).toHaveBeenCalledWith(
+        "Hello",
+        "org-1",
+        "member-1",
+        "conv-1",
+        expect.anything(),
+        undefined,
+        expect.any(Array),
       );
-      expect(sessionUpdate).toBeDefined();
-      expect((sessionUpdate![0] as Record<string, string>).sessionId).toBe("new-sdk-session-456");
     });
   });
 
@@ -354,7 +314,7 @@ describe("api.agent action", () => {
     it("tool_use and tool_result events build toolCalls array", async () => {
       const events: AgentEvent[] = [
         { type: "text", content: "Let me check" },
-        { type: "tool_use", tool: "Bash", input: { command: "ls" } },
+        { type: "tool_use", tool: "bash", input: { command: "ls" } },
         { type: "tool_result", content: "file1.txt" },
         { type: "result", stats: { toolUses: 1, tokens: 30, durationMs: 150 } },
       ];
@@ -370,7 +330,7 @@ describe("api.agent action", () => {
       const content = (finalUpdate![0] as Record<string, { toolCalls: unknown[]; toolsStartIndex: number }>).content;
       expect(content.toolCalls).toHaveLength(1);
       expect(content.toolCalls[0]).toMatchObject({
-        tool: "Bash",
+        tool: "bash",
         input: { command: "ls" },
         result: "file1.txt",
       });
@@ -403,10 +363,10 @@ describe("api.agent action", () => {
   });
 
   describe("AskUserQuestion handling", () => {
-    it("excludes AskUserQuestion from toolCalls in persisted content", async () => {
+    it("excludes askUserQuestion from toolCalls in persisted content", async () => {
       const events: AgentEvent[] = [
         { type: "text", content: "Let me ask" },
-        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [{ question: "Pick one" }] } },
+        { type: "tool_use", tool: "askUserQuestion", input: { questions: [{ question: "Pick one" }] } },
         { type: "tool_result", content: "answered" },
         { type: "new_turn" },
         { type: "text", content: "Thanks" },
@@ -429,7 +389,7 @@ describe("api.agent action", () => {
 
     it("skips tool_result when awaiting question answer", async () => {
       const events: AgentEvent[] = [
-        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
         { type: "tool_result", content: "should be skipped" },
         { type: "new_turn" },
         { type: "text", content: "Response" },
@@ -451,10 +411,10 @@ describe("api.agent action", () => {
       }
     });
 
-    it("splits assistant items on new_turn after AskUserQuestion", async () => {
+    it("splits assistant items on new_turn after askUserQuestion", async () => {
       const events: AgentEvent[] = [
         { type: "text", content: "Before question" },
-        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
         { type: "tool_result", content: "answered" },
         { type: "new_turn" },
         { type: "text", content: "After answer" },
@@ -486,7 +446,7 @@ describe("api.agent action", () => {
       expect(secondCompleted.text).toBe("After answer");
     });
 
-    it("does not split on new_turn without prior AskUserQuestion", async () => {
+    it("does not split on new_turn without prior askUserQuestion", async () => {
       const events: AgentEvent[] = [
         { type: "text", content: "First" },
         { type: "new_turn" },
@@ -502,13 +462,13 @@ describe("api.agent action", () => {
       expect(insertCalls.length).toBe(2);
     });
 
-    it("non-AskUserQuestion tool_use events are still tracked normally", async () => {
+    it("non-askUserQuestion tool_use events are still tracked normally", async () => {
       const events: AgentEvent[] = [
         { type: "text", content: "Checking" },
-        { type: "tool_use", tool: "AskUserQuestion", input: { questions: [] } },
+        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
         { type: "tool_result", content: "answered" },
         { type: "new_turn" },
-        { type: "tool_use", tool: "Bash", input: { command: "ls" } },
+        { type: "tool_use", tool: "bash", input: { command: "ls" } },
         { type: "tool_result", content: "files" },
         { type: "text", content: "Done" },
         { type: "result", stats: { toolUses: 2, tokens: 40, durationMs: 300 } },
@@ -524,7 +484,7 @@ describe("api.agent action", () => {
       ).pop();
       const content = (finalUpdate![0] as Record<string, { toolCalls: Array<{ tool: string }> }>).content;
       expect(content.toolCalls).toHaveLength(1);
-      expect(content.toolCalls[0].tool).toBe("Bash");
+      expect(content.toolCalls[0].tool).toBe("bash");
     });
   });
 });

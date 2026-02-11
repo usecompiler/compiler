@@ -221,39 +221,3 @@ export async function validateBedrockCredentials(
   }
 }
 
-export async function getAIProviderEnv(
-  organizationId: string
-): Promise<Record<string, string>> {
-  const config = await getAIProviderConfig(organizationId);
-  if (!config) {
-    return {};
-  }
-
-  if (config.provider === "anthropic" && config.anthropicApiKey) {
-    return {
-      ANTHROPIC_API_KEY: config.anthropicApiKey,
-    };
-  }
-
-  if (
-    config.provider === "bedrock" &&
-    config.awsRegion &&
-    config.awsAccessKeyId &&
-    config.awsSecretAccessKey
-  ) {
-    const env: Record<string, string> = {
-      CLAUDE_CODE_USE_BEDROCK: "1",
-      AWS_REGION: config.awsRegion,
-      AWS_ACCESS_KEY_ID: config.awsAccessKeyId,
-      AWS_SECRET_ACCESS_KEY: config.awsSecretAccessKey,
-    };
-
-    if (!config.promptCachingEnabled) {
-      env.DISABLE_PROMPT_CACHING = "1";
-    }
-
-    return env;
-  }
-
-  return {};
-}

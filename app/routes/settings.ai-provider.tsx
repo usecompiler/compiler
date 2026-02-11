@@ -15,9 +15,10 @@ import {
   saveModelConfig,
   getToolConfig,
   saveToolConfig,
-  REQUIRED_TOOLS as SERVER_REQUIRED_TOOLS,
   OPTIONAL_TOOLS as SERVER_OPTIONAL_TOOLS,
 } from "~/lib/models.server";
+
+const BASE_TOOL_KEYS = ["read", "glob", "grep", "askUserQuestion"];
 import { canManageOrganization } from "~/lib/permissions.server";
 
 const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
@@ -56,7 +57,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     getToolConfig(user.organization.id),
   ]);
 
-  const enabledOptionalTools = toolConfig.filter((t) => !SERVER_REQUIRED_TOOLS.includes(t));
+  const enabledOptionalTools = toolConfig.filter((t) => !BASE_TOOL_KEYS.includes(t));
 
   return {
     config: {

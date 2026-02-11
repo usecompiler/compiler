@@ -1,5 +1,6 @@
 import type { Route } from "../+types/root";
 import { requestIdContext } from "./context.server";
+import "./startup.server";
 
 export const loggingMiddleware: Route.MiddlewareFunction = async (
   { request, context },

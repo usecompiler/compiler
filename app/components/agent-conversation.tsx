@@ -502,7 +502,7 @@ export function AgentConversation({
                     content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
                   });
                 } else if (data.type === "tool_use") {
-                  if (data.tool === "AskUserQuestion" && data.input?.questions) {
+                  if (data.tool === "askUserQuestion" && data.input?.questions) {
                     setPendingQuestion({ questions: data.input.questions });
                     awaitingQuestionResult = true;
                     continue;
@@ -1435,13 +1435,13 @@ function formatTokens(tokens: number): string {
 
 function getToolLabel(tool?: string): string {
   switch (tool) {
-    case "Read":
+    case "read":
       return "Reading";
-    case "Glob":
+    case "glob":
       return "Searching";
-    case "Grep":
+    case "grep":
       return "Searching";
-    case "Bash":
+    case "bash":
       return "Running";
     default:
       return "Running";

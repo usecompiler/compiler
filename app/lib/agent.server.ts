@@ -1,38 +1,31 @@
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { streamText, stepCountIs, type ModelMessage } from "ai";
 import path from "node:path";
-import { getAIProviderEnv, getAIProviderConfig } from "./ai-provider.server";
-import { getEffectiveModel, getToolConfig, getAvailableClaudeModels } from "./models.server";
+import { getAIProviderConfig } from "./ai-provider.server";
+import { getModel, getToolConfig } from "./models.server";
+import { buildTools } from "./tools/index.server";
+import {
+  submitAnswer as toolSubmitAnswer,
+  getPendingQuestion as toolGetPendingQuestion,
+  cleanupPendingAnswers,
+  type PendingQuestionData,
+} from "./tools/ask-user-question.server";
+import { isOverflow, compactMessages } from "./compaction.server";
+import { TOOL_USAGE_PROMPT } from "./prompts.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 
-const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
-
-export interface PendingQuestionData {
-  question: string;
-  header?: string;
-  options: Array<{ label: string; description?: string }>;
-  multiSelect?: boolean;
-}
-
-interface PendingAnswer {
-  resolver: (answers: Record<string, string>) => void;
-  questions: PendingQuestionData[];
-}
-
-const pendingAnswers = new Map<string, PendingAnswer>();
+export type { PendingQuestionData } from "./tools/ask-user-question.server";
 
 export function submitAnswer(conversationId: string, answers: Record<string, string>): boolean {
-  const pending = pendingAnswers.get(conversationId);
-  if (!pending) return false;
-  pending.resolver(answers);
-  return true;
+  return toolSubmitAnswer(conversationId, answers);
 }
 
 export function getPendingQuestion(conversationId: string): PendingQuestionData[] | null {
-  const pending = pendingAnswers.get(conversationId);
-  return pending ? pending.questions : null;
+  return toolGetPendingQuestion(conversationId);
 }
+
+const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
 function getOrgReposDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
@@ -126,23 +119,17 @@ GIT HISTORY - Answering questions about changes:
 - Never show raw commit messages, diffs, or code - summarize the intent and impact instead`;
 
 function buildSystemPrompt(repoNames: string[]): string {
-  if (repoNames.length <= 1) {
-    return (
-      BASE_SYSTEM_PROMPT +
-      `\n\nYour current working directory IS the project you should explore.`
-    );
-  }
-
-  return (
-    BASE_SYSTEM_PROMPT +
-    `\n\nMULTIPLE PROJECTS AVAILABLE:
+  const projectContext = repoNames.length <= 1
+    ? `\n\nYour current working directory IS the project you should explore.`
+    : `\n\nMULTIPLE PROJECTS AVAILABLE:
 You have access to ${repoNames.length} projects: ${repoNames.join(", ")}
 - Each project is in its own subdirectory
 - When the user asks about a specific project, first cd into that directory
 - For git commands (like git log, git blame), you MUST cd into the project directory first
 - If the user doesn't specify which project, ask them to clarify or explore all of them
-- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`
-  );
+- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
+
+  return BASE_SYSTEM_PROMPT + TOOL_USAGE_PROMPT + projectContext;
 }
 
 export interface AgentStats {
@@ -159,13 +146,11 @@ export interface AgentEvent {
     | "new_turn"
     | "result"
     | "error"
-    | "done"
-    | "session_init";
+    | "done";
   content?: string;
   tool?: string;
   input?: unknown;
   stats?: AgentStats;
-  sessionId?: string;
 }
 
 const TEXT_MEDIA_TYPES = new Set([
@@ -182,251 +167,190 @@ function isTextMediaType(mediaType: string): boolean {
   return TEXT_MEDIA_TYPES.has(mediaType);
 }
 
+function reconstructMessages(
+  priorItems: Array<{ role: string | null; content: unknown }>,
+  currentPrompt: string,
+  images?: Array<{ base64: string; mediaType: string; filename?: string }>,
+): ModelMessage[] {
+  const messages: ModelMessage[] = [];
+
+  const completedItems = priorItems.filter((item) => {
+    return item.role === "user" || item.role === "assistant";
+  });
+
+  for (const item of completedItems) {
+    if (item.role === "user") {
+      const text =
+        typeof item.content === "string"
+          ? item.content
+          : (item.content as { text?: string })?.text || "";
+      if (text) {
+        messages.push({ role: "user", content: text });
+      }
+    } else if (item.role === "assistant") {
+      const text = (item.content as { text?: string })?.text || "";
+      if (text) {
+        messages.push({ role: "assistant", content: text });
+      }
+    }
+  }
+
+  if (images && images.length > 0) {
+    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    const contentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; image: string; mediaType: string }
+      | { type: "file"; data: string; mediaType: string }
+    > = [];
+
+    for (const img of images) {
+      if (SUPPORTED_IMAGE_TYPES.has(img.mediaType)) {
+        contentParts.push({
+          type: "image",
+          image: img.base64,
+          mediaType: img.mediaType,
+        });
+      } else if (img.mediaType === "application/pdf") {
+        contentParts.push({
+          type: "file",
+          data: img.base64,
+          mediaType: img.mediaType,
+        });
+      } else if (img.mediaType.startsWith("text/") || isTextMediaType(img.mediaType)) {
+        const text = Buffer.from(img.base64, "base64").toString("utf-8");
+        contentParts.push({
+          type: "text",
+          text: `[File: ${img.filename || "file"}]\n${text}`,
+        });
+      } else {
+        contentParts.push({
+          type: "text",
+          text: `[Attached file: ${img.filename || "file"} (${img.mediaType})]`,
+        });
+      }
+    }
+
+    contentParts.push({ type: "text", text: currentPrompt || "Describe this file." });
+    messages.push({ role: "user", content: contentParts } as ModelMessage);
+  } else {
+    messages.push({ role: "user", content: currentPrompt });
+  }
+
+  return messages;
+}
+
 export async function* runAgent(
   prompt: string,
   organizationId: string,
   memberId: string,
   conversationId: string,
-  sessionId?: string | null,
   signal?: AbortSignal,
   images?: Array<{ base64: string; mediaType: string; filename?: string }>,
-  fallbackPrompt?: string | null,
+  priorItems?: Array<{ role: string | null; content: unknown }>,
 ): AsyncGenerator<AgentEvent> {
   const orgReposDir = getOrgReposDir(organizationId);
-  const aiProviderEnv = await getAIProviderEnv(organizationId);
-  const aiProviderConfig = await getAIProviderConfig(organizationId);
   const completedRepos = await getCompletedRepos(organizationId);
   const repoNames = completedRepos.map((r) => r.name);
 
-  const effectiveModel = await getEffectiveModel(memberId, organizationId);
-
-  let fallbackModel = "claude-sonnet-4-20250514";
-  if (aiProviderConfig?.provider === "bedrock") {
-    const bedrockModels = await getAvailableClaudeModels(organizationId);
-    const nonEffective = bedrockModels.find((m) => m.id !== effectiveModel);
-    fallbackModel = nonEffective?.id || bedrockModels[0]?.id || effectiveModel;
-  }
-
-  const allowedTools = await getToolConfig(organizationId);
+  const enabledTools = await getToolConfig(organizationId);
 
   const agentCwd =
     completedRepos.length === 1
       ? getRepoPath(organizationId, completedRepos[0].name)
       : orgReposDir;
 
-  const abortController = new AbortController();
-  if (signal) {
-    if (signal.aborted) {
-      abortController.abort();
-    } else {
-      signal.addEventListener("abort", () => abortController.abort(), { once: true });
-    }
-  }
+  const { model, modelId } = await getModel(memberId, organizationId);
+  const aiProviderConfig = await getAIProviderConfig(organizationId);
 
-  const buildQueryOptions = (resumeSessionId?: string | null) => ({
-    model: effectiveModel,
-    systemPrompt: buildSystemPrompt(repoNames),
-    allowedTools,
-    disallowedTools: ["Edit", "Write", "NotebookEdit"],
-    permissionMode: "plan" as const,
+  const tools = buildTools({
     cwd: agentCwd,
-    additionalDirectories: [orgReposDir],
-    maxBudgetUsd: 10.0,
-    fallbackModel,
-    ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-    abortController,
-    canUseTool: async (toolName: string, input: Record<string, unknown>) => {
-      if (toolName === "AskUserQuestion") {
-        const answers = await new Promise<Record<string, string>>((resolve) => {
-          pendingAnswers.set(conversationId, {
-            resolver: resolve,
-            questions: input.questions as PendingQuestionData[],
-          });
-        });
-        pendingAnswers.delete(conversationId);
-        return {
-          behavior: "allow" as const,
-          updatedInput: { ...input, answers },
-        };
-      }
-      return { behavior: "allow" as const, updatedInput: input };
-    },
-    env: {
-      ...process.env,
-      ...aiProviderEnv,
-    },
+    allowedDirs: [orgReposDir],
+    conversationId,
+    signal,
+    enabledTools,
   });
 
-  const buildPromptInput = (promptText: string) => {
-    if (images && images.length > 0) {
-      const contentBlocks: Array<
-        | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-        | { type: "document"; source: { type: "base64"; media_type: string; data: string } }
-        | { type: "text"; text: string }
-      > = [];
-      const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-      for (const img of images) {
-        if (SUPPORTED_IMAGE_TYPES.has(img.mediaType)) {
-          contentBlocks.push({
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: img.mediaType,
-              data: img.base64,
-            },
-          });
-        } else if (img.mediaType === "application/pdf") {
-          contentBlocks.push({
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: img.mediaType,
-              data: img.base64,
-            },
-          });
-        } else if (img.mediaType.startsWith("text/") || isTextMediaType(img.mediaType)) {
-          const text = Buffer.from(img.base64, "base64").toString("utf-8");
-          contentBlocks.push({
-            type: "text",
-            text: `[File: ${img.filename || "file"}]\n${text}`,
-          });
-        } else {
-          contentBlocks.push({
-            type: "text",
-            text: `[Attached file: ${img.filename || "file"} (${img.mediaType})]`,
-          });
-        }
-      }
-      contentBlocks.push({ type: "text", text: promptText || "Describe this file." });
+  let coreMessages = reconstructMessages(priorItems || [], prompt, images);
+  const systemPrompt = buildSystemPrompt(repoNames);
 
-      async function* createUserStream(): AsyncIterable<SDKUserMessage> {
-        yield {
-          type: "user",
-          message: { role: "user", content: contentBlocks as SDKUserMessage["message"]["content"] },
-          parent_tool_use_id: null,
-          session_id: sessionId || "",
-        };
-      }
-      return createUserStream() as string | AsyncIterable<SDKUserMessage>;
-    }
-    return promptText as string | AsyncIterable<SDKUserMessage>;
-  };
-
-  async function* processQueryMessages(
-    queryIterable: AsyncIterable<Record<string, unknown>>,
-    turnCount: { value: number },
-    toolUseCount: { value: number },
-  ): AsyncGenerator<AgentEvent> {
-    for await (const message of queryIterable) {
-      if (message.type === "system" && (message as { subtype?: string }).subtype === "init") {
-        yield {
-          type: "session_init",
-          sessionId: (message as { session_id?: string }).session_id,
-        };
-      } else if (message.type === "assistant" && (message as { message?: { content?: unknown[] } }).message?.content) {
-        turnCount.value++;
-        if (turnCount.value > 1) {
-          yield { type: "new_turn" };
-        }
-        const content = (message as { message: { content: Record<string, unknown>[] } }).message.content;
-        for (const block of content) {
-          if ("text" in block && block.text) {
-            yield { type: "text", content: block.text as string };
-          } else if ("type" in block && block.type === "tool_use") {
-            const toolName = block.name as string | undefined;
-            if (toolName !== "AskUserQuestion") {
-              toolUseCount.value++;
-            }
-            yield {
-              type: "tool_use",
-              tool: block.name as string,
-              input: block.input,
-            };
-          }
-        }
-      } else if (message.type === "result") {
-        const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
-        const tokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
-        const durationMs = (message as { duration_ms?: number }).duration_ms || 0;
-        yield {
-          type: "result",
-          stats: {
-            toolUses: toolUseCount.value,
-            tokens,
-            durationMs,
-          },
-        };
-      } else if (message.type === "user" && (message as { message?: { content?: unknown[] } }).message?.content) {
-        const content = (message as { message: { content: Record<string, unknown>[] } }).message.content;
-        for (const block of content) {
-          if (
-            "type" in block &&
-            block.type === "tool_result" &&
-            "content" in block
-          ) {
-            const blockContent = block.content;
-            const text =
-              typeof blockContent === "string"
-                ? blockContent
-                : Array.isArray(blockContent)
-                  ? (blockContent as Record<string, unknown>[])
-                      .filter(
-                        (c): c is { type: "text"; text: string } =>
-                          typeof c === "object" && "text" in c,
-                      )
-                      .map((c) => c.text)
-                      .join("\n")
-                  : "";
-            yield {
-              type: "tool_result",
-              content: text.slice(0, 500) + (text.length > 500 ? "..." : ""),
-            };
-          }
-        }
-      }
-    }
-  }
+  const startTime = Date.now();
+  let toolUseCount = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   try {
-    const turnCount = { value: 0 };
-    const toolUseCount = { value: 0 };
+    let stepCount = 0;
 
-    let queryIterable: AsyncIterable<unknown>;
-    let sessionFailed = false;
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      messages: coreMessages,
+      tools,
+      stopWhen: stepCountIs(50),
+      abortSignal: signal,
+      onStepFinish: ({ usage }) => {
+        if (usage) {
+          totalInputTokens += usage.inputTokens || 0;
+          totalOutputTokens += usage.outputTokens || 0;
+        }
+      },
+    });
 
-    if (sessionId) {
-      try {
-        const promptInput = buildPromptInput(prompt);
-        queryIterable = query({
-          prompt: promptInput,
-          options: buildQueryOptions(sessionId),
-        });
-        for await (const event of processQueryMessages(queryIterable as AsyncIterable<never>, turnCount, toolUseCount)) {
-          yield event;
+    for await (const part of result.fullStream) {
+      switch (part.type) {
+        case "text-delta":
+          yield { type: "text", content: part.text };
+          break;
+
+        case "tool-call":
+          if (part.toolName !== "askUserQuestion") {
+            toolUseCount++;
+          }
+          yield { type: "tool_use", tool: part.toolName, input: part.input };
+          break;
+
+        case "tool-result": {
+          const resultText =
+            typeof part.output === "string"
+              ? part.output
+              : JSON.stringify(part.output);
+          const truncated =
+            resultText.length > 500
+              ? resultText.slice(0, 500) + "..."
+              : resultText;
+          yield { type: "tool_result", content: truncated };
+          break;
         }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          throw error;
-        }
-        sessionFailed = true;
+
+        case "finish-step":
+          stepCount++;
+          if (stepCount > 1) {
+            yield { type: "new_turn" };
+          }
+
+          if (aiProviderConfig?.anthropicApiKey && isOverflow(totalInputTokens + totalOutputTokens, modelId)) {
+            coreMessages = await compactMessages(coreMessages, aiProviderConfig.anthropicApiKey);
+          }
+          break;
+
+        case "error":
+          yield {
+            type: "error",
+            content: part.error instanceof Error ? part.error.message : String(part.error),
+          };
+          break;
       }
     }
 
-    if (!sessionId || sessionFailed) {
-      const retryPrompt = sessionFailed ? (fallbackPrompt || prompt) : prompt;
-      const promptInput = buildPromptInput(retryPrompt);
-      if (sessionFailed) {
-        turnCount.value = 0;
-        toolUseCount.value = 0;
-      }
-      queryIterable = query({
-        prompt: promptInput,
-        options: buildQueryOptions(null),
-      });
-      for await (const event of processQueryMessages(queryIterable as AsyncIterable<never>, turnCount, toolUseCount)) {
-        yield event;
-      }
-    }
+    const durationMs = Date.now() - startTime;
+    yield {
+      type: "result",
+      stats: {
+        toolUses: toolUseCount,
+        tokens: totalInputTokens + totalOutputTokens,
+        durationMs,
+      },
+    };
 
     yield { type: "done" };
   } catch (error) {
@@ -435,6 +359,6 @@ export async function* runAgent(
       content: error instanceof Error ? error.message : "Unknown error",
     };
   } finally {
-    pendingAnswers.delete(conversationId);
+    cleanupPendingAnswers(conversationId);
   }
 }

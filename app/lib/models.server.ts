@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import type { LanguageModel } from "ai";
 import { getAIProviderConfig } from "./ai-provider.server";
 import { db } from "./db/index.server";
 import { aiProviderConfigurations, members } from "./db/schema";
@@ -353,15 +356,21 @@ export function getDisplayName(modelId: string): string {
   return modelId;
 }
 
-export const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task", "AskUserQuestion"];
-
 export const OPTIONAL_TOOLS = [
-  { id: "Bash", description: "Execute shell commands" },
-  { id: "WebFetch", description: "Fetch web page content" },
-  { id: "WebSearch", description: "Search the web" },
+  { id: "bash", description: "Execute shell commands" },
+  { id: "webfetch", description: "Fetch web page content" },
+  { id: "websearch", description: "Search the web" },
 ];
 
+const TOOL_NAME_MAP: Record<string, string> = {
+  Bash: "bash",
+  WebFetch: "webfetch",
+  WebSearch: "websearch",
+};
+
 export async function getToolConfig(organizationId: string): Promise<string[]> {
+  const baseTools = ["read", "glob", "grep", "askUserQuestion"];
+
   const result = await db
     .select({ allowedTools: aiProviderConfigurations.allowedTools })
     .from(aiProviderConfigurations)
@@ -373,7 +382,31 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
       ? (result[0].allowedTools as string[])
       : ["Bash"];
 
-  return [...REQUIRED_TOOLS, ...optionalTools];
+  const mapped = optionalTools.map((t) => TOOL_NAME_MAP[t] || t.toLowerCase());
+
+  return [...baseTools, ...mapped];
+}
+
+export async function getModel(
+  memberId: string,
+  organizationId: string,
+): Promise<{ model: LanguageModel; modelId: string }> {
+  const config = await getAIProviderConfig(organizationId);
+  const modelId = await getEffectiveModel(memberId, organizationId);
+
+  if (config?.provider === "bedrock" && config.awsRegion && config.awsAccessKeyId && config.awsSecretAccessKey) {
+    const bedrock = createAmazonBedrock({
+      region: config.awsRegion,
+      accessKeyId: config.awsAccessKeyId,
+      secretAccessKey: config.awsSecretAccessKey,
+    });
+    return { model: bedrock(modelId), modelId };
+  }
+
+  const anthropic = createAnthropic({
+    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
+  });
+  return { model: anthropic(modelId), modelId };
 }
 
 export async function saveToolConfig(

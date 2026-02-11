@@ -55,7 +55,6 @@ export async function action({ request }: Route.ActionArgs) {
       id: conversations.id,
       title: conversations.title,
       userId: conversations.userId,
-      sessionId: conversations.sessionId,
     })
     .from(conversations)
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
@@ -122,24 +121,6 @@ export async function action({ request }: Route.ActionArgs) {
     .where(and(eq(items.conversationId, conversationId), eq(items.type, "message")))
     .orderBy(asc(items.createdAt));
 
-  let historyPrompt: string | null = null;
-  if (priorItems.length > 0) {
-    const historyLines = priorItems
-      .filter((item) => item.role === "user" || item.role === "assistant")
-      .map((item) => {
-        const text =
-          typeof item.content === "string"
-            ? item.content
-            : (item.content as { text?: string })?.text || "";
-        return `${item.role === "user" ? "User" : "Assistant"}: ${text}`;
-      });
-    if (historyLines.length > 0) {
-      historyPrompt = historyLines.join("\n\n") + "\n\nUser: " + prompt;
-    }
-  }
-
-  const effectivePrompt = conv[0].sessionId ? prompt : (historyPrompt || prompt);
-
   let agentImages: Array<{ base64: string; mediaType: string; filename?: string }> | undefined;
   if (blobIds && blobIds.length > 0) {
     const storageConfig = await getStorageConfig(organizationId);
@@ -175,14 +156,8 @@ export async function action({ request }: Route.ActionArgs) {
       const encoder = new TextEncoder();
 
       try {
-        for await (const event of runAgent(effectivePrompt, organizationId, memberId, conversationId, conv[0].sessionId, request.signal, agentImages, historyPrompt)) {
-          if (event.type === "session_init" && event.sessionId) {
-            await db
-              .update(conversations)
-              .set({ sessionId: event.sessionId })
-              .where(eq(conversations.id, conversationId));
-          }
-
+        console.log(`[agent] Starting stream for conversation=${conversationId} prompt="${prompt.slice(0, 80)}"`);
+        for await (const event of runAgent(prompt, organizationId, memberId, conversationId, request.signal, agentImages, priorItems)) {
           if (event.type === "new_turn") {
             if (awaitingQuestionResult) {
               awaitingQuestionResult = false;
@@ -218,7 +193,7 @@ export async function action({ request }: Route.ActionArgs) {
             }
             currentText += event.content;
           } else if (event.type === "tool_use") {
-            if (event.tool === "AskUserQuestion") {
+            if (event.tool === "askUserQuestion") {
               awaitingQuestionResult = true;
             } else {
               if (toolsStartIndex === null) {
@@ -248,6 +223,7 @@ export async function action({ request }: Route.ActionArgs) {
           controller.enqueue(encoder.encode(data));
         }
       } catch (error) {
+        console.error(`[agent] Stream error for conversation=${conversationId}:`, error);
         const errorEvent = {
           type: "error",
           content: error instanceof Error ? error.message : "Stream error",
@@ -259,6 +235,7 @@ export async function action({ request }: Route.ActionArgs) {
       } finally {
         try {
           if (streamCompleted && finalStats) {
+            console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${finalStats.tokens} tools=${finalStats.toolUses} duration=${finalStats.durationMs}ms`);
             await db
               .update(items)
               .set({
@@ -267,6 +244,7 @@ export async function action({ request }: Route.ActionArgs) {
               })
               .where(eq(items.id, activeItemId));
           } else {
+            console.warn(`[agent] Stream incomplete for conversation=${conversationId} item=${activeItemId}, marking as cancelled`);
             await db
               .update(items)
               .set({
@@ -280,7 +258,8 @@ export async function action({ request }: Route.ActionArgs) {
             .update(conversations)
             .set({ updatedAt: new Date() })
             .where(eq(conversations.id, conversationId));
-        } catch (_) {
+        } catch (cleanupError) {
+          console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
         }
 
         controller.close();
