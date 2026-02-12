@@ -1,10 +1,10 @@
 import { tool, type Tool } from "ai";
 import path from "node:path";
-import { grepParameters, executeGrep } from "./grep.server";
-import { globParameters, executeGlob } from "./glob.server";
-import { readParameters, executeRead } from "./read.server";
-import { bashParameters, executeBash } from "./bash.server";
-import { askUserQuestionParameters, executeAskUserQuestion } from "./ask-user-question.server";
+import { grepDescription, grepParameters, executeGrep } from "./grep.server";
+import { globDescription, globParameters, executeGlob } from "./glob.server";
+import { readDescription, readParameters, executeRead } from "./read.server";
+import { bashDescription, bashParameters, executeBash } from "./bash.server";
+import { askUserQuestionDescription, askUserQuestionParameters, executeAskUserQuestion } from "./ask-user-question.server";
 
 export function validatePath(inputPath: string, allowedDirs: string[], cwd: string): string {
   const resolved = path.isAbsolute(inputPath)
@@ -40,27 +40,27 @@ export function buildTools(options: BuildToolsOptions) {
 
   const allTools: Record<string, AnyTool> = {
     grep: tool({
-      description: "Search file contents using regex patterns. Returns file paths with line numbers and matching content. Limited to 100 matches.",
+      description: grepDescription,
       inputSchema: grepParameters,
       execute: async (args) => executeGrep(args, toolOptions),
     }),
     glob: tool({
-      description: "Find files by name pattern (e.g., '**/*.ts', 'src/**/*.tsx'). Returns file paths sorted by modification time. Limited to 100 files.",
+      description: globDescription,
       inputSchema: globParameters,
       execute: async (args) => executeGlob(args, toolOptions),
     }),
     read: tool({
-      description: "Read a specific file. Returns numbered lines. Use offset/limit for large files. Can read images and PDFs.",
+      description: readDescription,
       inputSchema: readParameters,
       execute: async (args) => executeRead(args, toolOptions),
     }),
     bash: tool({
-      description: "Run shell commands (git log, git blame, find, wc, etc.). Always provide a description of what the command does.",
+      description: bashDescription,
       inputSchema: bashParameters,
       execute: async (args) => executeBash(args, { cwd, signal }),
     }),
     askUserQuestion: tool({
-      description: "Ask the user a clarifying question with predefined options. Use when you need the user to choose between alternatives or clarify their intent.",
+      description: askUserQuestionDescription,
       inputSchema: askUserQuestionParameters,
       execute: async (args) => executeAskUserQuestion(args, { conversationId }),
     }),

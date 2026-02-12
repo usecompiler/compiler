@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { execFile } from "node:child_process";
 
+export const bashDescription = `Run shell commands for operations the other tools don't cover.
+
+- Use for git log, git blame, git show, find, wc, and similar read-only commands
+- Always provide a description of what the command does
+- For git commands in multi-project setups, cd into the project directory first
+- Do NOT use bash for file searching (use glob), content searching (use grep), or reading files (use read)
+- Commands must be read-only — never modify, create, or delete files
+- Default timeout is 120 seconds`;
+
 export const bashParameters = z.object({
   command: z.string().describe("The shell command to execute"),
   timeout: z.number().optional().describe("Timeout in milliseconds (default 120000)"),

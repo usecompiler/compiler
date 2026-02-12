@@ -2,6 +2,15 @@ import { z } from "zod";
 import { spawn } from "node:child_process";
 import { validatePath } from "./index.server";
 
+export const grepDescription = `Search file contents using regex patterns built on ripgrep.
+
+- Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
+- Use the "include" parameter to filter by file type (e.g., "*.ts", "*.py")
+- Returns file paths with line numbers and matching content
+- Limited to 100 matches
+- Uses ripgrep syntax — literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\`)
+- Patterns match within single lines by default`;
+
 export const grepParameters = z.object({
   pattern: z.string().describe("Regex pattern to search for"),
   path: z.string().optional().describe("Directory to search in"),

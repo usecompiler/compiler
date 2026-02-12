@@ -3,6 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { validatePath } from "./index.server";
 
+export const readDescription = `Read a file from the local filesystem. Returns numbered lines (1-indexed).
+
+- Use "offset" and "limit" parameters for large files
+- Default limit is 2000 lines
+- Lines longer than 2000 characters are truncated
+- Can detect binary files, images, and PDFs
+- The filePath parameter must be an absolute or relative path, not a glob pattern
+- Multiple files can be read in parallel`;
+
 export const readParameters = z.object({
   filePath: z.string().describe("Absolute or relative path to the file"),
   offset: z.number().optional().describe("Line number to start reading from (1-based)"),

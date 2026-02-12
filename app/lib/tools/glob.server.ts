@@ -2,6 +2,14 @@ import { z } from "zod";
 import { spawn } from "node:child_process";
 import { validatePath } from "./index.server";
 
+export const globDescription = `Fast file pattern matching tool that works with any codebase size.
+
+- Supports glob patterns like "**/*.ts" or "src/**/*.tsx"
+- Returns matching file paths
+- Limited to 100 files
+- Use this first to understand project structure before diving into specific files
+- Multiple searches can be performed in parallel`;
+
 export const globParameters = z.object({
   pattern: z.string().describe("Glob pattern to match files (e.g. '**/*.ts')"),
   path: z.string().optional().describe("Directory to search in"),
