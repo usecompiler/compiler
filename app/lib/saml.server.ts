@@ -104,6 +104,7 @@ export function createSAMLClient(config: SSOConfig, baseUrl: string): SAML {
     idpCert: config.idpCertificate,
     wantAssertionsSigned: true,
     wantAuthnResponseSigned: false,
+    disableRequestedAuthnContext: true,
   });
 }
 
