@@ -11,9 +11,6 @@ vi.mock("~/lib/auth.server", () => ({ requireActiveAuth }));
 const getAgentConfig = vi.fn();
 vi.mock("~/lib/agent.server", () => ({ getAgentConfig }));
 
-const syncStaleRepos = vi.fn().mockResolvedValue(undefined);
-vi.mock("~/lib/clone.server", () => ({ syncStaleRepos }));
-
 const getStorageConfig = vi.fn().mockResolvedValue(null);
 const fetchFile = vi.fn();
 vi.mock("~/lib/storage.server", () => ({

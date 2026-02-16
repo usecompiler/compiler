@@ -2,7 +2,6 @@ import type { Route } from "./+types/api.agent";
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { syncStaleRepos } from "~/lib/clone.server";
 import { db } from "~/lib/db/index.server";
 import { conversations, items, blobs } from "~/lib/db/schema";
 import { eq, and, asc, inArray } from "drizzle-orm";
@@ -96,8 +95,6 @@ export async function action({ request }: Route.ActionArgs) {
         .where(eq(conversations.id, conversationId));
     }
   }
-
-  await syncStaleRepos(organizationId);
 
   const priorItems = await db
     .select({
