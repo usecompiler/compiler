@@ -5,6 +5,7 @@ import { requireActiveAuth } from "~/lib/auth.server";
 import {
   getAIProviderConfig,
   saveAIProviderConfig,
+  savePromptCachingConfig,
   validateAnthropicKey,
   validateBedrockCredentials,
   type AIProvider,
@@ -63,7 +64,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     config: {
       provider: config.provider,
       awsRegion: config.awsRegion || null,
-      promptCachingEnabled: config.promptCachingEnabled ?? true,
+      promptCachingEnabled: config.promptCachingEnabled !== false,
     },
     availableModels: apiModels,
     modelConfig,
@@ -103,6 +104,12 @@ export async function action({ request }: Route.ActionArgs) {
       SERVER_OPTIONAL_TOOLS.some((ot) => ot.id === t)
     );
     await saveToolConfig(user.organization.id, validTools);
+    return { error: null, success: true, intent };
+  }
+
+  if (intent === "save-caching") {
+    const enabled = formData.get("promptCaching") === "on";
+    await savePromptCachingConfig(user.organization.id, enabled);
     return { error: null, success: true, intent };
   }
 
@@ -170,6 +177,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
     modelConfig?.defaultModel || "claude-sonnet-4-20250514"
   );
   const [selectedTools, setSelectedTools] = useState<string[]>(enabledTools);
+  const cachingFetcher = useFetcher();
+  const promptCachingEnabled = cachingFetcher.formData
+    ? cachingFetcher.formData.get("promptCaching") === "on"
+    : config?.promptCachingEnabled ?? true;
 
   useEffect(() => {
     if (actionData?.success && actionData?.intent === "save-provider") {
@@ -423,9 +434,12 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                       defaultChecked={config?.promptCachingEnabled ?? true}
                       className="w-4 h-4"
                     />
-                    <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                      Prompt Caching
-                    </span>
+                    <div>
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Caches system prompts and conversation history to reduce input token costs
+                      </p>
+                    </div>
                   </label>
                 </div>
               )}
@@ -453,6 +467,27 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                   </div>
                 )}
               </div>
+              {config.provider === "bedrock" && (
+                <label className="flex items-center gap-3 mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={promptCachingEnabled}
+                    onChange={(e) => {
+                      cachingFetcher.submit(
+                        { intent: "save-caching", promptCaching: e.target.checked ? "on" : "" },
+                        { method: "post" },
+                      );
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Caches system prompts and conversation history to reduce input token costs
+                    </p>
+                  </div>
+                </label>
+              )}
             </div>
           ) : null}
         </section>
@@ -631,6 +666,7 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
             </Form>
           </section>
         )}
+
       </main>
     </div>
   );

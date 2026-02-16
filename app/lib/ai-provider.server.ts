@@ -130,6 +130,16 @@ export async function saveAIProviderConfig(
   }
 }
 
+export async function savePromptCachingConfig(
+  organizationId: string,
+  enabled: boolean,
+): Promise<void> {
+  await db
+    .update(aiProviderConfigurations)
+    .set({ promptCachingEnabled: enabled, updatedAt: new Date() })
+    .where(eq(aiProviderConfigurations.organizationId, organizationId));
+}
+
 export async function validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
