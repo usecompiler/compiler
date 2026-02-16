@@ -76,12 +76,13 @@ function formatNumber(value: number): string {
 interface DashboardCardProps {
   title: string;
   total: number;
+  period: string;
   data: DailyStats[];
   dataKey: keyof DailyStats;
   color: string;
 }
 
-function DashboardCard({ title, total, data, dataKey, color }: DashboardCardProps) {
+function DashboardCard({ title, total, period, data, dataKey, color }: DashboardCardProps) {
   const chartData = {
     labels: data.map((d) => d.date),
     datasets: [
@@ -142,13 +143,18 @@ function DashboardCard({ title, total, data, dataKey, color }: DashboardCardProp
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-5">
-      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2">{title}</h3>
-      <div className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-        {formatNumber(total)}
-      </div>
-      <div style={{ height: "80px" }}>
-        <Line data={chartData} options={options} />
+    <div>
+      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2 px-1">{title}</h3>
+      <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-5">
+        <div className="flex items-baseline gap-2 mb-4">
+          <span className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">
+            {formatNumber(total)}
+          </span>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">{period}</span>
+        </div>
+        <div style={{ height: "80px" }}>
+          <Line data={chartData} options={options} />
+        </div>
       </div>
     </div>
   );
@@ -178,6 +184,7 @@ export default function Analytics() {
           <DashboardCard
             title="Daily Active Users"
             total={totals.dau}
+            period="today"
             data={stats}
             dataKey="activeUserCount"
             color="#8b5cf6"
@@ -185,6 +192,7 @@ export default function Analytics() {
           <DashboardCard
             title="Weekly Active Users"
             total={totals.wau}
+            period="this week"
             data={stats}
             dataKey="wauCount"
             color="#6366f1"
@@ -192,6 +200,7 @@ export default function Analytics() {
           <DashboardCard
             title="Monthly Active Users"
             total={totals.mau}
+            period="this month"
             data={stats}
             dataKey="mauCount"
             color="#a855f7"
@@ -199,6 +208,7 @@ export default function Analytics() {
           <DashboardCard
             title="Conversations"
             total={totals.conversations}
+            period="today"
             data={stats}
             dataKey="conversationCount"
             color="#3b82f6"
@@ -206,6 +216,7 @@ export default function Analytics() {
           <DashboardCard
             title="Messages"
             total={totals.messages}
+            period="today"
             data={stats}
             dataKey="messageCount"
             color="#10b981"
@@ -213,6 +224,7 @@ export default function Analytics() {
           <DashboardCard
             title="Avg Messages per User"
             total={totals.avgMessagesPerUser}
+            period="today"
             data={stats}
             dataKey="avgMessagesPerUser"
             color="#0ea5e9"
@@ -220,6 +232,7 @@ export default function Analytics() {
           <DashboardCard
             title="Shares"
             total={totals.shares}
+            period="today"
             data={stats}
             dataKey="shareCount"
             color="#ec4899"
@@ -227,6 +240,7 @@ export default function Analytics() {
           <DashboardCard
             title="Review Requests"
             total={totals.reviewRequests}
+            period="today"
             data={stats}
             dataKey="reviewRequestCount"
             color="#14b8a6"
@@ -234,6 +248,7 @@ export default function Analytics() {
           <DashboardCard
             title="Token Usage"
             total={totals.tokens}
+            period="today"
             data={stats}
             dataKey="tokenCount"
             color="#f59e0b"
