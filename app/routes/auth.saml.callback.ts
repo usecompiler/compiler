@@ -107,7 +107,3 @@ export async function action({ request }: Route.ActionArgs) {
 export async function loader() {
   throw redirect("/login");
 }
-
-export default function SAMLCallback() {
-  return null;
-}

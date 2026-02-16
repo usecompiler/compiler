@@ -9,7 +9,7 @@ export default [
 
   // SAML routes
   route("auth/saml", "routes/auth.saml.tsx"),
-  route("auth/saml/callback", "routes/auth.saml.callback.tsx"),
+  route("auth/saml/callback", "routes/auth.saml.callback.ts"),
   route("auth/saml/metadata", "routes/auth.saml.metadata.tsx"),
 
   // Deactivated user page (no layout)
