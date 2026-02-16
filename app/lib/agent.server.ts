@@ -5,7 +5,7 @@ import { buildTools } from "./tools/index.server";
 import { buildSystemPrompt } from "./prompts.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export type { PendingQuestionData } from "./tools/ask-user-question.server";
 
@@ -19,11 +19,16 @@ function getRepoPath(organizationId: string, repoName: string): string {
   return path.join(getOrgReposDir(organizationId), repoName);
 }
 
-async function getAllRepos(organizationId: string) {
+async function getCompletedRepos(organizationId: string) {
   return db
-    .select({ name: repositories.name, cloneStatus: repositories.cloneStatus })
+    .select({ name: repositories.name })
     .from(repositories)
-    .where(eq(repositories.organizationId, organizationId));
+    .where(
+      and(
+        eq(repositories.organizationId, organizationId),
+        eq(repositories.cloneStatus, "completed"),
+      ),
+    );
 }
 
 export async function getAgentConfig(
@@ -32,10 +37,8 @@ export async function getAgentConfig(
   signal?: AbortSignal,
 ) {
   const orgReposDir = getOrgReposDir(organizationId);
-  const allRepos = await getAllRepos(organizationId);
-  const completedRepos = allRepos.filter((r) => r.cloneStatus === "completed");
+  const completedRepos = await getCompletedRepos(organizationId);
   const repoNames = completedRepos.map((r) => r.name);
-  const repoStatuses = allRepos.map((r) => ({ name: r.name, status: r.cloneStatus }));
 
   const enabledTools = await getToolConfig(organizationId);
 
@@ -52,10 +55,9 @@ export async function getAgentConfig(
     allowedDirs: [orgReposDir],
     signal,
     enabledTools,
-    organizationId,
   });
 
-  const systemPrompt = buildSystemPrompt(repoNames, repoStatuses);
+  const systemPrompt = buildSystemPrompt(repoNames);
 
   return {
     model,

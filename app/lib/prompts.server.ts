@@ -86,12 +86,7 @@ EXPLORATION STRATEGY:
 - Start broad: use glob to understand project structure, then grep to find relevant content, then read to examine details
 - Call multiple independent tools in parallel for efficiency`;
 
-export interface RepoStatus {
-  name: string;
-  status: string;
-}
-
-export function buildSystemPrompt(repoNames: string[], repoStatuses?: RepoStatus[]): string {
+export function buildSystemPrompt(repoNames: string[]): string {
   const projectContext = repoNames.length <= 1
     ? `\n\nYour current working directory IS the project you should explore.`
     : `\n\nMULTIPLE PROJECTS AVAILABLE:
@@ -102,23 +97,5 @@ You have access to ${repoNames.length} projects: ${repoNames.join(", ")}
 - If the user doesn't specify which project, ask them to clarify or explore all of them
 - When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
 
-  let repoSyncInstructions = "";
-  if (repoStatuses && repoStatuses.length > 0) {
-    const pending = repoStatuses.filter((r) => r.status === "pending" || r.status === "cloning");
-    const failed = repoStatuses.filter((r) => r.status === "failed");
-
-    repoSyncInstructions = `\n\nREPOSITORY SYNC:
-- ALWAYS call the syncRepos tool before exploring any code to make sure repositories are cloned and up to date
-- Current repo statuses: ${repoStatuses.map((r) => `${r.name} (${r.status})`).join(", ")}`;
-
-    if (pending.length > 0) {
-      repoSyncInstructions += `\n- Some repos are still being set up (${pending.map((r) => r.name).join(", ")}). Call syncRepos and let the user know their projects are being prepared.`;
-    }
-
-    if (failed.length > 0) {
-      repoSyncInstructions += `\n- Some repos failed to sync (${failed.map((r) => r.name).join(", ")}). Let the user know and suggest they check their GitHub connection settings.`;
-    }
-  }
-
-  return BASE_SYSTEM_PROMPT + projectContext + repoSyncInstructions;
+  return BASE_SYSTEM_PROMPT + projectContext;
 }

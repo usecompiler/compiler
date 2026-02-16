@@ -235,77 +235,46 @@ export function repoExists(organizationId: string, repoName: string): boolean {
   return fs.existsSync(path.join(repoPath, ".git"));
 }
 
-const DEFAULT_STALE_MINUTES = 5;
-
-export async function syncStaleRepos(
-  organizationId: string,
-  staleMinutes: number = DEFAULT_STALE_MINUTES
-): Promise<void> {
-  const repos = await db
-    .select()
-    .from(repositories)
-    .where(
-      and(
-        eq(repositories.organizationId, organizationId),
-        eq(repositories.cloneStatus, "completed")
-      )
-    );
-
-  const now = Date.now();
-  const staleThreshold = staleMinutes * 60 * 1000;
-
-  const syncPromises = repos
-    .filter((repo) => {
-      if (!repoExists(organizationId, repo.name)) return true;
-      const lastSync = repo.lastSyncedAt || repo.clonedAt;
-      if (!lastSync) return true;
-      return now - lastSync.getTime() > staleThreshold;
-    })
-    .map(async (repo) => {
-      try {
-        const exists = repoExists(organizationId, repo.name);
-        if (!exists) {
-          if (repo.isPrivate) {
-            await cloneRepository(
-              organizationId,
-              repo.id,
-              repo.name,
-              repo.cloneUrl
-            );
-          } else {
-            await clonePublicRepository(
-              organizationId,
-              repo.id,
-              repo.name,
-              repo.cloneUrl
-            );
-          }
-        } else {
-          if (repo.isPrivate) {
-            await pullRepository(organizationId, repo.name);
-          } else {
-            await pullPublicRepository(organizationId, repo.name);
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to sync ${repo.name}:`, error);
-      }
-    });
-
-  await Promise.all(syncPromises);
-}
-
-export async function prefetchAllRepos(): Promise<void> {
+export async function triggerRepoSync(organizationId: string): Promise<void> {
   const allRepos = await db
     .select()
     .from(repositories)
-    .where(eq(repositories.cloneStatus, "completed"));
+    .where(eq(repositories.organizationId, organizationId));
 
-  const orgIds = [...new Set(allRepos.map((r) => r.organizationId))];
+  for (const repo of allRepos) {
+    const existsOnDisk = repoExists(organizationId, repo.name);
 
-  console.log(`Prefetching repos for ${orgIds.length} organization(s)...`);
+    if (repo.cloneStatus === "cloning") {
+      continue;
+    }
 
-  for (const orgId of orgIds) {
-    await syncStaleRepos(orgId, 0);
+    if (!existsOnDisk || repo.cloneStatus === "pending" || repo.cloneStatus === "failed") {
+      if (repo.isPrivate) {
+        cloneRepository(organizationId, repo.id, repo.name, repo.cloneUrl).catch((err) =>
+          console.error(`[triggerRepoSync] Clone failed for ${repo.name}:`, err),
+        );
+      } else {
+        clonePublicRepository(organizationId, repo.id, repo.name, repo.cloneUrl).catch((err) =>
+          console.error(`[triggerRepoSync] Clone failed for ${repo.name}:`, err),
+        );
+      }
+      continue;
+    }
+
+    if (existsOnDisk && repo.cloneStatus === "completed") {
+      const lastSync = repo.lastSyncedAt || repo.clonedAt;
+      const staleThreshold = 5 * 60 * 1000;
+      if (!lastSync || Date.now() - lastSync.getTime() > staleThreshold) {
+        if (repo.isPrivate) {
+          pullRepository(organizationId, repo.name).catch((err) =>
+            console.error(`[triggerRepoSync] Pull failed for ${repo.name}:`, err),
+          );
+        } else {
+          pullPublicRepository(organizationId, repo.name).catch((err) =>
+            console.error(`[triggerRepoSync] Pull failed for ${repo.name}:`, err),
+          );
+        }
+      }
+    }
   }
 }

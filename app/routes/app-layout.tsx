@@ -6,6 +6,10 @@ import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/models.server";
 import { getStorageConfigPublic } from "~/lib/storage.server";
+import { repoExists, triggerRepoSync } from "~/lib/clone.server";
+import { repositories } from "~/lib/db/schema";
+import { db } from "~/lib/db/index.server";
+import { eq } from "drizzle-orm";
 
 function getModelDisplayName(id: string): string {
   return getDisplayName(id);
@@ -42,8 +46,32 @@ export async function loader({ request }: Route.LoaderArgs) {
   let defaultModel = "claude-sonnet-4-20250514";
   let userPreferredModel: string | null = null;
   let hasStorageConfig = false;
+  let repoSyncStatus: { repos: { name: string; fullName: string; status: string }[]; allReady: boolean; hasRepos: boolean } = {
+    repos: [],
+    allReady: true,
+    hasRepos: false,
+  };
 
   if (user.organization) {
+    const allRepos = await db
+      .select()
+      .from(repositories)
+      .where(eq(repositories.organizationId, user.organization.id));
+
+    const repoStatuses = allRepos.map((repo) => {
+      const onDisk = repoExists(user.organization!.id, repo.name);
+      const status = repo.cloneStatus === "completed" && !onDisk ? "pending" : repo.cloneStatus;
+      return { name: repo.name, fullName: repo.fullName, status };
+    });
+
+    repoSyncStatus = {
+      repos: repoStatuses,
+      allReady: repoStatuses.length > 0 && repoStatuses.every((r) => r.status === "completed"),
+      hasRepos: repoStatuses.length > 0,
+    };
+
+    triggerRepoSync(user.organization.id);
+
     const storageConfig = await getStorageConfigPublic(user.organization.id);
     hasStorageConfig = storageConfig !== null;
     const allMembers = await getMembers(user.organization.id);
@@ -109,7 +137,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
+    repoSyncStatus,
   };
+}
+
+export interface RepoSyncStatus {
+  repos: { name: string; fullName: string; status: string }[];
+  allReady: boolean;
+  hasRepos: boolean;
 }
 
 export interface ModelOption {
@@ -137,6 +172,7 @@ export interface AppContext {
   defaultModel: string;
   userPreferredModel: string | null;
   hasStorageConfig: boolean;
+  repoSyncStatus: RepoSyncStatus;
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
@@ -154,6 +190,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     defaultModel: loaderData.defaultModel,
     userPreferredModel: loaderData.userPreferredModel,
     hasStorageConfig: loaderData.hasStorageConfig,
+    repoSyncStatus: loaderData.repoSyncStatus,
   };
 
   return <Outlet context={context} />;

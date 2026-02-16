@@ -5,7 +5,6 @@ import { globDescription, globParameters, executeGlob } from "./glob.server";
 import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
 import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
-import { syncReposDescription, syncReposParameters, executeSyncRepos } from "./sync-repos.server";
 
 export function validatePath(inputPath: string, allowedDirs: string[], cwd: string): string {
   const resolved = path.isAbsolute(inputPath)
@@ -30,13 +29,12 @@ interface BuildToolsOptions {
   allowedDirs: string[];
   signal?: AbortSignal;
   enabledTools: string[];
-  organizationId: string;
 }
 
 type AnyTool = Tool<any, any>;
 
 export function buildTools(options: BuildToolsOptions) {
-  const { cwd, allowedDirs, signal, enabledTools, organizationId } = options;
+  const { cwd, allowedDirs, signal, enabledTools } = options;
   const toolOptions = { cwd, allowedDirs, signal };
 
   const allTools: Record<string, AnyTool> = {
@@ -66,13 +64,7 @@ export function buildTools(options: BuildToolsOptions) {
     }),
   };
 
-  const filtered: Record<string, AnyTool> = {
-    syncRepos: tool({
-      description: syncReposDescription,
-      inputSchema: syncReposParameters,
-      execute: async (args) => executeSyncRepos(args, { organizationId }),
-    }),
-  };
+  const filtered: Record<string, AnyTool> = {};
   for (const name of enabledTools) {
     if (allTools[name]) {
       filtered[name] = allTools[name];

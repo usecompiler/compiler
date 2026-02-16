@@ -30,7 +30,7 @@ release:
   command:
     - npx drizzle-kit migrate
 run:
-  web: npm run prefetch && npm run start
+  web: npm run start
 ```
 
 And a `Dockerfile` that pulls the Compiler image:
@@ -88,26 +88,15 @@ When a Heroku dyno restarts:
 
 1. All cloned repositories in `/tmp/repos` are lost
 2. Repository metadata remains in Heroku Postgres
-3. The prefetch script runs before the server starts, cloning all repositories
-4. Once prefetch completes, the server starts and handles requests normally
-
-The prefetch step ensures that repositories are ready before the first user request, avoiding timeout issues with large repositories.
+3. The server starts immediately
+4. When a user loads the app, a sync gate detects missing repos and triggers re-cloning
+5. The user sees a loading screen until their repositories are ready
 
 ## Performance Considerations
 
-### Startup Time
-
-The prefetch step clones all repositories before the server starts. Startup time depends on:
-
-- Number of repositories across all organizations
-- Size of repositories
-- Network speed to GitHub
-
-During prefetching, the dyno is not yet serving requests. Heroku will wait for the process to bind to the port before routing traffic.
-
 ### Dyno Sleeping
 
-On eco dynos, the app sleeps after 30 minutes of inactivity. Waking up triggers a full restart including prefetching all repositories.
+On eco dynos, the app sleeps after 30 minutes of inactivity. Waking up triggers a full restart — repositories are re-cloned on the first page load.
 
 ## Updating
 

@@ -2,6 +2,7 @@ import { useParams, useOutletContext, useSearchParams, redirect } from "react-ro
 import { useRef, useState } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
+import { RepoSyncGate } from "~/components/repo-sync-gate";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
 import { ShareModal } from "~/components/share-modal";
@@ -155,6 +156,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
+    repoSyncStatus,
   } = useOutletContext<AppContext>();
   const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -212,28 +214,30 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
     >
-      <div className="flex flex-col h-full">
-        <div className="flex-1 min-h-0">
-          <AgentConversation
-            key={id}
-            conversationId={id!}
-            initialItems={items}
-            initialPrompt={isReadOnly ? null : initialPrompt}
-            onInitialPromptProcessed={handlePromptProcessed}
-            readOnly={isReadOnly}
-            isSharedView={isSharedView}
-            isReviewRequest={isReviewRequest}
-            ownsConversation={ownsConversation}
-            reviewers={filteredReviewers}
-            shareLink={shareLink}
-            userName={user.name}
-            isOwner={isOwner}
-            initialBlobsByItemId={blobsByItemId}
-            initialBlobIds={isReadOnly ? undefined : initialBlobIds}
-            hasStorageConfig={hasStorageConfig}
-          />
+      <RepoSyncGate repoSyncStatus={repoSyncStatus}>
+        <div className="flex flex-col h-full">
+          <div className="flex-1 min-h-0">
+            <AgentConversation
+              key={id}
+              conversationId={id!}
+              initialItems={items}
+              initialPrompt={isReadOnly ? null : initialPrompt}
+              onInitialPromptProcessed={handlePromptProcessed}
+              readOnly={isReadOnly}
+              isSharedView={isSharedView}
+              isReviewRequest={isReviewRequest}
+              ownsConversation={ownsConversation}
+              reviewers={filteredReviewers}
+              shareLink={shareLink}
+              userName={user.name}
+              isOwner={isOwner}
+              initialBlobsByItemId={blobsByItemId}
+              initialBlobIds={isReadOnly ? undefined : initialBlobIds}
+              hasStorageConfig={hasStorageConfig}
+            />
+          </div>
         </div>
-      </div>
+      </RepoSyncGate>
 
       {ownsConversation && (
         <ShareModal
