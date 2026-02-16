@@ -15,6 +15,7 @@ import {
   type Invitation,
 } from "~/lib/invitations.server";
 import { canManageOrganization, canDeactivateMember, canDeleteUser, canCreateInvitationWithRole, getRoleBadgeStyle, type Role } from "~/lib/permissions";
+import { getSSOConfig } from "~/lib/saml.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -24,15 +25,17 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (!user.organization || !user.membership) {
-    return { members: [], invitations: [], error: "No organization found", isOwner: false, currentUserRole: "member" as Role };
+    return { members: [], invitations: [], error: "No organization found", isOwner: false, currentUserRole: "member" as Role, passwordLoginEnabled: true };
   }
 
   const members = await getMembers(user.organization.id);
   const invitations = await getInvitations(user.organization.id);
   const isOwner = user.membership.role === "owner";
   const currentUserRole = user.membership.role as Role;
+  const ssoConfig = await getSSOConfig(user.organization.id);
+  const passwordLoginEnabled = ssoConfig?.allowPasswordLogin ?? true;
 
-  return { members, invitations, error: null, isOwner, currentUserRole };
+  return { members, invitations, error: null, isOwner, currentUserRole, passwordLoginEnabled };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -112,7 +115,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function OrganizationSettings() {
-  const { members, invitations, error: loaderError, isOwner, currentUserRole } = useLoaderData<typeof loader>();
+  const { members, invitations, error: loaderError, isOwner, currentUserRole, passwordLoginEnabled } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role>("member");
@@ -211,8 +214,7 @@ export default function OrganizationSettings() {
           </div>
         </section>
 
-        {/* Invitations Section */}
-        <section>
+        {passwordLoginEnabled && <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
               Pending Invitations
@@ -282,7 +284,7 @@ export default function OrganizationSettings() {
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-4">
             Invitations expire after 24 hours and can only be used once.
           </p>
-        </section>
+        </section>}
       </main>
     </div>
   );
