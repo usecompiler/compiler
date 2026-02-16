@@ -169,11 +169,26 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, tools, systemPrompt } = await getAgentConfig(
+  const { model, tools, systemPrompt, promptCachingEnabled, provider } = await getAgentConfig(
     organizationId,
     memberId,
     request.signal,
   );
+
+  if (promptCachingEnabled) {
+    const providerKey = provider === "bedrock" ? "bedrock" : "anthropic";
+    const providerValue = provider === "bedrock"
+      ? { cachePoint: { type: "default" } }
+      : { cacheControl: { type: "ephemeral" } };
+    const cacheOpts = { [providerKey]: providerValue };
+    const toolNames = Object.keys(tools);
+    if (toolNames.length > 0) {
+      tools[toolNames[toolNames.length - 1]].providerOptions = cacheOpts;
+    }
+    if (modelMessages.length >= 2) {
+      modelMessages[modelMessages.length - 2].providerOptions = cacheOpts;
+    }
+  }
 
   const assistantItemId = crypto.randomUUID();
   await db.insert(items).values({
@@ -191,9 +206,21 @@ export async function action({ request }: Route.ActionArgs) {
   let toolUseCount = 0;
   const startTime = Date.now();
 
+  const systemForStream = promptCachingEnabled
+    ? {
+        role: "system" as const,
+        content: systemPrompt,
+        providerOptions: {
+          [provider === "bedrock" ? "bedrock" : "anthropic"]: provider === "bedrock"
+            ? { cachePoint: { type: "default" } }
+            : { cacheControl: { type: "ephemeral" } },
+        },
+      }
+    : systemPrompt;
+
   const result = streamText({
     model,
-    system: systemPrompt,
+    system: systemForStream,
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(50),
