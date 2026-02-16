@@ -1,5 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRevalidator, useBlocker, useSearchParams, useFetcher } from "react-router";
+import { useChat, type UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
@@ -7,14 +9,11 @@ import type { Member } from "~/lib/invitations.server";
 import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput, type PendingFile } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
+import { itemsToUIMessages, buildDisplayItems, buildSegments } from "./conversation-helpers";
 
 interface ShareLink {
   token: string;
   createdAt: string;
-}
-
-interface PendingQuestion {
-  questions: PendingQuestionData[];
 }
 
 interface AnsweredQuestion {
@@ -65,9 +64,7 @@ export function AgentConversation({
   initialBlobIds,
   hasStorageConfig = false,
 }: AgentConversationProps) {
-  const [items, setItems] = useState<Item[]>(initialItems);
   const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [blobsByItemId, setBlobsByItemId] = useState<Record<string, BlobMeta[]>>(initialBlobsByItemId || {});
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
@@ -75,11 +72,16 @@ export function AgentConversation({
   const [copiedReviewer, setCopiedReviewer] = useState<string | null>(null);
   const [reviewInput, setReviewInput] = useState("");
   const [pendingReviewer, setPendingReviewer] = useState<Member | null>(null);
-  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(
-    initialPendingQuestion ? { questions: initialPendingQuestion } : null
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    questions: PendingQuestionData[];
+    toolCallId: string;
+  } | null>(
+    initialPendingQuestion ? { questions: initialPendingQuestion, toolCallId: "" } : null
   );
-  const postAnswerAssistantIdRef = useRef<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [systemItems, setSystemItems] = useState<Item[]>(
+    initialItems.filter((i) => i.type === "system" || i.type === "review")
+  );
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const reviewerDropdownRef = useRef<HTMLDivElement>(null);
@@ -91,6 +93,57 @@ export function AgentConversation({
   const shareToken = searchParams.get("share");
   const shareFetcher = useFetcher();
   const reviewFetcher = useFetcher();
+  const pendingBlobIdsRef = useRef<string[]>([]);
+
+  const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
+
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: "/api/agent",
+    body: { conversationId },
+    prepareSendMessagesRequest({ messages: msgs, body: extraBody }) {
+      const lastMessage = msgs[msgs.length - 1];
+      return {
+        body: {
+          message: lastMessage,
+          conversationId,
+          blobIds: pendingBlobIdsRef.current.length > 0 ? pendingBlobIdsRef.current : undefined,
+          ...(extraBody || {}),
+        },
+      };
+    },
+  }), [conversationId]);
+
+  const {
+    messages,
+    sendMessage,
+    status,
+    stop,
+    addToolOutput,
+    setMessages,
+  } = useChat({
+    id: conversationId,
+    messages: initialUIMessages,
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onToolCall({ toolCall }) {
+      if (toolCall.toolName === "askUserQuestion") {
+        const toolInput = toolCall.input as { questions: PendingQuestionData[] };
+        setPendingQuestion({
+          questions: toolInput.questions,
+          toolCallId: toolCall.toolCallId,
+        });
+      }
+    },
+    onFinish() {
+      setStreamStartTime(undefined);
+      revalidator.revalidate();
+    },
+    onError() {
+      setStreamStartTime(undefined);
+    },
+  });
+
+  const isStreaming = status === "streaming" || status === "submitted";
 
   const blocker = useBlocker(isStreaming);
 
@@ -127,7 +180,7 @@ export function AgentConversation({
     if (isAtBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [items]);
+  }, [messages]);
 
   useEffect(() => {
     if (initialItems.length > 0) {
@@ -152,7 +205,7 @@ export function AgentConversation({
 
     setPendingFiles((prev) => [...prev, ...newFiles]);
 
-    filesToAdd.forEach((file, i) => {
+    filesToAdd.forEach((file) => {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("conversationId", conversationId);
@@ -185,7 +238,7 @@ export function AgentConversation({
   }, []);
 
   useEffect(() => {
-    const hasExistingMessages = items.length > 0;
+    const hasExistingMessages = messages.length > initialUIMessages.length;
 
     const hasInitialContent = initialPrompt || initialBlobIds;
     if (
@@ -199,7 +252,7 @@ export function AgentConversation({
       handleSubmitWithPrompt(initialPrompt || "", initialBlobIds);
       onInitialPromptProcessed?.();
     }
-  }, [initialPrompt, conversationId, items.length, isStreaming]);
+  }, [initialPrompt, conversationId, messages.length, isStreaming]);
 
   useEffect(() => {
     if (!reviewerDropdownOpen) return;
@@ -212,22 +265,14 @@ export function AgentConversation({
     return () => document.removeEventListener("click", handleClick);
   }, [reviewerDropdownOpen]);
 
-  const addLocalItem = useCallback((item: Item) => {
-    setItems(prev => [...prev, item]);
-  }, []);
-
   const addItem = useCallback(async (item: Item, token?: string | null) => {
-    setItems(prev => [...prev, item]);
+    setSystemItems(prev => [...prev, item]);
     await fetch("/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ conversationId, item, shareToken: token }),
     });
   }, [conversationId]);
-
-  const updateLocalItem = useCallback((itemId: string, updates: Partial<Item>) => {
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
-  }, []);
 
   useEffect(() => {
     if (!pendingReviewer || shareFetcher.state !== "idle" || !shareFetcher.data) return;
@@ -337,27 +382,19 @@ export function AgentConversation({
         return;
       }
 
-      const pendingBlobIds = pendingFiles
+      const fileBlobIds = pendingFiles
         .map((f) => f.blobId)
         .filter((id): id is string => !!id);
 
       const extraParsed = extraBlobIds ? extraBlobIds.split(",").filter(Boolean) : [];
-      const allBlobIds = [...pendingBlobIds, ...extraParsed];
+      const allBlobIds = [...fileBlobIds, ...extraParsed];
+
+      const userMessageId = crypto.randomUUID();
 
       setInput("");
       setPendingFiles([]);
-      setIsStreaming(true);
       setStreamStartTime(Date.now());
-
-      const userItem: Item = {
-        id: crypto.randomUUID(),
-        type: "message",
-        role: "user",
-        content: promptText.trim(),
-        createdAt: Date.now(),
-      };
-
-      addLocalItem(userItem);
+      pendingBlobIdsRef.current = allBlobIds;
 
       if (allBlobIds.length > 0) {
         const localMetas = pendingFiles
@@ -377,7 +414,7 @@ export function AgentConversation({
               .then((data: { blobs: BlobMeta[] }) => {
                 setBlobsByItemId((prev) => ({
                   ...prev,
-                  [userItem.id]: [...(prev[userItem.id] || []), ...data.blobs],
+                  [userMessageId]: [...(prev[userMessageId] || []), ...data.blobs],
                 }));
               })
               .catch(() => {});
@@ -386,7 +423,7 @@ export function AgentConversation({
 
         setBlobsByItemId((prev) => ({
           ...prev,
-          [userItem.id]: localMetas,
+          [userMessageId]: localMetas,
         }));
       }
 
@@ -395,184 +432,14 @@ export function AgentConversation({
 
       revalidator.revalidate();
 
-      let activeAssistantId: string = crypto.randomUUID();
-      const assistantItem: Item = {
-        id: activeAssistantId,
-        type: "message",
-        role: "assistant",
-        content: { text: "", toolCalls: [], stats: null },
-        status: "in_progress",
-        createdAt: Date.now() + 1,
-      };
-      addLocalItem(assistantItem);
-
-      abortControllerRef.current = new AbortController();
-
-      const agentBody = JSON.stringify({
-        prompt: promptText.trim(),
-        conversationId,
-        userItem,
-        assistantItemId: activeAssistantId,
-        blobIds: allBlobIds.length > 0 ? allBlobIds : undefined,
+      await sendMessage({
+        id: userMessageId,
+        parts: [{ type: "text", text: promptText.trim() || "Describe this file." }],
       });
 
-      const maxRetries = 2;
-      let lastError: unknown = null;
-
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, 1500));
-          if (abortControllerRef.current?.signal.aborted) break;
-        }
-
-        try {
-          const response = await fetch("/api/agent", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: agentBody,
-            signal: abortControllerRef.current.signal,
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const reader = response.body?.getReader();
-          if (!reader) throw new Error("No response body");
-
-          lastError = null;
-
-          const decoder = new TextDecoder();
-          let buffer = "";
-          let currentText = "";
-          let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
-          let toolsStartIndex: number | null = null;
-          let awaitingQuestionResult = false;
-          let pendingNewline = false;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-
-            const lines = buffer.split("\n\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = JSON.parse(line.slice(6));
-
-                if (data.type === "session_init") {
-                } else if (data.type === "new_turn") {
-                  if (awaitingQuestionResult) {
-                    awaitingQuestionResult = false;
-                    updateLocalItem(activeAssistantId, {
-                      content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                      status: "completed",
-                    });
-                    currentText = "";
-                    currentToolCalls = [];
-                    toolsStartIndex = null;
-                    pendingNewline = false;
-                    if (postAnswerAssistantIdRef.current) {
-                      activeAssistantId = postAnswerAssistantIdRef.current;
-                      postAnswerAssistantIdRef.current = null;
-                    } else {
-                      activeAssistantId = crypto.randomUUID();
-                      addLocalItem({
-                        id: activeAssistantId,
-                        type: "message",
-                        role: "assistant",
-                        content: { text: "", toolCalls: [], stats: null },
-                        status: "in_progress",
-                        createdAt: Date.now() + 1,
-                      });
-                    }
-                  } else {
-                    pendingNewline = true;
-                  }
-                } else if (data.type === "text") {
-                  if (pendingNewline) {
-                    currentText += "\n\n";
-                    pendingNewline = false;
-                  }
-                  currentText += data.content;
-                  updateLocalItem(activeAssistantId, {
-                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                  });
-                } else if (data.type === "tool_use") {
-                  if (data.tool === "askUserQuestion" && data.input?.questions) {
-                    setPendingQuestion({ questions: data.input.questions });
-                    awaitingQuestionResult = true;
-                    continue;
-                  }
-                  if (toolsStartIndex === null) {
-                    toolsStartIndex = currentText.length;
-                  }
-                  const toolCall = {
-                    id: crypto.randomUUID(),
-                    tool: data.tool,
-                    input: data.input,
-                  };
-                  currentToolCalls = [...currentToolCalls, toolCall];
-                  updateLocalItem(activeAssistantId, {
-                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                  });
-                } else if (data.type === "tool_result") {
-                  if (awaitingQuestionResult) {
-                    continue;
-                  }
-                  if (currentToolCalls.length > 0) {
-                    const updatedCalls = [...currentToolCalls];
-                    updatedCalls[updatedCalls.length - 1].result = data.content;
-                    currentToolCalls = updatedCalls;
-                    updateLocalItem(activeAssistantId, {
-                      content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                    });
-                  }
-                } else if (data.type === "error") {
-                  currentText += `\n\nError: ${data.content}`;
-                  updateLocalItem(activeAssistantId, {
-                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                  });
-                } else if (data.type === "result" && data.stats) {
-                  updateLocalItem(activeAssistantId, {
-                    content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: data.stats },
-                    status: "completed",
-                  });
-                }
-              }
-            }
-          }
-
-          break;
-        } catch (error) {
-          lastError = error;
-          if ((error as Error).name === "AbortError") break;
-        }
-      }
-
-      if (lastError) {
-        if ((lastError as Error).name === "AbortError") {
-          updateLocalItem(activeAssistantId, { status: "cancelled" });
-        } else {
-          updateLocalItem(activeAssistantId, {
-            content: {
-              text: "\n\nConnection error.",
-              toolCalls: [],
-              stats: null,
-            },
-            status: "cancelled",
-          });
-        }
-      }
-
-      setIsStreaming(false);
-      setStreamStartTime(undefined);
-      abortControllerRef.current = null;
+      pendingBlobIdsRef.current = [];
     },
-    [conversationId, addLocalItem, updateLocalItem, isStreaming, pendingFiles]
+    [conversationId, sendMessage, isStreaming, pendingFiles, revalidator]
   );
 
   const handleSubmit = useCallback(
@@ -584,10 +451,10 @@ export function AgentConversation({
   );
 
   const handleStop = useCallback(() => {
-    abortControllerRef.current?.abort();
-  }, []);
+    stop();
+  }, [stop]);
 
-  const showLoadingState = initialPrompt && !hasProcessedInitialPrompt.current && items.length === 0;
+  const showLoadingState = initialPrompt && !hasProcessedInitialPrompt.current && initialUIMessages.length === 0;
 
   if (showLoadingState) {
     return (
@@ -603,29 +470,65 @@ export function AgentConversation({
     );
   }
 
-  const messageItems = items
-    .filter((item) => item.type === "message" || item.type === "system" || item.type === "review")
-    .sort((a, b) => a.createdAt - b.createdAt);
+  const allDisplayItems = buildDisplayItems(messages, systemItems);
 
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       <NavigationBlocker blocker={blocker} />
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
-          {messageItems.map((item, index) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              isStreaming={
-                isStreaming &&
-                item.role === "assistant" &&
-                index === messageItems.length - 1
-              }
-              streamStartTime={streamStartTime}
-              ownsConversation={ownsConversation}
-              itemBlobs={blobsByItemId[item.id]}
-            />
-          ))}
+          {allDisplayItems.map((displayItem, index) => {
+            if (displayItem.kind === "system") {
+              return (
+                <SystemItemRow
+                  key={displayItem.item.id}
+                  item={displayItem.item}
+                  ownsConversation={ownsConversation}
+                />
+              );
+            }
+            if (displayItem.kind === "review") {
+              return (
+                <ReviewItemRow
+                  key={displayItem.item.id}
+                  item={displayItem.item}
+                />
+              );
+            }
+            if (displayItem.kind === "user") {
+              return (
+                <UserMessageRow
+                  key={displayItem.message.id}
+                  message={displayItem.message}
+                  itemBlobs={blobsByItemId[displayItem.message.id]}
+                />
+              );
+            }
+            if (displayItem.kind === "assistant") {
+              const isLastAssistant = index === allDisplayItems.length - 1 ||
+                !allDisplayItems.slice(index + 1).some((d) => d.kind === "assistant");
+              return (
+                <AssistantMessageRow
+                  key={displayItem.message.id}
+                  message={displayItem.message}
+                  isStreaming={isStreaming && isLastAssistant}
+                  streamStartTime={streamStartTime}
+                />
+              );
+            }
+            return null;
+          })}
+          {(isStreaming && (allDisplayItems.length === 0 || allDisplayItems[allDisplayItems.length - 1].kind !== "assistant")) && (
+            <div className="group mb-6">
+              <div className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400 mb-2">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-sm">Thinking...</span>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -648,8 +551,8 @@ export function AgentConversation({
             isReviewRequest ? (
               (() => {
                 let lastApprovalIndex = -1;
-                for (let i = items.length - 1; i >= 0; i--) {
-                  const item = items[i];
+                for (let i = systemItems.length - 1; i >= 0; i--) {
+                  const item = systemItems[i];
                   if (
                     item.type === "review" &&
                     (item.content as { approved?: boolean; reviewerName?: string })?.approved === true &&
@@ -660,9 +563,8 @@ export function AgentConversation({
                   }
                 }
                 const hasNewActivitySinceApproval = lastApprovalIndex === -1 ||
-                  items.slice(lastApprovalIndex + 1).some(
+                  systemItems.slice(lastApprovalIndex + 1).some(
                     (item) =>
-                      (item.type === "message" && item.role === "user") ||
                       (item.type === "system" && typeof item.content === "object" && "shareUrl" in (item.content as object))
                   );
                 const hasAlreadyApproved = !hasNewActivitySinceApproval;
@@ -720,7 +622,14 @@ export function AgentConversation({
                   <QuestionCard
                     pendingQuestion={pendingQuestion}
                     conversationId={conversationId}
-                    onAnswered={(answered) => {
+                    onAnswered={async (answered) => {
+                      const answersPayload: Record<string, string> = {};
+                      pendingQuestion.questions.forEach((q) => {
+                        const key = q.header || q.question;
+                        const found = answered.find((a) => a.question === q.question);
+                        answersPayload[key] = found?.answer || "";
+                      });
+
                       if (answered.length > 0) {
                         const qaText = answered
                           .map((aq) => `Q: ${aq.question}\nA: ${aq.answer}`)
@@ -732,22 +641,38 @@ export function AgentConversation({
                           content: qaText,
                           createdAt: Date.now(),
                         };
-                        addItem(answerItem);
+                        await fetch("/api/items", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ conversationId, item: answerItem }),
+                        });
                       }
-                      const newAssistantId = crypto.randomUUID();
-                      postAnswerAssistantIdRef.current = newAssistantId;
-                      addLocalItem({
-                        id: newAssistantId,
-                        type: "message",
-                        role: "assistant",
-                        content: { text: "", toolCalls: [], stats: null },
-                        status: "in_progress",
-                        createdAt: Date.now() + 1,
+
+                      const toolCallId = pendingQuestion.toolCallId;
+                      setPendingQuestion(null);
+                      setStreamStartTime(Date.now());
+
+                      await addToolOutput({
+                        tool: "askUserQuestion" as never,
+                        toolCallId,
+                        output: JSON.stringify(answersPayload) as never,
                       });
-                      setPendingQuestion(null);
                     }}
-                    onSkipped={() => {
+                    onSkipped={async () => {
+                      const emptyAnswers: Record<string, string> = {};
+                      pendingQuestion.questions.forEach((q) => {
+                        emptyAnswers[q.header || q.question] = "";
+                      });
+
+                      const toolCallId = pendingQuestion.toolCallId;
                       setPendingQuestion(null);
+                      setStreamStartTime(Date.now());
+
+                      await addToolOutput({
+                        tool: "askUserQuestion" as never,
+                        toolCallId,
+                        output: JSON.stringify(emptyAnswers) as never,
+                      });
                     }}
                   />
                   <div className="text-xs text-center text-neutral-500 dark:text-neutral-400 mt-2">
@@ -827,22 +752,101 @@ export function AgentConversation({
   );
 }
 
-interface ItemRowProps {
-  item: Item;
+function UserMessageRow({ message, itemBlobs }: { message: UIMessage; itemBlobs?: BlobMeta[] }) {
+  const [copied, setCopied] = useState(false);
+  const contentText = message.parts
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("");
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(contentText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const fileExtension = (filename: string) => {
+    const ext = filename.split(".").pop()?.toUpperCase();
+    return ext || "FILE";
+  };
+
+  return (
+    <div className="group mb-6">
+      {itemBlobs && itemBlobs.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <div className="flex gap-2 flex-wrap justify-end max-w-[85%]">
+            {itemBlobs.map((blob) =>
+              blob.contentType.startsWith("image/") ? (
+                <a
+                  key={blob.id}
+                  href={`/api/image/${blob.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-[160px] h-[160px] rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700"
+                >
+                  <img
+                    src={`/api/image/${blob.id}`}
+                    alt={blob.filename || "Attached image"}
+                    className="w-full h-full object-cover"
+                  />
+                </a>
+              ) : (
+                <a
+                  key={blob.id}
+                  href={`/api/image/${blob.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col justify-between w-[160px] h-[160px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 p-3 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                >
+                  <span className="text-sm text-neutral-900 dark:text-neutral-100 break-words line-clamp-4 leading-snug">
+                    {blob.filename || "file"}
+                  </span>
+                  <span className="inline-flex self-start px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-600 rounded">
+                    {fileExtension(blob.filename || "file")}
+                  </span>
+                </a>
+              )
+            )}
+          </div>
+        </div>
+      )}
+      {contentText && (
+        <div className="flex justify-end">
+          <div className="bg-[#efefef] dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
+            <p className="whitespace-pre-wrap">{contentText}</p>
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end mt-1">
+        <button
+          onClick={handleCopy}
+          className={`p-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity ${
+            copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+          title={copied ? "Copied!" : "Copy"}
+        >
+          {copied ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface AssistantMessageRowProps {
+  message: UIMessage;
   isStreaming: boolean;
   streamStartTime?: number;
-  ownsConversation?: boolean;
-  itemBlobs?: BlobMeta[];
 }
 
-interface AssistantContent {
-  text?: string;
-  toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
-  toolsStartIndex?: number | null;
-  stats?: { toolUses: number; tokens: number; durationMs: number } | null;
-}
-
-function ItemRow({ item, isStreaming, streamStartTime, ownsConversation, itemBlobs }: ItemRowProps) {
+function AssistantMessageRow({ message, isStreaming, streamStartTime }: AssistantMessageRowProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
 
@@ -859,191 +863,24 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation, itemBlo
     return () => clearInterval(interval);
   }, [isStreaming, streamStartTime]);
 
-  const isUser = item.role === "user";
-  const contentText =
-    typeof item.content === "string"
-      ? item.content
-      : (item.content as AssistantContent)?.text || "";
+  const segments = buildSegments(message.parts);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(contentText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (item.type === "system") {
-    const systemContent = item.content as { text?: string; shareUrl?: string } | string;
-    const text = typeof systemContent === "string" ? systemContent : systemContent?.text || "";
-    const shareUrl = typeof systemContent === "object" ? systemContent?.shareUrl : undefined;
-
-    const handleCopyLink = async () => {
-      if (shareUrl) {
-        await navigator.clipboard.writeText(shareUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    };
-
-    return (
-      <div className="flex flex-col items-center my-4 gap-1">
-        <span className="text-sm text-neutral-500 dark:text-neutral-400">
-          {text}
-        </span>
-        {shareUrl && ownsConversation && (
-          <button
-            onClick={handleCopyLink}
-            className="text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 flex items-center gap-1"
-          >
-            {copied ? (
-              <>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
-                Copied
-              </>
-            ) : (
-              <>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-                </svg>
-                Copy link
-              </>
-            )}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (item.type === "review") {
-    const reviewContent = item.content as { text?: string; approved?: boolean; reviewerName?: string };
-    const reviewText = reviewContent?.text || "";
-    const approved = reviewContent?.approved || false;
-    const reviewerName = reviewContent?.reviewerName || "Anonymous";
-
-    if (approved) {
-      return (
-        <div className="flex flex-col items-center my-4 gap-1">
-          <span className="text-sm text-green-600/70 dark:text-green-500/70">
-            {reviewerName} approved
-          </span>
-          {reviewText && (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center">
-              {reviewText}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex justify-center my-4">
-        <span className="text-sm text-neutral-500 dark:text-neutral-400">
-          {reviewText} – {reviewerName}
-        </span>
-      </div>
-    );
-  }
-
-  if (isUser) {
-    const fileExtension = (filename: string) => {
-      const ext = filename.split(".").pop()?.toUpperCase();
-      return ext || "FILE";
-    };
-
-    return (
-      <div className="group mb-6">
-        {itemBlobs && itemBlobs.length > 0 && (
-          <div className="flex justify-end mb-2">
-            <div className="flex gap-2 flex-wrap justify-end max-w-[85%]">
-              {itemBlobs.map((blob) =>
-                blob.contentType.startsWith("image/") ? (
-                  <a
-                    key={blob.id}
-                    href={`/api/image/${blob.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-[160px] h-[160px] rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700"
-                  >
-                    <img
-                      src={`/api/image/${blob.id}`}
-                      alt={blob.filename || "Attached image"}
-                      className="w-full h-full object-cover"
-                    />
-                  </a>
-                ) : (
-                  <a
-                    key={blob.id}
-                    href={`/api/image/${blob.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex flex-col justify-between w-[160px] h-[160px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 p-3 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                  >
-                    <span className="text-sm text-neutral-900 dark:text-neutral-100 break-words line-clamp-4 leading-snug">
-                      {blob.filename || "file"}
-                    </span>
-                    <span className="inline-flex self-start px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-600 rounded">
-                      {fileExtension(blob.filename || "file")}
-                    </span>
-                  </a>
-                )
-              )}
-            </div>
-          </div>
-        )}
-        {contentText && (
-          <div className="flex justify-end">
-            <div className="bg-[#efefef] dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
-              <p className="whitespace-pre-wrap">{contentText}</p>
-            </div>
-          </div>
-        )}
-        <div className="flex justify-end mt-1">
-          <button
-            onClick={handleCopy}
-            className={`p-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity ${
-              copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-            }`}
-            title={copied ? "Copied!" : "Copy"}
-          >
-            {copied ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const assistantContent = item.content as AssistantContent | undefined;
-  const toolCalls = assistantContent?.toolCalls || [];
-  const toolsStartIndex = assistantContent?.toolsStartIndex;
-  const stats = assistantContent?.stats;
-  const hasToolCalls = toolCalls.length > 0;
-  const isCancelled = item.status === "cancelled";
-
-  const textBeforeTools = toolsStartIndex != null ? contentText.slice(0, toolsStartIndex) : contentText;
-  const textAfterTools = toolsStartIndex != null ? contentText.slice(toolsStartIndex) : "";
-
-  const hasContentBefore = textBeforeTools.trim().length > 0;
-  const hasContentAfter = textAfterTools.trim().length > 0;
+  const allText = segments
+    .filter((s): s is { kind: "text"; text: string } => s.kind === "text")
+    .map((s) => s.text)
+    .join("\n\n");
+  const hasContent = allText.trim().length > 0;
+  const hasAnything = segments.length > 0;
 
   const handleCopyAnswer = async () => {
-    const textToCopy = hasContentAfter ? textAfterTools.trim() : contentText.trim();
-    await navigator.clipboard.writeText(textToCopy);
+    await navigator.clipboard.writeText(allText.trim());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="group mb-6">
-      {isStreaming && !hasContentBefore && !hasToolCalls && (
+      {isStreaming && !hasAnything && (
         <div className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400 mb-2">
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1053,50 +890,64 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation, itemBlo
         </div>
       )}
 
-      {hasContentBefore && (
-        <div className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]}>{textBeforeTools}</Markdown>
-        </div>
-      )}
+      {segments.map((segment, i) => {
+        if (segment.kind === "text" && segment.text.trim()) {
+          return (
+            <div key={i} className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
+              <Markdown remarkPlugins={[remarkGfm]}>{segment.text}</Markdown>
+            </div>
+          );
+        }
+        if (segment.kind === "qa") {
+          return (
+            <div key={i} className="my-4 flex justify-end">
+              <div className="bg-[#efefef] dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-4 py-2.5 rounded-3xl max-w-[85%]">
+                <p className="whitespace-pre-wrap">{segment.text}</p>
+              </div>
+            </div>
+          );
+        }
+        if (segment.kind === "tools") {
+          const isLastSegment = i === segments.length - 1;
+          const toolsDone = segment.tools.every((p) => {
+            const tp = p as { state?: string };
+            return tp.state === "output-available" || tp.state === "output-error";
+          });
+          const done = !isStreaming || !isLastSegment ? toolsDone : false;
+          const lastTool = segment.tools[segment.tools.length - 1] as { toolName?: string; type: string };
+          const lastToolName = lastTool.toolName || lastTool.type.replace("tool-", "");
 
-      {hasToolCalls && (
-        <div className="my-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className={stats ? "text-green-500" : isCancelled ? "text-neutral-500" : "text-yellow-500"}>●</span>
-            <span className="font-medium text-neutral-500 dark:text-neutral-400">Exploring</span>
-            {stats ? (
-              <span className="text-neutral-500">
-                ({stats.toolUses} tool uses · {formatTokens(stats.tokens)} tokens · {formatDuration(stats.durationMs)})
-              </span>
-            ) : isCancelled ? (
-              <span className="text-neutral-500">Stopped</span>
-            ) : (
-              <span className="text-neutral-500 inline-flex items-center gap-1">
-                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {elapsedSeconds > 0 && <span>{elapsedSeconds < 60 ? `${elapsedSeconds}s` : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`}</span>}
-              </span>
-            )}
-          </div>
-          <div className="ml-2 border-l border-neutral-300 dark:border-neutral-700 pl-3 mt-1 text-neutral-400 dark:text-neutral-500">
-            └ {stats
-                ? "Done"
-                : isCancelled
-                  ? "Stopped"
-                  : `${getToolLabel(toolCalls[toolCalls.length - 1]?.tool)}...`}
-          </div>
-        </div>
-      )}
+          return (
+            <div key={i} className="my-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={done ? "text-green-500" : "text-yellow-500"}>●</span>
+                <span className="font-medium text-neutral-500 dark:text-neutral-400">Exploring</span>
+                {done ? (
+                  <span className="text-neutral-500">
+                    ({segment.tools.length} tool use{segment.tools.length !== 1 ? "s" : ""})
+                  </span>
+                ) : (
+                  <span className="text-neutral-500 inline-flex items-center gap-1">
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    {isLastSegment && elapsedSeconds > 0 && <span>{elapsedSeconds < 60 ? `${elapsedSeconds}s` : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`}</span>}
+                  </span>
+                )}
+              </div>
+              <div className="ml-2 border-l border-neutral-300 dark:border-neutral-700 pl-3 mt-1 text-neutral-400 dark:text-neutral-500">
+                └ {done
+                    ? "Done"
+                    : `${getToolLabel(lastToolName)}...`}
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })}
 
-      {hasContentAfter && (
-        <div className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]}>{textAfterTools}</Markdown>
-        </div>
-      )}
-
-      {(hasContentBefore || hasContentAfter) && (
+      {hasContent && (
         <div className="flex mt-1">
           <button
             onClick={handleCopyAnswer}
@@ -1121,8 +972,83 @@ function ItemRow({ item, isStreaming, streamStartTime, ownsConversation, itemBlo
   );
 }
 
+function SystemItemRow({ item, ownsConversation }: { item: Item; ownsConversation?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const systemContent = item.content as { text?: string; shareUrl?: string } | string;
+  const text = typeof systemContent === "string" ? systemContent : systemContent?.text || "";
+  const shareUrl = typeof systemContent === "object" ? systemContent?.shareUrl : undefined;
+
+  const handleCopyLink = async () => {
+    if (shareUrl) {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center my-4 gap-1">
+      <span className="text-sm text-neutral-500 dark:text-neutral-400">
+        {text}
+      </span>
+      {shareUrl && ownsConversation && (
+        <button
+          onClick={handleCopyLink}
+          className="text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 flex items-center gap-1"
+        >
+          {copied ? (
+            <>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+              Copied
+            </>
+          ) : (
+            <>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+              </svg>
+              Copy link
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ReviewItemRow({ item }: { item: Item }) {
+  const reviewContent = item.content as { text?: string; approved?: boolean; reviewerName?: string };
+  const reviewText = reviewContent?.text || "";
+  const approved = reviewContent?.approved || false;
+  const reviewerName = reviewContent?.reviewerName || "Anonymous";
+
+  if (approved) {
+    return (
+      <div className="flex flex-col items-center my-4 gap-1">
+        <span className="text-sm text-green-600/70 dark:text-green-500/70">
+          {reviewerName} approved
+        </span>
+        {reviewText && (
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center">
+            {reviewText}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-center my-4">
+      <span className="text-sm text-neutral-500 dark:text-neutral-400">
+        {reviewText} – {reviewerName}
+      </span>
+    </div>
+  );
+}
+
 interface QuestionCardProps {
-  pendingQuestion: PendingQuestion;
+  pendingQuestion: { questions: PendingQuestionData[]; toolCallId: string };
   conversationId: string;
   onAnswered: (answered: AnsweredQuestion[]) => void;
   onSkipped: () => void;
@@ -1144,24 +1070,15 @@ function QuestionCard({ pendingQuestion, conversationId, onAnswered, onSkipped }
   const optionCount = question.options.length;
 
   const submitAllAnswers = useCallback(async (finalAnswers: Record<number, string>) => {
-    const answersPayload: Record<string, string> = {};
     const answeredList: AnsweredQuestion[] = [];
     pendingQuestion.questions.forEach((q, i) => {
-      const key = q.header || q.question;
-      answersPayload[key] = finalAnswers[i] || "";
       if (finalAnswers[i]) {
         answeredList.push({ question: q.question, answer: finalAnswers[i] });
       }
     });
 
-    await fetch("/api/agent/answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, answers: answersPayload }),
-    });
-
     onAnswered(answeredList);
-  }, [conversationId, pendingQuestion.questions, onAnswered]);
+  }, [pendingQuestion.questions, onAnswered]);
 
   const advanceOrSubmit = useCallback((updated: Record<number, string>) => {
     setSelectedOption(null);
@@ -1233,19 +1150,8 @@ function QuestionCard({ pendingQuestion, conversationId, onAnswered, onSkipped }
   }, [answers, currentIndex, total, submitAllAnswers]);
 
   const handleDismiss = useCallback(async () => {
-    const emptyAnswers: Record<string, string> = {};
-    pendingQuestion.questions.forEach((q) => {
-      emptyAnswers[q.header || q.question] = "";
-    });
-
-    await fetch("/api/agent/answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, answers: emptyAnswers }),
-    });
-
     onSkipped();
-  }, [conversationId, pendingQuestion.questions, onSkipped]);
+  }, [onSkipped]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1429,10 +1335,6 @@ function QuestionCard({ pendingQuestion, conversationId, onAnswered, onSkipped }
   );
 }
 
-function formatTokens(tokens: number): string {
-  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
-}
-
 function getToolLabel(tool?: string): string {
   switch (tool) {
     case "read":
@@ -1446,14 +1348,4 @@ function getToolLabel(tool?: string): string {
     default:
       return "Running";
   }
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) {
-    return `${seconds} seconds`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
 }

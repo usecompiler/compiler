@@ -7,7 +7,6 @@ import { AgentConversation } from "~/components/agent-conversation";
 import { ShareModal } from "~/components/share-modal";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions";
-import { getPendingQuestion, type PendingQuestionData } from "~/lib/agent.server";
 import {
   getConversation,
   getConversationItems,
@@ -84,8 +83,6 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     isReviewRequest = await hasPendingReviewRequest(params.id!, user.id);
   }
 
-  const pendingQuestionData = ownsConversation ? getPendingQuestion(params.id!) : null;
-
   return {
     items,
     blobsByItemId,
@@ -94,7 +91,6 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     ownsConversation,
     sharedByName,
     shareLink: shareLink ? { token: shareLink.token, createdAt: shareLink.createdAt.toISOString() } : null,
-    pendingQuestion: pendingQuestionData,
   };
 }
 
@@ -166,7 +162,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
   const initialBlobIds = searchParams.get("blobIds") || undefined;
   const hasProcessedInitialPrompt = useRef(false);
 
-  const { items, blobsByItemId, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink, pendingQuestion: initialPendingQuestion } = loaderData;
+  const { items, blobsByItemId, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
 
   const handlePromptProcessed = () => {
@@ -232,7 +228,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
             shareLink={shareLink}
             userName={user.name}
             isOwner={isOwner}
-            initialPendingQuestion={initialPendingQuestion}
             initialBlobsByItemId={blobsByItemId}
             initialBlobIds={isReadOnly ? undefined : initialBlobIds}
             hasStorageConfig={hasStorageConfig}

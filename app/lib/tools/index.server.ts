@@ -4,7 +4,7 @@ import { grepDescription, grepParameters, executeGrep } from "./grep.server";
 import { globDescription, globParameters, executeGlob } from "./glob.server";
 import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
-import { askUserQuestionDescription, askUserQuestionParameters, executeAskUserQuestion } from "./ask-user-question.server";
+import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
 
 export function validatePath(inputPath: string, allowedDirs: string[], cwd: string): string {
   const resolved = path.isAbsolute(inputPath)
@@ -27,7 +27,6 @@ export function validatePath(inputPath: string, allowedDirs: string[], cwd: stri
 interface BuildToolsOptions {
   cwd: string;
   allowedDirs: string[];
-  conversationId: string;
   signal?: AbortSignal;
   enabledTools: string[];
 }
@@ -35,7 +34,7 @@ interface BuildToolsOptions {
 type AnyTool = Tool<any, any>;
 
 export function buildTools(options: BuildToolsOptions) {
-  const { cwd, allowedDirs, conversationId, signal, enabledTools } = options;
+  const { cwd, allowedDirs, signal, enabledTools } = options;
   const toolOptions = { cwd, allowedDirs, signal };
 
   const allTools: Record<string, AnyTool> = {
@@ -62,7 +61,6 @@ export function buildTools(options: BuildToolsOptions) {
     askUserQuestion: tool({
       description: askUserQuestionDescription,
       inputSchema: askUserQuestionParameters,
-      execute: async (args) => executeAskUserQuestion(args, { conversationId }),
     }),
   };
 

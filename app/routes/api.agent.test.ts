@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockDb, buildRequest, consumeSSEStream } from "~/test-utils/mock-db";
-import type { AgentEvent } from "~/lib/agent.server";
+import { createMockDb, buildRequest } from "~/test-utils/mock-db";
 
 const mockDb = createMockDb();
 
@@ -9,11 +8,26 @@ vi.mock("~/lib/db/index.server", () => ({ db: mockDb }));
 const requireActiveAuth = vi.fn();
 vi.mock("~/lib/auth.server", () => ({ requireActiveAuth }));
 
-const runAgent = vi.fn();
-vi.mock("~/lib/agent.server", () => ({ runAgent }));
+const getAgentConfig = vi.fn();
+vi.mock("~/lib/agent.server", () => ({ getAgentConfig }));
 
 const syncStaleRepos = vi.fn().mockResolvedValue(undefined);
 vi.mock("~/lib/clone.server", () => ({ syncStaleRepos }));
+
+const getStorageConfig = vi.fn().mockResolvedValue(null);
+const fetchFile = vi.fn();
+vi.mock("~/lib/storage.server", () => ({
+  getStorageConfig: (...args: unknown[]) => getStorageConfig(...args),
+  fetchFile: (...args: unknown[]) => fetchFile(...args),
+}));
+
+const mockStreamText = vi.fn();
+const mockConvertToModelMessages = vi.fn().mockResolvedValue([]);
+vi.mock("ai", () => ({
+  streamText: (...args: unknown[]) => mockStreamText(...args),
+  convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
+  stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
+}));
 
 vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
@@ -35,24 +49,24 @@ function mockUser(overrides: Record<string, unknown> = {}) {
 
 function validBody() {
   return {
-    prompt: "Hello",
-    conversationId: "conv-1",
-    userItem: {
-      id: "item-user-1",
-      type: "message",
+    message: {
+      id: "msg-user-1",
       role: "user",
-      content: { text: "Hello" },
-      status: "completed",
-      createdAt: Date.now(),
+      parts: [{ type: "text", text: "Hello" }],
     },
-    assistantItemId: "item-assistant-1",
+    conversationId: "conv-1",
   };
 }
 
-async function* mockAgentStream(events: AgentEvent[]): AsyncGenerator<AgentEvent> {
-  for (const event of events) {
-    yield event;
-  }
+function setupMockStreamText() {
+  const mockResponse = new Response("data: test\n\n", {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+
+  mockStreamText.mockReturnValue({
+    toUIMessageStreamResponse: vi.fn().mockReturnValue(mockResponse),
+    consumeStream: vi.fn().mockResolvedValue(undefined),
+  });
 }
 
 async function callAction(request: Request) {
@@ -73,7 +87,14 @@ beforeEach(() => {
   mockDb._updateWhere.mockResolvedValue(undefined);
 
   requireActiveAuth.mockResolvedValue(mockUser());
-  runAgent.mockReturnValue(mockAgentStream([]));
+  getAgentConfig.mockResolvedValue({
+    model: "mock-model",
+    modelId: "claude-sonnet-4-20250514",
+    tools: {},
+    systemPrompt: "test system prompt",
+    aiProviderConfig: null,
+  });
+  setupMockStreamText();
   mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
 });
 
@@ -92,15 +113,14 @@ describe("api.agent action", () => {
       expect(response.status).toBe(403);
     });
 
-    it("returns 400 when prompt is missing", async () => {
-      const body = { ...validBody(), prompt: "" };
-      const request = buildRequest(body);
+    it("returns 400 when message is missing", async () => {
+      const request = buildRequest({ conversationId: "conv-1" });
       const response = await callAction(request);
       expect(response.status).toBe(400);
     });
 
-    it("returns 400 when conversationId, userItem, or assistantItemId is missing", async () => {
-      const body = { prompt: "Hello" };
+    it("returns 400 when conversationId is missing", async () => {
+      const body = { message: validBody().message };
       const request = buildRequest(body);
       const response = await callAction(request);
       expect(response.status).toBe(400);
@@ -120,35 +140,51 @@ describe("api.agent action", () => {
       const response = await callAction(request);
       expect(response.status).toBe(404);
     });
+
+    it("returns 400 when message has no text and no blobIds", async () => {
+      const body = {
+        message: { id: "msg-1", role: "user", parts: [{ type: "text", text: "" }] },
+        conversationId: "conv-1",
+      };
+      const request = buildRequest(body);
+      const response = await callAction(request);
+      expect(response.status).toBe(400);
+    });
   });
 
   describe("DB persistence", () => {
     it("inserts user item into DB before streaming", async () => {
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const body = validBody();
       const request = buildRequest(body);
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
       const insertCalls = mockDb._insertValues.mock.calls;
       expect(insertCalls[0][0]).toMatchObject({
-        id: body.userItem.id,
+        id: body.message.id,
         conversationId: body.conversationId,
-        type: body.userItem.type,
-        role: body.userItem.role,
+        type: "message",
+        role: "user",
+        content: "Hello",
       });
     });
 
     it("inserts empty assistant item into DB before streaming", async () => {
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const body = validBody();
       const request = buildRequest(body);
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
       const insertCalls = mockDb._insertValues.mock.calls;
       expect(insertCalls[1][0]).toMatchObject({
-        id: body.assistantItemId,
         conversationId: body.conversationId,
         type: "message",
         role: "assistant",
@@ -158,333 +194,582 @@ describe("api.agent action", () => {
     });
 
     it("updates title to prompt text when conversation title is 'New Chat'", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "New Chat", userId: "user-1" }]);
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const body = validBody();
-      body.userItem.content = { text: "My question" };
       const request = buildRequest(body);
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
       const setCalls = mockDb._updateSet.mock.calls;
       const titleUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).title !== undefined);
       expect(titleUpdate).toBeDefined();
-      expect((titleUpdate![0] as Record<string, string>).title).toBe("My question");
+      expect((titleUpdate![0] as Record<string, string>).title).toBe("Hello");
     });
 
     it("does NOT change title when already set", async () => {
-      mockDb._setSelectResult([{ id: "conv-1", title: "Existing Title", userId: "user-1" }]);
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Title", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
       const preStreamSetCalls = mockDb._updateSet.mock.calls;
       const titleUpdate = preStreamSetCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).title !== undefined);
       expect(titleUpdate).toBeUndefined();
     });
-
-    it("on stream completion, updates assistant item with final content and status 'completed'", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Hello world" },
-        { type: "result", stats: { toolUses: 0, tokens: 50, durationMs: 200 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const finalUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      expect(finalUpdate).toBeDefined();
-      expect((finalUpdate![0] as Record<string, unknown>).content).toMatchObject({
-        text: "Hello world",
-        toolCalls: [],
-        stats: { toolUses: 0, tokens: 50, durationMs: 200 },
-      });
-    });
-
-    it("on stream error, updates assistant item with status 'cancelled'", async () => {
-      async function* errorStream(): AsyncGenerator<AgentEvent> {
-        yield { type: "text", content: "partial" };
-        throw new Error("Stream failed");
-      }
-      runAgent.mockReturnValue(errorStream());
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const cancelUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "cancelled"
-      );
-      expect(cancelUpdate).toBeDefined();
-    });
   });
 
-  describe("message history", () => {
-    it("passes priorItems to runAgent", async () => {
+  describe("streamText integration", () => {
+    it("calls streamText with correct config", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      expect(mockStreamText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "mock-model",
+          system: "test system prompt",
+          tools: {},
+        })
+      );
+    });
+
+    it("calls toUIMessageStreamResponse on the result", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      const response = await callAction(request);
+
+      expect(response).toBeInstanceOf(Response);
+      const result = mockStreamText.mock.results[0].value;
+      expect(result.toUIMessageStreamResponse).toHaveBeenCalled();
+    });
+
+    it("calls consumeStream for guaranteed persistence", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      expect(result.consumeStream).toHaveBeenCalled();
+    });
+
+    it("converts prior items to UIMessages for convertToModelMessages", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [
-          { role: "user", content: "What does this project do?" },
-          { role: "assistant", content: { text: "It manages widgets." } },
+          { id: "item-1", role: "user", content: "What does this project do?", status: "completed" },
+          { id: "item-2", role: "assistant", content: { text: "It manages widgets." }, status: "completed" },
+          { id: "item-3", role: "user", content: "Hello", status: "completed" },
         ],
       ];
       mockDb._selectCallCount = 0;
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
       const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
-      const priorItemsArg = runAgent.mock.calls[0][6];
-      expect(priorItemsArg).toEqual([
-        { role: "user", content: "What does this project do?" },
-        { role: "assistant", content: { text: "It manages widgets." } },
-      ]);
+      expect(mockConvertToModelMessages).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ role: "user", parts: [{ type: "text", text: "What does this project do?" }] }),
+          expect.objectContaining({ role: "assistant", parts: [{ type: "text", text: "It manages widgets." }] }),
+          expect.objectContaining({ role: "user", parts: [{ type: "text", text: "Hello" }] }),
+        ]),
+        expect.objectContaining({ ignoreIncompleteToolCalls: true }),
+      );
+    });
+  });
+
+  describe("onFinish persistence callback", () => {
+    it("passes onFinish to toUIMessageStreamResponse", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      expect(callArgs).toHaveProperty("onFinish");
+      expect(typeof callArgs.onFinish).toBe("function");
     });
 
-    it("passes prompt directly to runAgent", async () => {
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+    it("persists text and tool-call parts from assistant message", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
-      expect(runAgent.mock.calls[0][0]).toBe("Hello");
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Here is the file." },
+            { type: "dynamic-tool", toolName: "read", toolCallId: "tc1", input: { path: "/f" }, output: "data" },
+            { type: "text", text: "Done." },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      expect(contentUpdate).toBeDefined();
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(3);
+      expect(parts[0]).toMatchObject({ type: "text", text: "Here is the file." });
+      expect(parts[1]).toMatchObject({ type: "tool-call", toolName: "read" });
+      expect(parts[2]).toMatchObject({ type: "text", text: "Done." });
     });
 
-    it("calls runAgent with correct arguments", async () => {
-      runAgent.mockReturnValue(mockAgentStream([{ type: "result", stats: { toolUses: 0, tokens: 10, durationMs: 100 } }]));
+    it("persists step-start parts for correct message splitting on reload", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
       const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
-      expect(runAgent).toHaveBeenCalledWith(
-        "Hello",
-        "org-1",
-        "member-1",
-        "conv-1",
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Let me check." },
+            { type: "dynamic-tool", toolName: "read", toolCallId: "tc1", input: {}, output: "data" },
+            { type: "step-start" },
+            { type: "text", text: "Here is the result." },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(4);
+      expect(parts[0]).toMatchObject({ type: "text" });
+      expect(parts[1]).toMatchObject({ type: "tool-call", toolName: "read" });
+      expect(parts[2]).toMatchObject({ type: "step-start" });
+      expect(parts[3]).toMatchObject({ type: "text" });
+    });
+
+    it("excludes askUserQuestion tool calls from persisted parts", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: {
+          parts: [
+            { type: "text", text: "What color?" },
+            { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", input: {}, output: "{}" },
+            { type: "text", text: "Great choice." },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(2);
+      expect(parts.every((p) => p.type !== "tool-call" || p.toolName !== "askUserQuestion")).toBe(true);
+    });
+
+    it("concatenates text parts into a flat text field", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: {
+          parts: [
+            { type: "text", text: "First." },
+            { type: "dynamic-tool", toolName: "read", toolCallId: "tc1", input: {}, output: "" },
+            { type: "step-start" },
+            { type: "text", text: "Second." },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      expect(content.text).toBe("First.Second.");
+    });
+
+    it("sets status to completed on finish", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: { parts: [{ type: "text", text: "Done." }] },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed");
+      expect(contentUpdate).toBeDefined();
+    });
+  });
+
+  describe("tool result resubmit", () => {
+    it("skips user item insert for assistant role messages", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Hello", status: "completed" }],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: {
+          id: "msg-assistant-1",
+          role: "assistant",
+          parts: [
+            { type: "text", text: "Pick a color" },
+            { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc1", state: "output-available", input: {}, output: "{}" },
+          ],
+        },
+        conversationId: "conv-1",
+      };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      const insertCalls = mockDb._insertValues.mock.calls;
+      const userInsert = insertCalls.find((c: unknown[]) => (c[0] as Record<string, string>).role === "user");
+      expect(userInsert).toBeUndefined();
+    });
+
+    it("does not require text for assistant role resubmit", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: {
+          id: "msg-assistant-1",
+          role: "assistant",
+          parts: [{ type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc1", state: "output-available", input: {}, output: "{}" }],
+        },
+        conversationId: "conv-1",
+      };
+      const request = buildRequest(body);
+      const response = await callAction(request);
+      expect(response.status).not.toBe(400);
+    });
+
+    it("does not update conversation title for resubmit", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: {
+          id: "msg-assistant-1",
+          role: "assistant",
+          parts: [{ type: "text", text: "" }],
+        },
+        conversationId: "conv-1",
+      };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const titleUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).title !== undefined);
+      expect(titleUpdate).toBeUndefined();
+    });
+  });
+
+  describe("file upload (blobIds)", () => {
+    it("allows empty text when blobIds are provided", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: { id: "msg-1", role: "user", parts: [{ type: "text", text: "" }] },
+        conversationId: "conv-1",
+        blobIds: ["blob-1"],
+      };
+      getStorageConfig.mockResolvedValue(null);
+      const request = buildRequest(body);
+      const response = await callAction(request);
+      expect(response.status).not.toBe(400);
+    });
+
+    it("links blobs to user item via DB update", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        ...validBody(),
+        blobIds: ["blob-1", "blob-2"],
+      };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const blobUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).itemId !== undefined);
+      expect(blobUpdate).toBeDefined();
+      expect((blobUpdate![0] as Record<string, string>).itemId).toBe(body.message.id);
+    });
+
+    it("sets title to 'File attachment' when blobIds present with empty text on New Chat", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: { id: "msg-1", role: "user", parts: [{ type: "text", text: "" }] },
+        conversationId: "conv-1",
+        blobIds: ["blob-1"],
+      };
+      getStorageConfig.mockResolvedValue(null);
+      const request = buildRequest(body);
+      await callAction(request);
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const titleUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).title !== undefined);
+      expect(titleUpdate).toBeDefined();
+      expect((titleUpdate![0] as Record<string, string>).title).toBe("File attachment");
+    });
+
+    it("fetches blob files and injects image parts into last user message", async () => {
+      const imageBase64 = Buffer.from("fake-png-data").toString("base64");
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Describe this", status: "completed" }],
+        [{ id: "blob-1", key: "files/img.png", contentType: "image/png", filename: "photo.png" }],
+      ];
+      mockDb._selectCallCount = 0;
+      getStorageConfig.mockResolvedValue({ bucket: "test-bucket" });
+      fetchFile.mockResolvedValue({ buffer: Buffer.from("fake-png-data") });
+
+      const body = {
+        ...validBody(),
+        blobIds: ["blob-1"],
+      };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(fetchFile).toHaveBeenCalled();
+      expect(mockConvertToModelMessages).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "file",
+                mediaType: "image/png",
+                url: `data:image/png;base64,${imageBase64}`,
+              }),
+            ]),
+          }),
+        ]),
         expect.anything(),
-        undefined,
-        expect.any(Array),
       );
+    });
+
+    it("injects PDF files as file parts", async () => {
+      const pdfBase64 = Buffer.from("fake-pdf").toString("base64");
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Read this", status: "completed" }],
+        [{ id: "blob-1", key: "files/doc.pdf", contentType: "application/pdf", filename: "doc.pdf" }],
+      ];
+      mockDb._selectCallCount = 0;
+      getStorageConfig.mockResolvedValue({ bucket: "test-bucket" });
+      fetchFile.mockResolvedValue({ buffer: Buffer.from("fake-pdf") });
+
+      const body = { ...validBody(), blobIds: ["blob-1"] };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(mockConvertToModelMessages).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "file",
+                mediaType: "application/pdf",
+                url: `data:application/pdf;base64,${pdfBase64}`,
+              }),
+            ]),
+          }),
+        ]),
+        expect.anything(),
+      );
+    });
+
+    it("injects text files as text parts with filename prefix", async () => {
+      const textContent = "console.log('hello');";
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Review this", status: "completed" }],
+        [{ id: "blob-1", key: "files/app.js", contentType: "application/javascript", filename: "app.js" }],
+      ];
+      mockDb._selectCallCount = 0;
+      getStorageConfig.mockResolvedValue({ bucket: "test-bucket" });
+      fetchFile.mockResolvedValue({ buffer: Buffer.from(textContent) });
+
+      const body = { ...validBody(), blobIds: ["blob-1"] };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(mockConvertToModelMessages).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: `[File: app.js]\n${textContent}`,
+              }),
+            ]),
+          }),
+        ]),
+        expect.anything(),
+      );
+    });
+
+    it("injects unknown file types as attachment text parts", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Check this", status: "completed" }],
+        [{ id: "blob-1", key: "files/data.bin", contentType: "application/octet-stream", filename: "data.bin" }],
+      ];
+      mockDb._selectCallCount = 0;
+      getStorageConfig.mockResolvedValue({ bucket: "test-bucket" });
+      fetchFile.mockResolvedValue({ buffer: Buffer.from("binary") });
+
+      const body = { ...validBody(), blobIds: ["blob-1"] };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(mockConvertToModelMessages).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "[Attached file: data.bin (application/octet-stream)]",
+              }),
+            ]),
+          }),
+        ]),
+        expect.anything(),
+      );
+    });
+
+    it("skips blob fetching when storage config is null", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [{ id: "item-1", role: "user", content: "Hello", status: "completed" }],
+      ];
+      mockDb._selectCallCount = 0;
+      getStorageConfig.mockResolvedValue(null);
+
+      const body = { ...validBody(), blobIds: ["blob-1"] };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(fetchFile).not.toHaveBeenCalled();
+    });
+
+    it("does not fetch blobs when blobIds is empty", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = { ...validBody(), blobIds: [] };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(getStorageConfig).not.toHaveBeenCalled();
+      expect(fetchFile).not.toHaveBeenCalled();
     });
   });
 
-  describe("stream accumulation", () => {
-    it("accumulates multiple text events", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Hello " },
-        { type: "text", content: "world" },
-        { type: "result", stats: { toolUses: 0, tokens: 20, durationMs: 100 } },
+  describe("onStepFinish token tracking", () => {
+    it("does not count askUserQuestion toward toolUseCount", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
       ];
-      runAgent.mockReturnValue(mockAgentStream(events));
+      mockDb._selectCallCount = 0;
       const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
+      await callAction(request);
 
-      const setCalls = mockDb._updateSet.mock.calls;
-      const finalUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      expect((finalUpdate![0] as Record<string, { text: string }>).content.text).toBe("Hello world");
-    });
-
-    it("new_turn events insert double newlines into text", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "First" },
-        { type: "new_turn" },
-        { type: "text", content: "Second" },
-        { type: "result", stats: { toolUses: 0, tokens: 20, durationMs: 100 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const finalUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      expect((finalUpdate![0] as Record<string, { text: string }>).content.text).toBe("First\n\nSecond");
-    });
-
-    it("tool_use and tool_result events build toolCalls array", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Let me check" },
-        { type: "tool_use", tool: "bash", input: { command: "ls" } },
-        { type: "tool_result", content: "file1.txt" },
-        { type: "result", stats: { toolUses: 1, tokens: 30, durationMs: 150 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const finalUpdate = setCalls.find(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      const content = (finalUpdate![0] as Record<string, { toolCalls: unknown[]; toolsStartIndex: number }>).content;
-      expect(content.toolCalls).toHaveLength(1);
-      expect(content.toolCalls[0]).toMatchObject({
-        tool: "bash",
-        input: { command: "ls" },
-        result: "file1.txt",
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      let toolCount = 0;
+      streamArgs.onStepFinish({
+        usage: { inputTokens: 100, outputTokens: 50 },
+        toolCalls: [
+          { toolName: "read" },
+          { toolName: "askUserQuestion" },
+          { toolName: "glob" },
+        ],
       });
-      expect(content.toolsStartIndex).toBe("Let me check".length);
-    });
 
-    it("SSE response has correct headers", async () => {
-      runAgent.mockReturnValue(mockAgentStream([]));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-
-      expect(response.headers.get("Content-Type")).toBe("text/event-stream");
-      expect(response.headers.get("Cache-Control")).toBe("no-cache");
-    });
-
-    it("SSE body contains all events as data lines", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Hi" },
-        { type: "result", stats: { toolUses: 0, tokens: 5, durationMs: 50 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      const parsed = await consumeSSEStream(response);
-
-      expect(parsed).toHaveLength(2);
-      expect(parsed[0]).toMatchObject({ type: "text", content: "Hi" });
-      expect(parsed[1]).toMatchObject({ type: "result" });
-    });
-  });
-
-  describe("AskUserQuestion handling", () => {
-    it("excludes askUserQuestion from toolCalls in persisted content", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Let me ask" },
-        { type: "tool_use", tool: "askUserQuestion", input: { questions: [{ question: "Pick one" }] } },
-        { type: "tool_result", content: "answered" },
-        { type: "new_turn" },
-        { type: "text", content: "Thanks" },
-        { type: "result", stats: { toolUses: 1, tokens: 50, durationMs: 200 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const completedUpdates = setCalls.filter(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      for (const update of completedUpdates) {
-        const content = (update[0] as Record<string, { toolCalls: unknown[] }>).content;
-        expect(content.toolCalls).toHaveLength(0);
-      }
-    });
-
-    it("skips tool_result when awaiting question answer", async () => {
-      const events: AgentEvent[] = [
-        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
-        { type: "tool_result", content: "should be skipped" },
-        { type: "new_turn" },
-        { type: "text", content: "Response" },
-        { type: "result", stats: { toolUses: 1, tokens: 30, durationMs: 100 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const allContent = setCalls
-        .map((c: unknown[]) => (c[0] as Record<string, { toolCalls?: Array<{ result?: string }> }>).content)
-        .filter(Boolean);
-      for (const content of allContent) {
-        for (const tc of content.toolCalls || []) {
-          expect(tc.result).not.toBe("should be skipped");
-        }
-      }
-    });
-
-    it("splits assistant items on new_turn after askUserQuestion", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Before question" },
-        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
-        { type: "tool_result", content: "answered" },
-        { type: "new_turn" },
-        { type: "text", content: "After answer" },
-        { type: "result", stats: { toolUses: 1, tokens: 50, durationMs: 200 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const insertCalls = mockDb._insertValues.mock.calls;
-      expect(insertCalls.length).toBe(3);
-      expect(insertCalls[2][0]).toMatchObject({
-        type: "message",
-        role: "assistant",
-        status: "in_progress",
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      await callArgs.onFinish({
+        responseMessage: { parts: [{ type: "text", text: "Done." }] },
       });
 
       const setCalls = mockDb._updateSet.mock.calls;
-      const completedUpdates = setCalls.filter(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      );
-      expect(completedUpdates.length).toBe(2);
-
-      const firstCompleted = (completedUpdates[0][0] as Record<string, { text: string }>).content;
-      expect(firstCompleted.text).toBe("Before question");
-
-      const secondCompleted = (completedUpdates[1][0] as Record<string, { text: string }>).content;
-      expect(secondCompleted.text).toBe("After answer");
-    });
-
-    it("does not split on new_turn without prior askUserQuestion", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "First" },
-        { type: "new_turn" },
-        { type: "text", content: "Second" },
-        { type: "result", stats: { toolUses: 0, tokens: 20, durationMs: 100 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const insertCalls = mockDb._insertValues.mock.calls;
-      expect(insertCalls.length).toBe(2);
-    });
-
-    it("non-askUserQuestion tool_use events are still tracked normally", async () => {
-      const events: AgentEvent[] = [
-        { type: "text", content: "Checking" },
-        { type: "tool_use", tool: "askUserQuestion", input: { questions: [] } },
-        { type: "tool_result", content: "answered" },
-        { type: "new_turn" },
-        { type: "tool_use", tool: "bash", input: { command: "ls" } },
-        { type: "tool_result", content: "files" },
-        { type: "text", content: "Done" },
-        { type: "result", stats: { toolUses: 2, tokens: 40, durationMs: 300 } },
-      ];
-      runAgent.mockReturnValue(mockAgentStream(events));
-      const request = buildRequest(validBody());
-      const response = await callAction(request);
-      await consumeSSEStream(response);
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const finalUpdate = setCalls.filter(
-        (c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed"
-      ).pop();
-      const content = (finalUpdate![0] as Record<string, { toolCalls: Array<{ tool: string }> }>).content;
-      expect(content.toolCalls).toHaveLength(1);
-      expect(content.toolCalls[0].tool).toBe("bash");
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const stats = content.stats as Record<string, number>;
+      expect(stats.toolUses).toBe(2);
     });
   });
 });

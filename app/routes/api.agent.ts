@@ -1,11 +1,13 @@
 import type { Route } from "./+types/api.agent";
-import { runAgent } from "~/lib/agent.server";
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { syncStaleRepos } from "~/lib/clone.server";
 import { db } from "~/lib/db/index.server";
 import { conversations, items, blobs } from "~/lib/db/schema";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { getStorageConfig, fetchFile } from "~/lib/storage.server";
+import { itemsToUIMessages } from "~/components/conversation-helpers";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -18,29 +20,25 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const body = await request.json();
-  const prompt = body.prompt;
+  const message: UIMessage | undefined = body.message;
   const conversationId: string | undefined = body.conversationId;
-  const userItem: {
-    id: string;
-    type: string;
-    role?: string;
-    content?: unknown;
-    status?: string;
-    createdAt: number;
-  } | undefined = body.userItem;
-  const assistantItemId: string | undefined = body.assistantItemId;
   const blobIds: string[] | undefined = body.blobIds;
 
-  if (typeof prompt !== "string") {
-    return new Response("Missing prompt", { status: 400 });
+  if (!message || !conversationId) {
+    return new Response("Missing message or conversationId", { status: 400 });
   }
 
-  if (!prompt.trim() && (!blobIds || blobIds.length === 0)) {
-    return new Response("Missing prompt", { status: 400 });
-  }
+  const isToolResultResubmit = message.role === "assistant";
 
-  if (!conversationId || !userItem || !assistantItemId) {
-    return new Response("Missing conversationId, userItem, or assistantItemId", { status: 400 });
+  const userText = isToolResultResubmit
+    ? ""
+    : (message.parts
+        ?.filter((p: { type: string }) => p.type === "text")
+        .map((p: { type: string; text?: string }) => (p as { text: string }).text)
+        .join("") || "");
+
+  if (!isToolResultResubmit && !userText.trim() && (!blobIds || blobIds.length === 0)) {
+    return new Response("Missing prompt", { status: 400 });
   }
 
   const organizationId = user.organization.id;
@@ -63,63 +61,56 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Conversation not found", { status: 404 });
   }
 
-  await db.insert(items).values({
-    id: userItem.id,
-    conversationId,
-    type: userItem.type,
-    role: userItem.role || null,
-    content: userItem.content || null,
-    status: userItem.status || null,
-    createdAt: userItem.createdAt ? new Date(userItem.createdAt) : new Date(),
-  }).onConflictDoNothing();
+  if (!isToolResultResubmit) {
+    const userItemId = message.id || crypto.randomUUID();
+    await db.insert(items).values({
+      id: userItemId,
+      conversationId,
+      type: "message",
+      role: "user",
+      content: userText,
+      status: "completed",
+      createdAt: new Date(),
+    }).onConflictDoNothing();
 
-  if (blobIds && blobIds.length > 0) {
-    await db
-      .update(blobs)
-      .set({ itemId: userItem.id })
-      .where(and(inArray(blobs.id, blobIds), eq(blobs.organizationId, organizationId)));
-  }
-
-  await db.insert(items).values({
-    id: assistantItemId,
-    conversationId,
-    type: "message",
-    role: "assistant",
-    content: { text: "", toolCalls: [], stats: null },
-    status: "in_progress",
-    createdAt: new Date(userItem.createdAt + 1),
-  }).onConflictDoNothing();
-
-  if (conv[0]?.title === "New Chat") {
-    let titleText =
-      typeof userItem.content === "string"
-        ? userItem.content
-        : (userItem.content as { text?: string })?.text || "";
-    titleText = titleText.trim();
-    if (!titleText && blobIds && blobIds.length > 0) {
-      titleText = "File attachment";
+    if (blobIds && blobIds.length > 0) {
+      await db
+        .update(blobs)
+        .set({ itemId: userItemId })
+        .where(and(inArray(blobs.id, blobIds), eq(blobs.organizationId, organizationId)));
     }
-    await db
-      .update(conversations)
-      .set({ title: titleText || "New Chat", updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
-  } else {
-    await db
-      .update(conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
+
+    if (conv[0]?.title === "New Chat") {
+      let titleText = userText.trim();
+      if (!titleText && blobIds && blobIds.length > 0) {
+        titleText = "File attachment";
+      }
+      await db
+        .update(conversations)
+        .set({ title: titleText || "New Chat", updatedAt: new Date() })
+        .where(eq(conversations.id, conversationId));
+    } else {
+      await db
+        .update(conversations)
+        .set({ updatedAt: new Date() })
+        .where(eq(conversations.id, conversationId));
+    }
   }
 
   await syncStaleRepos(organizationId);
 
   const priorItems = await db
     .select({
+      id: items.id,
       role: items.role,
       content: items.content,
+      status: items.status,
     })
     .from(items)
     .where(and(eq(items.conversationId, conversationId), eq(items.type, "message")))
     .orderBy(asc(items.createdAt));
+
+  const uiMessages = itemsToUIMessages(priorItems);
 
   let agentImages: Array<{ base64: string; mediaType: string; filename?: string }> | undefined;
   if (blobIds && blobIds.length > 0) {
@@ -142,136 +133,149 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
-  let currentText = "";
-  let currentToolCalls: Array<{ id: string; tool: string; input: unknown; result?: string }> = [];
-  let toolsStartIndex: number | null = null;
-  let finalStats: { toolUses: number; tokens: number; durationMs: number } | null = null;
-  let streamCompleted = false;
-  let activeItemId = assistantItemId;
-  let awaitingQuestionResult = false;
-  let pendingNewline = false;
+  if (agentImages && agentImages.length > 0) {
+    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    const TEXT_MEDIA_TYPES = new Set([
+      "application/json", "application/xml", "application/javascript",
+      "application/typescript", "application/x-yaml", "application/x-sh", "image/svg+xml",
+    ]);
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-
-      try {
-        console.log(`[agent] Starting stream for conversation=${conversationId} prompt="${prompt.slice(0, 80)}"`);
-        for await (const event of runAgent(prompt, organizationId, memberId, conversationId, request.signal, agentImages, priorItems)) {
-          if (event.type === "new_turn") {
-            if (awaitingQuestionResult) {
-              awaitingQuestionResult = false;
-              await db
-                .update(items)
-                .set({
-                  content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                  status: "completed",
-                })
-                .where(eq(items.id, activeItemId));
-
-              currentText = "";
-              currentToolCalls = [];
-              toolsStartIndex = null;
-              pendingNewline = false;
-              activeItemId = crypto.randomUUID();
-              await db.insert(items).values({
-                id: activeItemId,
-                conversationId,
-                type: "message",
-                role: "assistant",
-                content: { text: "", toolCalls: [], stats: null },
-                status: "in_progress",
-                createdAt: new Date(),
-              });
-            } else {
-              pendingNewline = true;
-            }
-          } else if (event.type === "text") {
-            if (pendingNewline) {
-              currentText += "\n\n";
-              pendingNewline = false;
-            }
-            currentText += event.content;
-          } else if (event.type === "tool_use") {
-            if (event.tool === "askUserQuestion") {
-              awaitingQuestionResult = true;
-            } else {
-              if (toolsStartIndex === null) {
-                toolsStartIndex = currentText.length;
-              }
-              currentToolCalls = [...currentToolCalls, {
-                id: crypto.randomUUID(),
-                tool: event.tool!,
-                input: event.input,
-              }];
-            }
-          } else if (event.type === "tool_result") {
-            if (awaitingQuestionResult) {
-              continue;
-            }
-            if (currentToolCalls.length > 0) {
-              const updatedCalls = [...currentToolCalls];
-              updatedCalls[updatedCalls.length - 1].result = event.content;
-              currentToolCalls = updatedCalls;
-            }
-          } else if (event.type === "result" && event.stats) {
-            finalStats = event.stats;
-            streamCompleted = true;
-          }
-
-          const data = `data: ${JSON.stringify(event)}\n\n`;
-          controller.enqueue(encoder.encode(data));
+    const lastMsg = uiMessages[uiMessages.length - 1];
+    if (lastMsg && lastMsg.role === "user") {
+      const imageParts: UIMessage["parts"] = [];
+      for (const img of agentImages) {
+        if (SUPPORTED_IMAGE_TYPES.has(img.mediaType)) {
+          imageParts.push({
+            type: "file",
+            mediaType: img.mediaType,
+            url: `data:${img.mediaType};base64,${img.base64}`,
+          } as UIMessage["parts"][number]);
+        } else if (img.mediaType === "application/pdf") {
+          imageParts.push({
+            type: "file",
+            mediaType: img.mediaType,
+            url: `data:${img.mediaType};base64,${img.base64}`,
+          } as UIMessage["parts"][number]);
+        } else if (img.mediaType.startsWith("text/") || TEXT_MEDIA_TYPES.has(img.mediaType)) {
+          const text = Buffer.from(img.base64, "base64").toString("utf-8");
+          imageParts.push({ type: "text", text: `[File: ${img.filename || "file"}]\n${text}` });
+        } else {
+          imageParts.push({ type: "text", text: `[Attached file: ${img.filename || "file"} (${img.mediaType})]` });
         }
-      } catch (error) {
-        console.error(`[agent] Stream error for conversation=${conversationId}:`, error);
-        const errorEvent = {
-          type: "error",
-          content: error instanceof Error ? error.message : "Stream error",
-        };
-        currentText += `\n\nError: ${errorEvent.content}`;
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`)
-        );
-      } finally {
-        try {
-          if (streamCompleted && finalStats) {
-            console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${finalStats.tokens} tools=${finalStats.toolUses} duration=${finalStats.durationMs}ms`);
-            await db
-              .update(items)
-              .set({
-                content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: finalStats },
-                status: "completed",
-              })
-              .where(eq(items.id, activeItemId));
-          } else {
-            console.warn(`[agent] Stream incomplete for conversation=${conversationId} item=${activeItemId}, marking as cancelled`);
-            await db
-              .update(items)
-              .set({
-                content: { text: currentText, toolCalls: currentToolCalls, toolsStartIndex, stats: null },
-                status: "cancelled",
-              })
-              .where(eq(items.id, activeItemId));
+      }
+      lastMsg.parts = [...imageParts, ...lastMsg.parts];
+    }
+  }
+
+  const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
+
+  const { model, tools, systemPrompt } = await getAgentConfig(
+    organizationId,
+    memberId,
+    request.signal,
+  );
+
+  const assistantItemId = crypto.randomUUID();
+  await db.insert(items).values({
+    id: assistantItemId,
+    conversationId,
+    type: "message",
+    role: "assistant",
+    content: { text: "", toolCalls: [], stats: null },
+    status: "in_progress",
+    createdAt: new Date(),
+  }).onConflictDoNothing();
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let toolUseCount = 0;
+  const startTime = Date.now();
+
+  const result = streamText({
+    model,
+    system: systemPrompt,
+    messages: modelMessages,
+    tools,
+    stopWhen: stepCountIs(50),
+    abortSignal: request.signal,
+    onStepFinish: ({ usage, toolCalls }) => {
+      if (usage) {
+        totalInputTokens += usage.inputTokens || 0;
+        totalOutputTokens += usage.outputTokens || 0;
+      }
+      if (toolCalls) {
+        for (const tc of toolCalls) {
+          if (tc.toolName !== "askUserQuestion") {
+            toolUseCount++;
           }
-
-          await db
-            .update(conversations)
-            .set({ updatedAt: new Date() })
-            .where(eq(conversations.id, conversationId));
-        } catch (cleanupError) {
-          console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
         }
-
-        controller.close();
       }
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
+  const response = result.toUIMessageStreamResponse({
+    originalMessages: uiMessages,
+    onFinish: async ({ responseMessage: assistantMessage }) => {
+      try {
+        const durationMs = Date.now() - startTime;
+        const stats = {
+          toolUses: toolUseCount,
+          tokens: totalInputTokens + totalOutputTokens,
+          durationMs,
+        };
+
+        const parts: Array<
+          | { type: "text"; text: string }
+          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string }
+          | { type: "step-start" }
+        > = [];
+        for (const part of assistantMessage.parts) {
+          if (part.type === "text") {
+            parts.push({ type: "text", text: (part as { text: string }).text });
+          } else if (part.type === "step-start") {
+            parts.push({ type: "step-start" });
+          } else if (part.type === "dynamic-tool" || (part.type as string).startsWith("tool-")) {
+            const tp = part as { toolName?: string; toolCallId?: string; input?: unknown; output?: unknown; type: string };
+            const name = tp.toolName || tp.type.replace("tool-", "");
+            if (name === "askUserQuestion") continue;
+            parts.push({
+              type: "tool-call",
+              toolName: name,
+              toolCallId: tp.toolCallId || crypto.randomUUID(),
+              input: tp.input,
+              output: typeof tp.output === "string" ? tp.output : JSON.stringify(tp.output || ""),
+            });
+          }
+        }
+
+        const text = parts
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("");
+
+        await db
+          .update(items)
+          .set({
+            content: { parts, text, stats },
+            status: "completed",
+          })
+          .where(eq(items.id, assistantItemId));
+
+        await db
+          .update(conversations)
+          .set({ updatedAt: new Date() })
+          .where(eq(conversations.id, conversationId));
+
+        console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
+      } catch (cleanupError) {
+        console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
+      }
     },
   });
+
+  Promise.resolve(result.consumeStream()).catch((err) => {
+    console.error(`[agent] Stream error for conversation=${conversationId}:`, err);
+  });
+
+  return response;
 }
