@@ -1,6 +1,6 @@
 import { db } from "./db/index.server";
 import { invitations, members, users, organizations } from "./db/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, asc } from "drizzle-orm";
 
 const INVITATION_EXPIRY_HOURS = 24;
 
@@ -157,7 +157,7 @@ export async function getMembers(organizationId: string): Promise<Member[]> {
     .from(members)
     .innerJoin(users, eq(members.userId, users.id))
     .where(eq(members.organizationId, organizationId))
-    .orderBy(members.createdAt);
+    .orderBy(asc(users.name));
 
   return result.map((row) => ({
     id: row.id,
