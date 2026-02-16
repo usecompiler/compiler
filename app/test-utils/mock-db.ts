@@ -5,6 +5,7 @@ interface MockDb {
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
+  execute: ReturnType<typeof vi.fn>;
   _selectFrom: ReturnType<typeof vi.fn>;
   _selectWhere: ReturnType<typeof vi.fn>;
   _insertValues: ReturnType<typeof vi.fn>;
@@ -14,11 +15,15 @@ interface MockDb {
   _setSelectResult: (rows: unknown[]) => void;
   _selectResults: unknown[][];
   _selectCallCount: number;
+  _executeResults: unknown[];
+  _executeCallCount: number;
 }
 
 export function createMockDb(): MockDb {
   let selectResults: unknown[][] = [[]];
   let selectCallCount = 0;
+  let executeResults: unknown[] = [[]];
+  let executeCallCount = 0;
 
   const deleteWhereFn = vi.fn().mockResolvedValue(undefined);
   const deleteFn = vi.fn(() => ({ where: deleteWhereFn }));
@@ -38,16 +43,30 @@ export function createMockDb(): MockDb {
     selectCallCount++;
     const result = idx < selectResults.length ? selectResults[idx] : selectResults[selectResults.length - 1];
     const promise = Promise.resolve(result);
-    return Object.assign(promise, { orderBy: vi.fn(() => promise) });
+    const orderByFn = vi.fn(() => promise);
+    const groupByFn = vi.fn(() => Object.assign(Promise.resolve(result), { orderBy: orderByFn }));
+    return Object.assign(promise, { groupBy: groupByFn, orderBy: orderByFn });
   });
-  const selectFromFn = vi.fn(() => ({ where: selectWhereFn }));
+
+  const innerJoinFn = vi.fn();
+  const joinable = { innerJoin: innerJoinFn, where: selectWhereFn };
+  innerJoinFn.mockReturnValue(joinable);
+  const selectFromFn = vi.fn(() => joinable);
   const selectFn = vi.fn(() => ({ from: selectFromFn }));
+
+  const executeFn = vi.fn(() => {
+    const idx = executeCallCount;
+    executeCallCount++;
+    const result = idx < executeResults.length ? executeResults[idx] : executeResults[executeResults.length - 1];
+    return Promise.resolve(result);
+  });
 
   const mockDb: MockDb = {
     select: selectFn,
     insert: insertFn,
     update: updateFn,
     delete: deleteFn,
+    execute: executeFn,
     _selectFrom: selectFromFn,
     _selectWhere: selectWhereFn,
     _insertValues: insertValuesFn,
@@ -60,6 +79,8 @@ export function createMockDb(): MockDb {
     },
     _selectResults: selectResults,
     _selectCallCount: selectCallCount,
+    _executeResults: executeResults,
+    _executeCallCount: executeCallCount,
   };
 
   Object.defineProperty(mockDb, "_selectResults", {
@@ -70,6 +91,16 @@ export function createMockDb(): MockDb {
   Object.defineProperty(mockDb, "_selectCallCount", {
     get: () => selectCallCount,
     set: (val: number) => { selectCallCount = val; },
+  });
+
+  Object.defineProperty(mockDb, "_executeResults", {
+    get: () => executeResults,
+    set: (val: unknown[]) => { executeResults = val; },
+  });
+
+  Object.defineProperty(mockDb, "_executeCallCount", {
+    get: () => executeCallCount,
+    set: (val: number) => { executeCallCount = val; },
   });
 
   return mockDb;

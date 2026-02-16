@@ -32,18 +32,31 @@ export interface AnalyticsSummary {
   totals: AnalyticsTotals;
 }
 
+export function validateTimezone(tz: string): string {
+  try {
+    if (Intl.supportedValuesOf("timeZone").includes(tz)) {
+      return tz;
+    }
+  } catch {
+    return "UTC";
+  }
+  return "UTC";
+}
+
 export async function getOrganizationAnalytics(
   organizationId: string,
   organizationCreatedAt: Date,
   timezone: string = "UTC"
 ): Promise<AnalyticsSummary> {
+  const tz = validateTimezone(timezone);
+
   const startDate = new Date(organizationCreatedAt);
   startDate.setDate(1);
   startDate.setHours(0, 0, 0, 0);
 
   const conversationStats = await db
     .select({
-      date: sql<string>`DATE(${conversations.createdAt})`.as("date"),
+      date: sql<string>`DATE(${conversations.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       count: count(conversations.id),
     })
     .from(conversations)
@@ -54,12 +67,12 @@ export async function getOrganizationAnalytics(
         gte(conversations.createdAt, startDate)
       )
     )
-    .groupBy(sql`DATE(${conversations.createdAt})`)
-    .orderBy(sql`DATE(${conversations.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const messageStats = await db
     .select({
-      date: sql<string>`DATE(${items.createdAt})`.as("date"),
+      date: sql<string>`DATE(${items.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       count: count(items.id),
     })
     .from(items)
@@ -73,12 +86,12 @@ export async function getOrganizationAnalytics(
         gte(items.createdAt, startDate)
       )
     )
-    .groupBy(sql`DATE(${items.createdAt})`)
-    .orderBy(sql`DATE(${items.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const dauStats = await db
     .select({
-      date: sql<string>`DATE(${items.createdAt})`.as("date"),
+      date: sql<string>`DATE(${items.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       count: countDistinct(conversations.userId),
     })
     .from(items)
@@ -92,12 +105,12 @@ export async function getOrganizationAnalytics(
         gte(items.createdAt, startDate)
       )
     )
-    .groupBy(sql`DATE(${items.createdAt})`)
-    .orderBy(sql`DATE(${items.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const tokenStats = await db
     .select({
-      date: sql<string>`DATE(${items.createdAt})`.as("date"),
+      date: sql<string>`DATE(${items.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       tokens: sql<number>`COALESCE(SUM((${items.content}->'stats'->'tokens')::bigint), 0)::bigint`,
     })
     .from(items)
@@ -113,12 +126,12 @@ export async function getOrganizationAnalytics(
         sql`jsonb_typeof(${items.content}->'stats'->'tokens') = 'number'`
       )
     )
-    .groupBy(sql`DATE(${items.createdAt})`)
-    .orderBy(sql`DATE(${items.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const shareStats = await db
     .select({
-      date: sql<string>`DATE(${conversationShares.createdAt})`.as("date"),
+      date: sql<string>`DATE(${conversationShares.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       count: count(conversationShares.id),
     })
     .from(conversationShares)
@@ -131,12 +144,12 @@ export async function getOrganizationAnalytics(
         isNull(conversationShares.revokedAt)
       )
     )
-    .groupBy(sql`DATE(${conversationShares.createdAt})`)
-    .orderBy(sql`DATE(${conversationShares.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const reviewRequestStats = await db
     .select({
-      date: sql<string>`DATE(${reviewRequests.createdAt})`.as("date"),
+      date: sql<string>`DATE(${reviewRequests.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
       count: count(reviewRequests.id),
     })
     .from(reviewRequests)
@@ -148,50 +161,40 @@ export async function getOrganizationAnalytics(
         gte(reviewRequests.createdAt, startDate)
       )
     )
-    .groupBy(sql`DATE(${reviewRequests.createdAt})`)
-    .orderBy(sql`DATE(${reviewRequests.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
-  const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const wauCurrent = await db.execute(sql`
+    SELECT COUNT(DISTINCT c.user_id)::integer as count
+    FROM items i
+    INNER JOIN conversations c ON i.conversation_id = c.id
+    INNER JOIN members m ON c.user_id = m.user_id
+    WHERE m.organization_id = ${organizationId}
+      AND i.type = 'message'
+      AND i.role = 'user'
+      AND DATE(i.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz}) >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ${tz})::date
+  `);
 
-  const wauCurrent = await db
-    .select({ count: countDistinct(conversations.userId) })
-    .from(items)
-    .innerJoin(conversations, eq(items.conversationId, conversations.id))
-    .innerJoin(members, eq(conversations.userId, members.userId))
-    .where(
-      and(
-        eq(members.organizationId, organizationId),
-        eq(items.type, "message"),
-        eq(items.role, "user"),
-        gte(items.createdAt, sevenDaysAgo)
-      )
-    );
-
-  const mauCurrent = await db
-    .select({ count: countDistinct(conversations.userId) })
-    .from(items)
-    .innerJoin(conversations, eq(items.conversationId, conversations.id))
-    .innerJoin(members, eq(conversations.userId, members.userId))
-    .where(
-      and(
-        eq(members.organizationId, organizationId),
-        eq(items.type, "message"),
-        eq(items.role, "user"),
-        gte(items.createdAt, thirtyDaysAgo)
-      )
-    );
+  const mauCurrent = await db.execute(sql`
+    SELECT COUNT(DISTINCT c.user_id)::integer as count
+    FROM items i
+    INNER JOIN conversations c ON i.conversation_id = c.id
+    INNER JOIN members m ON c.user_id = m.user_id
+    WHERE m.organization_id = ${organizationId}
+      AND i.type = 'message'
+      AND i.role = 'user'
+      AND DATE(i.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz}) >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE ${tz})::date
+  `);
 
   const startDateISO = startDate.toISOString();
 
   const rollingWauStats = await db.execute(sql`
     WITH dates AS (
-      SELECT generate_series(${startDateISO}::date, CURRENT_DATE, '1 day'::interval)::date AS date
+      SELECT generate_series(${startDateISO}::date, (CURRENT_TIMESTAMP AT TIME ZONE ${tz})::date, '1 day'::interval)::date AS date
     ),
     user_activity AS (
       SELECT DISTINCT
-        DATE(i.created_at) as activity_date,
+        DATE(i.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz}) as activity_date,
         c.user_id as user_id
       FROM items i
       INNER JOIN conversations c ON i.conversation_id = c.id
@@ -212,11 +215,11 @@ export async function getOrganizationAnalytics(
 
   const rollingMauStats = await db.execute(sql`
     WITH dates AS (
-      SELECT generate_series(${startDateISO}::date, CURRENT_DATE, '1 day'::interval)::date AS date
+      SELECT generate_series(${startDateISO}::date, (CURRENT_TIMESTAMP AT TIME ZONE ${tz})::date, '1 day'::interval)::date AS date
     ),
     user_activity AS (
       SELECT DISTINCT
-        DATE(i.created_at) as activity_date,
+        DATE(i.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz}) as activity_date,
         c.user_id as user_id
       FROM items i
       INNER JOIN conversations c ON i.conversation_id = c.id
@@ -279,45 +282,42 @@ export async function getOrganizationAnalytics(
   }
 
   const stats: DailyStats[] = [];
-  const current = new Date(startDate);
-  const nowInTimezone = new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
-  const today = new Date(nowInTimezone);
-  today.setHours(23, 59, 59, 999);
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+  const endDateStr = formatter.format(new Date());
+  let currentStr = formatter.format(startDate);
 
-  while (current <= today) {
-    const dateStr = current.toISOString().split("T")[0];
-    const dayMessages = messageMap.get(dateStr) || 0;
-    const dayActiveUsers = dauMap.get(dateStr) || 0;
+  while (currentStr <= endDateStr) {
+    const dayMessages = messageMap.get(currentStr) || 0;
+    const dayActiveUsers = dauMap.get(currentStr) || 0;
     stats.push({
-      date: dateStr,
-      conversationCount: conversationMap.get(dateStr) || 0,
+      date: currentStr,
+      conversationCount: conversationMap.get(currentStr) || 0,
       messageCount: dayMessages,
       activeUserCount: dayActiveUsers,
-      wauCount: wauMap.get(dateStr) || 0,
-      mauCount: mauMap.get(dateStr) || 0,
+      wauCount: wauMap.get(currentStr) || 0,
+      mauCount: mauMap.get(currentStr) || 0,
       avgMessagesPerUser: dayActiveUsers > 0 ? dayMessages / dayActiveUsers : 0,
-      tokenCount: tokenMap.get(dateStr) || 0,
-      shareCount: shareMap.get(dateStr) || 0,
-      reviewRequestCount: reviewRequestMap.get(dateStr) || 0,
+      tokenCount: tokenMap.get(currentStr) || 0,
+      shareCount: shareMap.get(currentStr) || 0,
+      reviewRequestCount: reviewRequestMap.get(currentStr) || 0,
     });
-    current.setDate(current.getDate() + 1);
+    const [y, m, d] = currentStr.split("-").map(Number);
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    currentStr = next.toISOString().split("T")[0];
   }
 
-  const last30Days = stats.slice(-30);
-  const lastDayDau = stats.length > 0 ? stats[stats.length - 1].activeUserCount : 0;
-  const totalMessages = last30Days.reduce((sum, d) => sum + d.messageCount, 0);
-  const mau = mauCurrent[0]?.count || 0;
+  const today = stats.length > 0 ? stats[stats.length - 1] : null;
 
   const totals: AnalyticsTotals = {
-    dau: lastDayDau,
-    wau: wauCurrent[0]?.count || 0,
-    mau,
-    conversations: last30Days.reduce((sum, d) => sum + d.conversationCount, 0),
-    messages: totalMessages,
-    avgMessagesPerUser: mau > 0 ? totalMessages / mau : 0,
-    shares: last30Days.reduce((sum, d) => sum + d.shareCount, 0),
-    reviewRequests: last30Days.reduce((sum, d) => sum + d.reviewRequestCount, 0),
-    tokens: last30Days.reduce((sum, d) => sum + d.tokenCount, 0),
+    dau: today?.activeUserCount ?? 0,
+    wau: (wauCurrent as unknown as { count: number }[])[0]?.count || 0,
+    mau: (mauCurrent as unknown as { count: number }[])[0]?.count || 0,
+    conversations: today?.conversationCount ?? 0,
+    messages: today?.messageCount ?? 0,
+    avgMessagesPerUser: today?.avgMessagesPerUser ?? 0,
+    shares: today?.shareCount ?? 0,
+    reviewRequests: today?.reviewRequestCount ?? 0,
+    tokens: today?.tokenCount ?? 0,
   };
 
   return { stats, totals };
