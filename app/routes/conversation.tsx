@@ -20,6 +20,7 @@ import {
   createReviewRequest,
   hasPendingReviewRequest,
 } from "~/lib/conversations.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export function meta() {
   return [
@@ -107,11 +108,17 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   if (intent === "create-share") {
     const token = await createShareLink(params.id!);
+    if (user.organization) {
+      await logAuditEvent(user.organization.id, user.id, "shared conversation", { conversationId: params.id });
+    }
     return Response.json({ shareToken: token });
   }
 
   if (intent === "revoke-share") {
     await revokeShareLink(params.id!);
+    if (user.organization) {
+      await logAuditEvent(user.organization.id, user.id, "revoked conversation share", { conversationId: params.id });
+    }
     return Response.json({ shareRevoked: true });
   }
 

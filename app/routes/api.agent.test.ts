@@ -181,7 +181,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const insertCalls = mockDb._insertValues.mock.calls;
-      expect(insertCalls[1][0]).toMatchObject({
+      expect(insertCalls[2][0]).toMatchObject({
         conversationId: body.conversationId,
         type: "message",
         role: "assistant",

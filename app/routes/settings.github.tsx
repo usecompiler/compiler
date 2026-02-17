@@ -18,6 +18,7 @@ import {
   type GitHubRepo,
 } from "~/lib/github.server";
 import { canManageOrganization } from "~/lib/permissions.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 interface Repo {
   id: string;
@@ -136,6 +137,7 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     await saveGitHubAppConfig(user.organization.id, appId, appSlug, privateKey);
+    await logAuditEvent(user.organization.id, user.id, "updated GitHub App configuration");
     return { error: null, success: true, configSuccess: true };
   }
 
@@ -144,6 +146,7 @@ export async function action({ request }: Route.ActionArgs) {
     const repoName = formData.get("repoName") as string;
 
     await deleteRepository(user.organization.id, repoId, repoName);
+    await logAuditEvent(user.organization.id, user.id, "removed repository", { repoName });
     return { success: true, error: null, configSuccess: false };
   }
 
@@ -178,6 +181,7 @@ export async function action({ request }: Route.ActionArgs) {
       ).catch(console.error);
     }
 
+    await logAuditEvent(user.organization.id, user.id, `added ${selectedRepos.length} ${selectedRepos.length === 1 ? "repository" : "repositories"}`);
     return { success: true, error: null, configSuccess: false };
   }
 
@@ -314,6 +318,12 @@ export default function GitHubSettings({
               AI Provider
             </Link>
             <Link
+              to="/settings/audit-log"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Audit Log
+            </Link>
+            <Link
               to="/settings/authentication"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
@@ -323,16 +333,16 @@ export default function GitHubSettings({
               GitHub
             </span>
             <Link
-              to="/settings/storage"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Storage
-            </Link>
-            <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
+            </Link>
+            <Link
+              to="/settings/storage"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Storage
             </Link>
           </nav>
         </div>

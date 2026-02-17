@@ -7,6 +7,7 @@ import { conversations, items, blobs } from "~/lib/db/schema";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 import { itemsToUIMessages } from "~/components/conversation-helpers";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -94,6 +95,8 @@ export async function action({ request }: Route.ActionArgs) {
         .set({ updatedAt: new Date() })
         .where(eq(conversations.id, conversationId));
     }
+
+    await logAuditEvent(organizationId, user.id, "sent message", { conversationId });
   }
 
   const priorItems = await db

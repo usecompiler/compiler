@@ -16,6 +16,7 @@ import {
 } from "~/lib/invitations.server";
 import { canManageOrganization, canDeactivateMember, canDeleteUser, canCreateInvitationWithRole, getRoleBadgeStyle, type Role } from "~/lib/permissions";
 import { getSSOConfig } from "~/lib/saml.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -60,12 +61,14 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     const invitation = await createInvitation(user.organization.id, roleToAssign);
+    await logAuditEvent(user.organization.id, user.id, `created invitation (${roleToAssign} role)`);
     return { error: null, newInviteToken: invitation.token, newInviteRole: roleToAssign };
   }
 
   if (intent === "revoke-invitation") {
     const invitationId = formData.get("invitationId") as string;
     await revokeInvitation(invitationId, user.organization.id);
+    await logAuditEvent(user.organization.id, user.id, "revoked invitation");
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
@@ -75,6 +78,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
+    await logAuditEvent(user.organization.id, user.id, "deactivated member", { memberId });
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
@@ -84,6 +88,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
+    await logAuditEvent(user.organization.id, user.id, "reactivated member", { memberId });
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
@@ -99,6 +104,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
+    await logAuditEvent(user.organization.id, user.id, `changed member role to ${newRole}`, { memberId, newRole });
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
@@ -108,6 +114,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!result.success) {
       return { error: result.error, newInviteToken: null, newInviteRole: null };
     }
+    await logAuditEvent(user.organization.id, user.id, "deleted user", { memberId });
     return { error: null, newInviteToken: null, newInviteRole: null };
   }
 
@@ -169,6 +176,12 @@ export default function OrganizationSettings() {
               AI Provider
             </Link>
             <Link
+              to="/settings/audit-log"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Audit Log
+            </Link>
+            <Link
               to="/settings/authentication"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
@@ -180,15 +193,15 @@ export default function OrganizationSettings() {
             >
               GitHub
             </Link>
+            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
+              Organization
+            </span>
             <Link
               to="/settings/storage"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Storage
             </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Organization
-            </span>
           </nav>
         </div>
       </div>

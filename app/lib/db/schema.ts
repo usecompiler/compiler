@@ -214,6 +214,19 @@ export const storageConfigurations = pgTable("storage_configurations", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const auditLogs = pgTable("audit_logs", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  actorId: text("actor_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  action: text("action").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const blobs = pgTable("blobs", {
   id: text("id").primaryKey(),
   key: text("key").unique().notNull(),

@@ -5,6 +5,7 @@ import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions";
 import { getSSOConfig, saveSSOConfig, generateSPMetadata } from "~/lib/saml.server";
 import { getPublicBaseUrl } from "~/lib/url.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -76,6 +77,7 @@ export async function action({ request }: Route.ActionArgs) {
         },
         baseUrl
       );
+      await logAuditEvent(user.organization.id, user.id, "updated SSO configuration");
       return { error: null, success: true };
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Failed to save configuration", success: false };
@@ -159,6 +161,12 @@ export default function AuthenticationSettings() {
             >
               AI Provider
             </Link>
+            <Link
+              to="/settings/audit-log"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Audit Log
+            </Link>
             <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
               Authentication
             </span>
@@ -169,16 +177,16 @@ export default function AuthenticationSettings() {
               GitHub
             </Link>
             <Link
-              to="/settings/storage"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Storage
-            </Link>
-            <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
+            </Link>
+            <Link
+              to="/settings/storage"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Storage
             </Link>
           </nav>
         </div>

@@ -5,6 +5,7 @@ import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions.server";
 import { getStorageConfigPublic, saveStorageConfig, deleteStorageConfig } from "~/lib/storage.server";
 import { redirect } from "react-router";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -33,6 +34,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "remove") {
     await deleteStorageConfig(user.organization.id);
+    await logAuditEvent(user.organization.id, user.id, "removed storage configuration");
     return { error: null, success: false, removed: true };
   }
 
@@ -62,6 +64,7 @@ export async function action({ request }: Route.ActionArgs) {
     secretAccessKey,
   });
 
+  await logAuditEvent(user.organization.id, user.id, "updated storage configuration");
   return { error: null, success: true, removed: false };
 }
 
@@ -101,18 +104,21 @@ export default function StorageSettings({ loaderData }: Route.ComponentProps) {
             <Link to="/settings/ai-provider" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
               AI Provider
             </Link>
+            <Link to="/settings/audit-log" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
+              Audit Log
+            </Link>
             <Link to="/settings/authentication" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
               Authentication
             </Link>
             <Link to="/settings/github" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
               GitHub
             </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Storage
-            </span>
             <Link to="/settings/organization" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
               Organization
             </Link>
+            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
+              Storage
+            </span>
           </nav>
         </div>
       </div>

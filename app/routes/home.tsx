@@ -8,6 +8,7 @@ import { PromptInput, type PendingFile } from "~/components/prompt-input";
 import { requireAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
 import { conversations } from "~/lib/db/schema";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export function meta() {
   return [
@@ -33,6 +34,10 @@ export async function action({ request }: Route.ActionArgs) {
     userId: user.id,
     title: "New Chat",
   });
+
+  if (user.organization) {
+    await logAuditEvent(user.organization.id, user.id, "created conversation", { conversationId: id });
+  }
 
   const params = new URLSearchParams();
   if (prompt.trim()) params.set("prompt", prompt);

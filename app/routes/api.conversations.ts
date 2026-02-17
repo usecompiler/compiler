@@ -6,6 +6,7 @@ import { requireActiveAuth } from "~/lib/auth.server";
 import { getConversations, isUserInOrg, dismissReviewRequest } from "~/lib/conversations.server";
 import { getMembers } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -53,6 +54,10 @@ export async function action({ request }: Route.ActionArgs) {
       .from(conversations)
       .where(eq(conversations.id, id));
 
+    if (user.organization) {
+      await logAuditEvent(user.organization.id, user.id, "created conversation", { conversationId: id });
+    }
+
     return Response.json({
       id: newConv[0].id,
       title: newConv[0].title,
@@ -74,6 +79,11 @@ export async function action({ request }: Route.ActionArgs) {
     await db
       .delete(conversations)
       .where(and(eq(conversations.id, id), eq(conversations.userId, user.id)));
+
+    if (user.organization) {
+      await logAuditEvent(user.organization.id, user.id, "deleted conversation", { conversationId: id });
+    }
+
     return Response.json({ success: true });
   }
 

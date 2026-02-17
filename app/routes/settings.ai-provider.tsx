@@ -21,6 +21,7 @@ import {
 
 const BASE_TOOL_KEYS = ["read", "glob", "grep", "askUserQuestion"];
 import { canManageOrganization } from "~/lib/permissions.server";
+import { logAuditEvent } from "~/lib/audit.server";
 
 const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
 
@@ -95,6 +96,7 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     await saveModelConfig(user.organization.id, selectedModels, defaultModel);
+    await logAuditEvent(user.organization.id, user.id, "updated model configuration");
     return { error: null, success: true, intent };
   }
 
@@ -104,12 +106,14 @@ export async function action({ request }: Route.ActionArgs) {
       SERVER_OPTIONAL_TOOLS.some((ot) => ot.id === t)
     );
     await saveToolConfig(user.organization.id, validTools);
+    await logAuditEvent(user.organization.id, user.id, "updated tool configuration");
     return { error: null, success: true, intent };
   }
 
   if (intent === "save-caching") {
     const enabled = formData.get("promptCaching") === "on";
     await savePromptCachingConfig(user.organization.id, enabled);
+    await logAuditEvent(user.organization.id, user.id, `${enabled ? "enabled" : "disabled"} prompt caching`);
     return { error: null, success: true, intent };
   }
 
@@ -162,6 +166,8 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
+  const providerLabel = provider === "anthropic" ? "Anthropic" : "AWS Bedrock";
+  await logAuditEvent(user.organization.id, user.id, `updated AI provider to ${providerLabel}`);
   return { error: null, success: true, intent: "save-provider" };
 }
 
@@ -251,6 +257,12 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
               AI Provider
             </span>
             <Link
+              to="/settings/audit-log"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Audit Log
+            </Link>
+            <Link
               to="/settings/authentication"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
@@ -263,16 +275,16 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
               GitHub
             </Link>
             <Link
-              to="/settings/storage"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Storage
-            </Link>
-            <Link
               to="/settings/organization"
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
+            </Link>
+            <Link
+              to="/settings/storage"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Storage
             </Link>
           </nav>
         </div>

@@ -49,6 +49,7 @@ export default [
     route("settings/organization", "routes/settings.organization.tsx"),
     route("settings/authentication", "routes/settings.authentication.tsx"),
     route("settings/storage", "routes/settings.storage.tsx"),
+    route("settings/audit-log", "routes/settings.audit-log.tsx"),
     route("analytics", "routes/analytics.tsx"),
   ]),
 ] satisfies RouteConfig;
