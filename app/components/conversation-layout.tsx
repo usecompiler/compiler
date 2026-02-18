@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Sidebar } from "./sidebar";
 import { ModelSelector } from "./model-selector";
-import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest, ModelOption } from "~/routes/app-layout";
+import type { ConversationMeta, Member, ImpersonatingUser, ModelOption } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
@@ -15,7 +15,6 @@ interface ConversationLayoutProps {
   isAdmin: boolean;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
-  reviewRequests?: ReviewRequest[];
   availableModels?: ModelOption[];
   defaultModel?: string;
   userPreferredModel?: string | null;
@@ -32,7 +31,6 @@ export function ConversationLayout({
   isAdmin,
   headerRight,
   children,
-  reviewRequests = [],
   availableModels = [],
   defaultModel = "claude-sonnet-4-20250514",
   userPreferredModel,
@@ -96,7 +94,6 @@ export function ConversationLayout({
           orgMembers={orgMembers}
           isOwner={isOwner}
           isAdmin={isAdmin}
-          reviewRequests={reviewRequests}
         />
       </div>
 

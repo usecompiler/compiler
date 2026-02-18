@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useFetcher, Link, NavLink, useParams } from "react-router";
-import type { ConversationMeta, Member, ImpersonatingUser, ReviewRequest } from "~/routes/app-layout";
+import type { ConversationMeta, Member, ImpersonatingUser } from "~/routes/app-layout";
 import { CommandPalette } from "./command-palette";
 import type { User } from "~/lib/auth.server";
 import { canImpersonate, canManageOrganization, type Role } from "~/lib/permissions";
@@ -21,7 +21,6 @@ interface SidebarProps {
   orgMembers: Member[];
   isOwner: boolean;
   isAdmin: boolean;
-  reviewRequests?: ReviewRequest[];
 }
 
 export function Sidebar({
@@ -32,7 +31,6 @@ export function Sidebar({
   orgMembers,
   isOwner,
   isAdmin,
-  reviewRequests = [],
 }: SidebarProps) {
   const { id: currentConversationId } = useParams();
   const navigate = useNavigate();
@@ -139,21 +137,6 @@ export function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 scrollbar-hide">
-        {reviewRequests.length > 0 && !impersonating && (
-          <>
-            <p className="px-3 py-2 text-xs text-neutral-400 dark:text-neutral-500">
-              Review requested
-            </p>
-            <nav className="space-y-0.5 mb-4">
-              {reviewRequests.map((request) => (
-                <ReviewRequestItem
-                  key={request.id}
-                  request={request}
-                />
-              ))}
-            </nav>
-          </>
-        )}
         <p className="px-3 py-2 text-xs text-neutral-400 dark:text-neutral-500">
           {impersonating ? `${impersonating.name}'s chats` : "Your chats"}
         </p>
@@ -182,84 +165,6 @@ export function Sidebar({
         impersonateUserId={impersonating?.id}
       />
     </aside>
-  );
-}
-
-interface ReviewRequestItemProps {
-  request: ReviewRequest;
-}
-
-function ReviewRequestItem({ request }: ReviewRequestItemProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const fetcher = useFetcher();
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const close = () => setIsOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [isOpen]);
-
-  const handleDismiss = (e: React.MouseEvent) => {
-    e.preventDefault();
-    fetcher.submit(null, {
-      method: "PATCH",
-      action: `/api/conversations?reviewRequestId=${request.id}`,
-    });
-    setIsOpen(false);
-  };
-
-  const isPending = fetcher.state !== "idle";
-
-  return (
-    <NavLink
-      to={`/c/${request.conversationId}?share=${request.shareToken}`}
-      prefetch="intent"
-      className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
-        isActive
-          ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          : "text-neutral-900 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
-      } ${isPending ? "opacity-50" : ""}`}
-    >
-      <span className="flex-1 truncate pr-6">{request.conversationTitle}</span>
-
-      <button
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
-        className={`absolute right-2 p-1 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition-opacity ${
-          isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-        }`}
-      >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="5" r="1.5" />
-          <circle cx="12" cy="12" r="1.5" />
-          <circle cx="12" cy="19" r="1.5" />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div
-          className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          <button
-            onClick={handleDismiss}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-            Dismiss
-          </button>
-        </div>
-      )}
-    </NavLink>
   );
 }
 

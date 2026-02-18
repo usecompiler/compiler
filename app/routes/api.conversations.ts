@@ -3,7 +3,7 @@ import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { getConversations, isUserInOrg, dismissReviewRequest } from "~/lib/conversations.server";
+import { getConversations, isUserInOrg } from "~/lib/conversations.server";
 import { getMembers } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { logAuditEvent } from "~/lib/audit.server";
@@ -90,12 +90,6 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method === "PATCH") {
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
-    const reviewRequestId = url.searchParams.get("reviewRequestId");
-
-    if (reviewRequestId) {
-      await dismissReviewRequest(reviewRequestId, user.id);
-      return Response.json({ success: true });
-    }
 
     const body = await request.json();
 

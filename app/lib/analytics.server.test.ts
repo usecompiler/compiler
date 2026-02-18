@@ -16,7 +16,6 @@ vi.mock("~/lib/db/schema", () => ({
   conversationShares: { id: "cs.id", createdAt: "cs.createdAt", conversationId: "cs.conversationId", revokedAt: "cs.revokedAt" },
   items: { id: "items.id", createdAt: "items.createdAt", conversationId: "items.conversationId", type: "items.type", role: "items.role", content: "items.content" },
   members: { userId: "members.userId", organizationId: "members.organizationId" },
-  reviewRequests: { id: "rr.id", createdAt: "rr.createdAt", conversationId: "rr.conversationId" },
 }));
 
 const sqlCalls: { strings: string[]; values: unknown[] }[] = [];
@@ -53,7 +52,6 @@ function setupEmptyAnalytics() {
     [],
     [],
     [],
-    [],
   ];
   mockDb._selectCallCount = 0;
   mockDb._executeResults = [
@@ -72,7 +70,6 @@ function setupAnalyticsWithData() {
     [{ date: "2026-02-15", count: 3 }],
     [{ date: "2026-02-15", tokens: "500" }],
     [{ date: "2026-02-15", count: 2 }],
-    [{ date: "2026-02-15", count: 1 }],
   ];
   mockDb._selectCallCount = 0;
   mockDb._executeResults = [
@@ -203,7 +200,6 @@ describe("getOrganizationAnalytics", () => {
     expect(feb15!.activeUserCount).toBe(3);
     expect(feb15!.tokenCount).toBe(500);
     expect(feb15!.shareCount).toBe(2);
-    expect(feb15!.reviewRequestCount).toBe(1);
     expect(feb15!.wauCount).toBe(7);
     expect(feb15!.mauCount).toBe(12);
   });
@@ -215,7 +211,6 @@ describe("getOrganizationAnalytics", () => {
       [{ date: "2026-02-16", count: 3 }],
       [{ date: "2026-02-16", tokens: "500" }],
       [{ date: "2026-02-16", count: 2 }],
-      [{ date: "2026-02-16", count: 1 }],
     ];
     mockDb._selectCallCount = 0;
     mockDb._executeResults = [
@@ -233,7 +228,6 @@ describe("getOrganizationAnalytics", () => {
     expect(result.totals.conversations).toBe(5);
     expect(result.totals.messages).toBe(10);
     expect(result.totals.shares).toBe(2);
-    expect(result.totals.reviewRequests).toBe(1);
     expect(result.totals.tokens).toBe(500);
   });
 

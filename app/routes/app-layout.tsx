@@ -1,7 +1,7 @@
 import { Outlet, redirect } from "react-router";
 import type { Route } from "./+types/app-layout";
 import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
-import { getConversations, isUserInOrg, getReviewRequestsForUser, type ConversationMeta, type Item, type ReviewRequest } from "~/lib/conversations.server";
+import { getConversations, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/models.server";
@@ -15,7 +15,7 @@ function getModelDisplayName(id: string): string {
   return getDisplayName(id);
 }
 
-export type { Item, ConversationMeta, Organization, Membership, Member, ReviewRequest };
+export type { Item, ConversationMeta, Organization, Membership, Member };
 
 export interface ImpersonatingUser {
   id: string;
@@ -38,9 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   let impersonating: ImpersonatingUser | null = null;
   let orgMembers: Member[] = [];
-  let reviewers: Member[] = [];
   let conversations: ConversationMeta[] = [];
-  let reviewRequests: ReviewRequest[] = [];
   let hasMore = false;
   let availableModels: { id: string; displayName: string }[] = [];
   let defaultModel = "claude-sonnet-4-20250514";
@@ -74,14 +72,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     const storageConfig = await getStorageConfigPublic(user.organization.id);
     hasStorageConfig = storageConfig !== null;
-    const allMembers = await getMembers(user.organization.id);
-    reviewers = allMembers.filter((m) => !m.isDeactivated);
-
     if (canManageOrg) {
+      const allMembers = await getMembers(user.organization.id);
       orgMembers = allMembers;
     }
-
-    reviewRequests = await getReviewRequestsForUser(user.id);
 
     const modelConfig = await getModelConfig(user.organization.id);
     if (modelConfig) {
@@ -129,10 +123,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     hasMore,
     impersonating,
     orgMembers,
-    reviewers,
     isOwner,
     isAdmin,
-    reviewRequests,
     availableModels,
     defaultModel,
     userPreferredModel,
@@ -164,10 +156,8 @@ export interface AppContext {
   hasMore: boolean;
   impersonating: ImpersonatingUser | null;
   orgMembers: Member[];
-  reviewers: Member[];
   isOwner: boolean;
   isAdmin: boolean;
-  reviewRequests: ReviewRequest[];
   availableModels: ModelOption[];
   defaultModel: string;
   userPreferredModel: string | null;
@@ -182,10 +172,8 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     hasMore: loaderData.hasMore,
     impersonating: loaderData.impersonating,
     orgMembers: loaderData.orgMembers,
-    reviewers: loaderData.reviewers,
     isOwner: loaderData.isOwner,
     isAdmin: loaderData.isAdmin,
-    reviewRequests: loaderData.reviewRequests,
     availableModels: loaderData.availableModels,
     defaultModel: loaderData.defaultModel,
     userPreferredModel: loaderData.userPreferredModel,

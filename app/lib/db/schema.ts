@@ -95,23 +95,6 @@ export const conversationShares = pgTable("conversation_shares", {
   revokedAt: timestamp("revoked_at"), // null = active, set = revoked
 });
 
-export const reviewRequests = pgTable("review_requests", {
-  id: text("id").primaryKey(),
-  conversationId: text("conversation_id")
-    .references(() => conversations.id, { onDelete: "cascade" })
-    .notNull(),
-  requestedByUserId: text("requested_by_user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  requestedToUserId: text("requested_to_user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  shareToken: text("share_token").notNull(),
-  status: text("status").notNull().default("pending"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  reviewedAt: timestamp("reviewed_at"),
-});
-
 export const githubInstallations = pgTable("github_installations", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")

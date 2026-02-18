@@ -8,15 +8,6 @@ vi.mock("~/lib/db/index.server", () => ({ db: mockDb }));
 const requireAuth = vi.fn();
 vi.mock("~/lib/auth.server", () => ({ requireAuth }));
 
-const getConversationByShareToken = vi.fn();
-const isUserInOrg = vi.fn();
-const markReviewRequestAsReviewed = vi.fn().mockResolvedValue(undefined);
-vi.mock("~/lib/conversations.server", () => ({
-  getConversationByShareToken,
-  isUserInOrg,
-  markReviewRequestAsReviewed,
-}));
-
 vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
   and: (...args: unknown[]) => ({ _op: "and", args }),
@@ -99,86 +90,6 @@ describe("api.items action", () => {
         role: body.item.role,
       })
     );
-  });
-
-  it("share token fallback works for review items", async () => {
-    mockDb._selectResults = [
-      [],
-      [{ id: "conv-1", title: "Test Chat", userId: "other-user" }],
-    ];
-    mockDb._selectCallCount = 0;
-
-    getConversationByShareToken.mockResolvedValue({
-      conversation: { id: "conv-1", userId: "other-user", title: "Test Chat" },
-      organizationId: "org-1",
-      ownerName: "Other User",
-    });
-    isUserInOrg.mockResolvedValue(true);
-
-    const body = {
-      conversationId: "conv-1",
-      shareToken: "share-token-123",
-      item: {
-        id: "item-review-1",
-        type: "review",
-        role: "user",
-        content: { text: "Looks good" },
-        status: "completed",
-        createdAt: Date.now(),
-      },
-    };
-    const request = buildRequest(body);
-    const response = await callAction(request);
-    const json = await response.json();
-
-    expect(json).toEqual({ success: true });
-    expect(mockDb._insertValues).toHaveBeenCalled();
-  });
-
-  it("share token rejected when user not in org", async () => {
-    mockDb._selectResults = [[], []];
-    mockDb._selectCallCount = 0;
-
-    getConversationByShareToken.mockResolvedValue({
-      conversation: { id: "conv-1", userId: "other-user", title: "Test Chat" },
-      organizationId: "org-1",
-      ownerName: "Other User",
-    });
-    isUserInOrg.mockResolvedValue(false);
-
-    const body = {
-      conversationId: "conv-1",
-      shareToken: "share-token-123",
-      item: {
-        id: "item-review-1",
-        type: "review",
-        role: "user",
-        content: { text: "Review" },
-        status: "completed",
-        createdAt: Date.now(),
-      },
-    };
-    const request = buildRequest(body);
-    const response = await callAction(request);
-    expect(response.status).toBe(404);
-  });
-
-  it("review items trigger markReviewRequestAsReviewed", async () => {
-    const body = {
-      ...validBody(),
-      item: { ...validBody().item, type: "review" },
-    };
-    const request = buildRequest(body);
-    await callAction(request);
-
-    expect(markReviewRequestAsReviewed).toHaveBeenCalledWith("conv-1", "user-1");
-  });
-
-  it("non-review items skip markReviewRequestAsReviewed", async () => {
-    const request = buildRequest(validBody());
-    await callAction(request);
-
-    expect(markReviewRequestAsReviewed).not.toHaveBeenCalled();
   });
 
   it("conversation updatedAt is refreshed", async () => {

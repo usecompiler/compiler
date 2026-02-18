@@ -10,8 +10,7 @@ export interface MessageItem {
 export type DisplayItem =
   | { kind: "user"; message: UIMessage; createdAt: number }
   | { kind: "assistant"; message: UIMessage; createdAt: number }
-  | { kind: "system"; item: Item; createdAt: number }
-  | { kind: "review"; item: Item; createdAt: number };
+  | { kind: "system"; item: Item; createdAt: number };
 
 export type Segment =
   | { kind: "text"; text: string }
@@ -107,8 +106,6 @@ export function buildDisplayItems(messages: UIMessage[], systemItems: Item[]): D
   for (const item of systemItems) {
     if (item.type === "system") {
       items.push({ kind: "system", item, createdAt: item.createdAt });
-    } else if (item.type === "review") {
-      items.push({ kind: "review", item, createdAt: item.createdAt });
     }
   }
 

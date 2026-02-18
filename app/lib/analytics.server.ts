@@ -1,5 +1,5 @@
 import { db } from "~/lib/db/index.server";
-import { conversations, conversationShares, items, members, reviewRequests } from "~/lib/db/schema";
+import { conversations, conversationShares, items, members } from "~/lib/db/schema";
 import { eq, and, gte, sql, count, countDistinct, isNull } from "drizzle-orm";
 
 export interface DailyStats {
@@ -12,7 +12,6 @@ export interface DailyStats {
   avgMessagesPerUser: number;
   tokenCount: number;
   shareCount: number;
-  reviewRequestCount: number;
 }
 
 export interface AnalyticsTotals {
@@ -23,7 +22,6 @@ export interface AnalyticsTotals {
   messages: number;
   avgMessagesPerUser: number;
   shares: number;
-  reviewRequests: number;
   tokens: number;
 }
 
@@ -147,23 +145,6 @@ export async function getOrganizationAnalytics(
     .groupBy(sql`1`)
     .orderBy(sql`1`);
 
-  const reviewRequestStats = await db
-    .select({
-      date: sql<string>`DATE(${reviewRequests.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::text`.as("date"),
-      count: count(reviewRequests.id),
-    })
-    .from(reviewRequests)
-    .innerJoin(conversations, eq(reviewRequests.conversationId, conversations.id))
-    .innerJoin(members, eq(conversations.userId, members.userId))
-    .where(
-      and(
-        eq(members.organizationId, organizationId),
-        gte(reviewRequests.createdAt, startDate)
-      )
-    )
-    .groupBy(sql`1`)
-    .orderBy(sql`1`);
-
   const wauCurrent = await db.execute(sql`
     SELECT COUNT(DISTINCT c.user_id)::integer as count
     FROM items i
@@ -266,11 +247,6 @@ export async function getOrganizationAnalytics(
     shareMap.set(row.date, row.count);
   }
 
-  const reviewRequestMap = new Map<string, number>();
-  for (const row of reviewRequestStats) {
-    reviewRequestMap.set(row.date, row.count);
-  }
-
   const wauMap = new Map<string, number>();
   for (const row of rollingWauStats as unknown as { date: string; count: number }[]) {
     wauMap.set(row.date, row.count);
@@ -299,7 +275,6 @@ export async function getOrganizationAnalytics(
       avgMessagesPerUser: dayActiveUsers > 0 ? dayMessages / dayActiveUsers : 0,
       tokenCount: tokenMap.get(currentStr) || 0,
       shareCount: shareMap.get(currentStr) || 0,
-      reviewRequestCount: reviewRequestMap.get(currentStr) || 0,
     });
     const [y, m, d] = currentStr.split("-").map(Number);
     const next = new Date(Date.UTC(y, m - 1, d + 1));
@@ -316,7 +291,6 @@ export async function getOrganizationAnalytics(
     messages: today?.messageCount ?? 0,
     avgMessagesPerUser: today?.avgMessagesPerUser ?? 0,
     shares: today?.shareCount ?? 0,
-    reviewRequests: today?.reviewRequestCount ?? 0,
     tokens: today?.tokenCount ?? 0,
   };
 

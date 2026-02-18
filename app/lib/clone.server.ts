@@ -161,7 +161,10 @@ export async function pullRepository(
   );
 
   await execGit(["remote", "set-url", "origin", authUrl], repoPath);
-  await execGit(["pull", "--ff-only"], repoPath);
+
+  const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath)).stdout.trim();
+  await execGit(["fetch", "--force", "--prune", "origin"], repoPath);
+  await execGit(["reset", "--hard", `origin/${branch}`], repoPath);
 
   const cleanUrl = remoteUrl.replace(/x-access-token:[^@]+@/, "");
   await execGit(["remote", "set-url", "origin", cleanUrl], repoPath);
@@ -195,7 +198,9 @@ export async function pullPublicRepository(
     throw new Error(`Repository not found: ${repoPath}`);
   }
 
-  await execGit(["pull", "--ff-only"], repoPath);
+  const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath)).stdout.trim();
+  await execGit(["fetch", "--force", "--prune", "origin"], repoPath);
+  await execGit(["reset", "--hard", `origin/${branch}`], repoPath);
 
   const repo = await db
     .select()

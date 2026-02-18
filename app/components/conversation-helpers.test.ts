@@ -194,18 +194,16 @@ describe("buildDisplayItems", () => {
     expect(result[1]).toMatchObject({ kind: "assistant" });
   });
 
-  it("appends system and review items", () => {
+  it("appends system items", () => {
     const messages: UIMessage[] = [
       { id: "u1", role: "user", parts: [textPart("Hi")] },
     ];
     const systemItems: Item[] = [
       { id: "s1", type: "system", content: { text: "event" }, createdAt: 100 },
-      { id: "r1", type: "review", content: { text: "lgtm", approved: true }, createdAt: 200 },
     ];
     const result = buildDisplayItems(messages, systemItems);
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(2);
     expect(result[1]).toMatchObject({ kind: "system", createdAt: 100 });
-    expect(result[2]).toMatchObject({ kind: "review", createdAt: 200 });
   });
 
   it("returns empty array for no inputs", () => {

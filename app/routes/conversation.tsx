@@ -17,8 +17,6 @@ import {
   createShareLink,
   revokeShareLink,
   getConversationByShareToken,
-  createReviewRequest,
-  hasPendingReviewRequest,
 } from "~/lib/conversations.server";
 import { logAuditEvent } from "~/lib/audit.server";
 
@@ -80,16 +78,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     shareLink = await getShareLink(params.id!);
   }
 
-  let isReviewRequest = false;
-  if (isSharedView) {
-    isReviewRequest = await hasPendingReviewRequest(params.id!, user.id);
-  }
-
   return {
     items,
     blobsByItemId,
     isSharedView,
-    isReviewRequest,
     ownsConversation,
     sharedByName,
     shareLink: shareLink ? { token: shareLink.token, createdAt: shareLink.createdAt.toISOString() } : null,
@@ -122,27 +114,6 @@ export async function action({ request, params }: Route.ActionArgs) {
     return Response.json({ shareRevoked: true });
   }
 
-  if (intent === "request-review") {
-    const reviewerUserId = formData.get("reviewerUserId")?.toString();
-    const shareToken = formData.get("shareToken")?.toString();
-
-    if (!reviewerUserId || !shareToken) {
-      return Response.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    if (!user.organization) {
-      return Response.json({ error: "No organization" }, { status: 400 });
-    }
-
-    const reviewerInOrg = await isUserInOrg(reviewerUserId, user.organization.id);
-    if (!reviewerInOrg) {
-      return Response.json({ error: "Reviewer not in organization" }, { status: 400 });
-    }
-
-    await createReviewRequest(params.id!, user.id, reviewerUserId, shareToken);
-    return Response.json({ reviewRequested: true });
-  }
-
   return Response.json({ error: "Unknown action" }, { status: 400 });
 }
 
@@ -155,23 +126,20 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     hasMore,
     impersonating,
     orgMembers,
-    reviewers,
     isOwner,
     isAdmin,
-    reviewRequests,
     availableModels,
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
     repoSyncStatus,
   } = useOutletContext<AppContext>();
-  const filteredReviewers = reviewers?.filter((r) => r.userId !== user.id) ?? [];
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
   const initialBlobIds = searchParams.get("blobIds") || undefined;
   const hasProcessedInitialPrompt = useRef(false);
 
-  const { items, blobsByItemId, isSharedView, isReviewRequest, ownsConversation, sharedByName, shareLink } = loaderData;
+  const { items, blobsByItemId, isSharedView, ownsConversation, sharedByName, shareLink } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
 
   const handlePromptProcessed = () => {
@@ -216,7 +184,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       isOwner={isOwner}
       isAdmin={isAdmin}
       headerRight={(ownsConversation || isSharedView) ? headerRight : undefined}
-      reviewRequests={reviewRequests}
       availableModels={availableModels}
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
@@ -232,12 +199,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
               onInitialPromptProcessed={handlePromptProcessed}
               readOnly={isReadOnly}
               isSharedView={isSharedView}
-              isReviewRequest={isReviewRequest}
               ownsConversation={ownsConversation}
-              reviewers={filteredReviewers}
-              shareLink={shareLink}
-              userName={user.name}
-              isOwner={isOwner}
               initialBlobsByItemId={blobsByItemId}
               initialBlobIds={isReadOnly ? undefined : initialBlobIds}
               hasStorageConfig={hasStorageConfig}

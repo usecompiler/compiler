@@ -148,6 +148,13 @@
       "when": 1770496438326,
       "tag": "0020_create_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1770496438327,
+      "tag": "0021_drop_review_requests",
+      "breakpoints": true
     }
   ]
 }

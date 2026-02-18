@@ -1,20 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useRevalidator, useBlocker, useSearchParams, useFetcher } from "react-router";
+import { useRevalidator, useBlocker } from "react-router";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
-import type { Member } from "~/lib/invitations.server";
 import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput, type PendingFile } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
 import { itemsToUIMessages, buildDisplayItems, buildSegments } from "./conversation-helpers";
-
-interface ShareLink {
-  token: string;
-  createdAt: string;
-}
 
 interface AnsweredQuestion {
   question: string;
@@ -34,12 +28,7 @@ interface AgentConversationProps {
   onInitialPromptProcessed?: () => void;
   readOnly?: boolean;
   isSharedView?: boolean;
-  isReviewRequest?: boolean;
   ownsConversation?: boolean;
-  reviewers?: Member[];
-  shareLink?: ShareLink | null;
-  userName?: string;
-  isOwner?: boolean;
   initialPendingQuestion?: PendingQuestionData[] | null;
   initialBlobsByItemId?: Record<string, BlobMeta[]>;
   initialBlobIds?: string;
@@ -53,12 +42,7 @@ export function AgentConversation({
   onInitialPromptProcessed,
   readOnly = false,
   isSharedView = false,
-  isReviewRequest = false,
   ownsConversation = false,
-  reviewers = [],
-  shareLink,
-  userName,
-  isOwner = false,
   initialPendingQuestion,
   initialBlobsByItemId,
   initialBlobIds,
@@ -68,10 +52,6 @@ export function AgentConversation({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [blobsByItemId, setBlobsByItemId] = useState<Record<string, BlobMeta[]>>(initialBlobsByItemId || {});
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
-  const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
-  const [copiedReviewer, setCopiedReviewer] = useState<string | null>(null);
-  const [reviewInput, setReviewInput] = useState("");
-  const [pendingReviewer, setPendingReviewer] = useState<Member | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<{
     questions: PendingQuestionData[];
     toolCallId: string;
@@ -79,20 +59,15 @@ export function AgentConversation({
     initialPendingQuestion ? { questions: initialPendingQuestion, toolCallId: "" } : null
   );
   const [systemItems, setSystemItems] = useState<Item[]>(
-    initialItems.filter((i) => i.type === "system" || i.type === "review")
+    initialItems.filter((i) => i.type === "system")
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const reviewerDropdownRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const isAtBottomRef = useRef(true);
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
-  const [searchParams] = useSearchParams();
-  const shareToken = searchParams.get("share");
-  const shareFetcher = useFetcher();
-  const reviewFetcher = useFetcher();
   const pendingBlobIdsRef = useRef<string[]>([]);
 
   const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
@@ -254,126 +229,6 @@ export function AgentConversation({
     }
   }, [initialPrompt, conversationId, messages.length, isStreaming]);
 
-  useEffect(() => {
-    if (!reviewerDropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) {
-        setReviewerDropdownOpen(false);
-      }
-    };
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
-  }, [reviewerDropdownOpen]);
-
-  const addItem = useCallback(async (item: Item, token?: string | null) => {
-    setSystemItems(prev => [...prev, item]);
-    await fetch("/api/items", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, item, shareToken: token }),
-    });
-  }, [conversationId]);
-
-  useEffect(() => {
-    if (!pendingReviewer || shareFetcher.state !== "idle" || !shareFetcher.data) return;
-
-    const token = (shareFetcher.data as { shareToken?: string }).shareToken;
-    if (!token) {
-      setPendingReviewer(null);
-      return;
-    }
-
-    const reviewer = pendingReviewer;
-    setPendingReviewer(null);
-
-    const completeReviewRequest = async () => {
-      const url = `${window.location.origin}/c/${conversationId}?share=${token}`;
-      await navigator.clipboard.writeText(url);
-      setCopiedReviewer(reviewer.userId);
-      setTimeout(() => setCopiedReviewer(null), 2000);
-
-      const reviewFormData = new FormData();
-      reviewFormData.append("intent", "request-review");
-      reviewFormData.append("reviewerUserId", reviewer.userId);
-      reviewFormData.append("shareToken", token);
-      reviewFetcher.submit(reviewFormData, {
-        method: "post",
-        action: `/c/${conversationId}`,
-      });
-
-      const requesterName = userName || "Someone";
-      const systemItem: Item = {
-        id: crypto.randomUUID(),
-        type: "system",
-        content: {
-          text: `${requesterName} requested a review from ${reviewer.user.name}`,
-          shareUrl: url,
-        },
-        createdAt: Date.now(),
-      };
-      await addItem(systemItem);
-    };
-
-    completeReviewRequest();
-  }, [shareFetcher.state, shareFetcher.data, pendingReviewer, conversationId, userName, addItem, reviewFetcher]);
-
-  const handleReviewerClick = async (reviewer: Member) => {
-    setReviewerDropdownOpen(false);
-
-    let token = shareLink?.token;
-
-    if (token) {
-      const url = `${window.location.origin}/c/${conversationId}?share=${token}`;
-      await navigator.clipboard.writeText(url);
-      setCopiedReviewer(reviewer.userId);
-      setTimeout(() => setCopiedReviewer(null), 2000);
-
-      const reviewFormData = new FormData();
-      reviewFormData.append("intent", "request-review");
-      reviewFormData.append("reviewerUserId", reviewer.userId);
-      reviewFormData.append("shareToken", token);
-      reviewFetcher.submit(reviewFormData, {
-        method: "post",
-        action: `/c/${conversationId}`,
-      });
-
-      const requesterName = userName || "Someone";
-      const systemItem: Item = {
-        id: crypto.randomUUID(),
-        type: "system",
-        content: {
-          text: `${requesterName} requested a review from ${reviewer.user.name}`,
-          shareUrl: url,
-        },
-        createdAt: Date.now(),
-      };
-      await addItem(systemItem);
-    } else {
-      setPendingReviewer(reviewer);
-      const formData = new FormData();
-      formData.append("intent", "create-share");
-      shareFetcher.submit(formData, {
-        method: "post",
-        action: `/c/${conversationId}`,
-      });
-    }
-  };
-
-  const handleReviewSubmit = useCallback(async (approved: boolean) => {
-    const reviewItem: Item = {
-      id: crypto.randomUUID(),
-      type: "review",
-      content: {
-        text: reviewInput.trim(),
-        approved,
-        reviewerName: userName || "Anonymous",
-      },
-      createdAt: Date.now(),
-    };
-    await addItem(reviewItem, shareToken);
-    setReviewInput("");
-  }, [reviewInput, userName, addItem, shareToken]);
-
   const handleSubmitWithPrompt = useCallback(
     async (promptText: string, extraBlobIds?: string) => {
       const hasUploading = pendingFiles.some((f) => f.uploading);
@@ -487,14 +342,6 @@ export function AgentConversation({
                 />
               );
             }
-            if (displayItem.kind === "review") {
-              return (
-                <ReviewItemRow
-                  key={displayItem.item.id}
-                  item={displayItem.item}
-                />
-              );
-            }
             if (displayItem.kind === "user") {
               return (
                 <UserMessageRow
@@ -548,73 +395,11 @@ export function AgentConversation({
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-50 via-neutral-50 dark:from-neutral-900 dark:via-neutral-900 to-transparent pt-6 pb-safe px-4">
         <div className="max-w-3xl mx-auto">
           {readOnly ? (
-            isReviewRequest ? (
-              (() => {
-                let lastApprovalIndex = -1;
-                for (let i = systemItems.length - 1; i >= 0; i--) {
-                  const item = systemItems[i];
-                  if (
-                    item.type === "review" &&
-                    (item.content as { approved?: boolean; reviewerName?: string })?.approved === true &&
-                    (item.content as { reviewerName?: string })?.reviewerName === userName
-                  ) {
-                    lastApprovalIndex = i;
-                    break;
-                  }
-                }
-                const hasNewActivitySinceApproval = lastApprovalIndex === -1 ||
-                  systemItems.slice(lastApprovalIndex + 1).some(
-                    (item) =>
-                      (item.type === "system" && typeof item.content === "object" && "shareUrl" in (item.content as object))
-                  );
-                const hasAlreadyApproved = !hasNewActivitySinceApproval;
-                return (
-                  <>
-                    <div className="relative flex items-center bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-3xl">
-                      <textarea
-                        value={reviewInput}
-                        onChange={(e) => setReviewInput(e.target.value)}
-                        placeholder="Leave a comment..."
-                        rows={1}
-                        className="flex-1 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 py-3 pl-4 resize-none focus:outline-none"
-                        style={{ maxHeight: "200px" }}
-                        onInput={(e) => {
-                          const target = e.target as HTMLTextAreaElement;
-                          target.style.height = "24px";
-                          target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-                        }}
-                      />
-                      <div className="flex items-center gap-1 pr-2">
-                        <button
-                          type="button"
-                          onClick={() => handleReviewSubmit(false)}
-                          disabled={!reviewInput.trim()}
-                          className="px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Comment
-                        </button>
-                        {!hasAlreadyApproved && (
-                          <button
-                            type="button"
-                            onClick={() => handleReviewSubmit(true)}
-                            className="px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-                          >
-                            Approve
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs mt-2">&nbsp;</div>
-                  </>
-                );
-              })()
-            ) : (
-              <div className="text-center py-3">
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Read-only mode
-                </p>
-              </div>
-            )
+            <div className="text-center py-3">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Read-only mode
+              </p>
+            </div>
           ) : (
             <>
               {pendingQuestion ? (
@@ -700,49 +485,7 @@ export function AgentConversation({
                 </form>
               )}
               <div className={`text-xs text-center text-neutral-400 dark:text-neutral-500 mt-2${pendingQuestion ? " hidden" : ""}`}>
-                Compiler can make mistakes.{" "}
-                <div className="relative inline-block" ref={reviewerDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setReviewerDropdownOpen(!reviewerDropdownOpen);
-                    }}
-                    className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 underline underline-offset-2"
-                  >
-                    {copiedReviewer ? "Link copied!" : "Request a review"}
-                  </button>
-                  {reviewerDropdownOpen && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl z-50 overflow-hidden">
-                      <div className="py-2 max-h-64 overflow-y-auto">
-                        {reviewers.length > 0 ? (
-                          reviewers.map((reviewer) => (
-                            <button
-                              key={reviewer.userId}
-                              type="button"
-                              onClick={() => handleReviewerClick(reviewer)}
-                              className="w-full px-4 py-2.5 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700/50 transition-colors"
-                            >
-                              {reviewer.user.name}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
-                            No team members available.
-                            {isOwner && (
-                              <a
-                                href="/settings/organization"
-                                className="block mt-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-                              >
-                                Invite a team member →
-                              </a>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                Compiler can make mistakes. Please double-check responses.
               </div>
             </>
           )}
@@ -1013,36 +756,6 @@ function SystemItemRow({ item, ownsConversation }: { item: Item; ownsConversatio
           )}
         </button>
       )}
-    </div>
-  );
-}
-
-function ReviewItemRow({ item }: { item: Item }) {
-  const reviewContent = item.content as { text?: string; approved?: boolean; reviewerName?: string };
-  const reviewText = reviewContent?.text || "";
-  const approved = reviewContent?.approved || false;
-  const reviewerName = reviewContent?.reviewerName || "Anonymous";
-
-  if (approved) {
-    return (
-      <div className="flex flex-col items-center my-4 gap-1">
-        <span className="text-sm text-green-600/70 dark:text-green-500/70">
-          {reviewerName} approved
-        </span>
-        {reviewText && (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center">
-            {reviewText}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-center my-4">
-      <span className="text-sm text-neutral-500 dark:text-neutral-400">
-        {reviewText} – {reviewerName}
-      </span>
     </div>
   );
 }

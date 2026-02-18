@@ -238,14 +238,6 @@ export default function Analytics() {
             color="#ec4899"
           />
           <DashboardCard
-            title="Review Requests"
-            total={totals.reviewRequests}
-            period="today"
-            data={stats}
-            dataKey="reviewRequestCount"
-            color="#14b8a6"
-          />
-          <DashboardCard
             title="Token Usage"
             total={totals.tokens}
             period="today"

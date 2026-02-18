@@ -55,7 +55,6 @@ export default function Home() {
     orgMembers,
     isOwner,
     isAdmin,
-    reviewRequests,
     availableModels,
     defaultModel,
     userPreferredModel,
@@ -72,7 +71,6 @@ export default function Home() {
       orgMembers={orgMembers}
       isOwner={isOwner}
       isAdmin={isAdmin}
-      reviewRequests={reviewRequests}
       availableModels={availableModels}
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
