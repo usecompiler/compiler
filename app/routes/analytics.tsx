@@ -80,9 +80,11 @@ interface DashboardCardProps {
   data: DailyStats[];
   dataKey: keyof DailyStats;
   color: string;
+  showTotal?: boolean;
 }
 
-function DashboardCard({ title, total, period, data, dataKey, color }: DashboardCardProps) {
+function DashboardCard({ title, total, period, data, dataKey, color, showTotal }: DashboardCardProps) {
+  const sumTotal = data.reduce((acc, d) => acc + (d[dataKey] as number), 0);
   const chartData = {
     labels: data.map((d) => d.date),
     datasets: [
@@ -151,6 +153,11 @@ function DashboardCard({ title, total, period, data, dataKey, color }: Dashboard
             {formatNumber(total)}
           </span>
           <span className="text-xs text-neutral-400 dark:text-neutral-500">{period}</span>
+          {showTotal && (
+            <span className="ml-auto text-xs text-neutral-400 dark:text-neutral-500">
+              {formatNumber(sumTotal)} total
+            </span>
+          )}
         </div>
         <div style={{ height: "80px" }}>
           <Line data={chartData} options={options} />
@@ -212,6 +219,7 @@ export default function Analytics() {
             data={stats}
             dataKey="conversationCount"
             color="#3b82f6"
+            showTotal
           />
           <DashboardCard
             title="Messages"
@@ -220,6 +228,7 @@ export default function Analytics() {
             data={stats}
             dataKey="messageCount"
             color="#10b981"
+            showTotal
           />
           <DashboardCard
             title="Avg Messages per User"
@@ -236,6 +245,7 @@ export default function Analytics() {
             data={stats}
             dataKey="shareCount"
             color="#ec4899"
+            showTotal
           />
           <DashboardCard
             title="Token Usage"
@@ -244,6 +254,7 @@ export default function Analytics() {
             data={stats}
             dataKey="tokenCount"
             color="#f59e0b"
+            showTotal
           />
         </div>
       </main>
