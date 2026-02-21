@@ -89,7 +89,6 @@ beforeEach(() => {
     modelId: "claude-sonnet-4-20250514",
     tools: {},
     systemPrompt: "test system prompt",
-    aiProviderConfig: null,
   });
   setupMockStreamText();
   mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
@@ -742,9 +741,7 @@ describe("api.agent action", () => {
         modelId: "claude-sonnet-4-20250514",
         tools: {},
         systemPrompt: "test system prompt",
-        aiProviderConfig: null,
         promptCachingEnabled: true,
-        provider: "anthropic",
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -765,9 +762,7 @@ describe("api.agent action", () => {
         modelId: "claude-sonnet-4-20250514",
         tools: {},
         systemPrompt: "test system prompt",
-        aiProviderConfig: null,
         promptCachingEnabled: false,
-        provider: "anthropic",
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -787,9 +782,7 @@ describe("api.agent action", () => {
         modelId: "claude-sonnet-4-20250514",
         tools: {},
         systemPrompt: "test system prompt",
-        aiProviderConfig: null,
         promptCachingEnabled: true,
-        provider: "anthropic",
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -817,15 +810,40 @@ describe("api.agent action", () => {
       });
     });
 
-    it("prepareStep adds bedrock cachePoint to last message for bedrock provider", async () => {
+});
+
+  describe("native compaction via contextManagement", () => {
+    it("passes contextManagement providerOptions to streamText", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.providerOptions).toEqual({
+        anthropic: {
+          contextManagement: {
+            edits: [
+              {
+                type: "compact_20260112",
+                trigger: { type: "input_tokens", value: 80000 },
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    it("includes contextManagement regardless of promptCachingEnabled", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
         modelId: "claude-sonnet-4-20250514",
         tools: {},
         systemPrompt: "test system prompt",
-        aiProviderConfig: null,
-        promptCachingEnabled: true,
-        provider: "bedrock",
+        promptCachingEnabled: false,
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -836,17 +854,16 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const streamArgs = mockStreamText.mock.calls[0][0];
-      const stepMessages = [
-        { role: "user", content: "Hello" },
-        { role: "assistant", content: "Hi" },
-      ];
-      const result = streamArgs.prepareStep({ messages: stepMessages });
-      expect(result.messages[0]).toEqual({ role: "user", content: "Hello" });
-      expect(result.messages[1]).toMatchObject({
-        role: "assistant",
-        content: "Hi",
-        providerOptions: {
-          bedrock: { cachePoint: { type: "default" } },
+      expect(streamArgs.providerOptions).toEqual({
+        anthropic: {
+          contextManagement: {
+            edits: [
+              {
+                type: "compact_20260112",
+                trigger: { type: "input_tokens", value: 80000 },
+              },
+            ],
+          },
         },
       });
     });

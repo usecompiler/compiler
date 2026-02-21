@@ -169,7 +169,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, tools, systemPrompt, promptCachingEnabled, provider } = await getAgentConfig(
+  const { model, tools, systemPrompt, promptCachingEnabled } = await getAgentConfig(
     organizationId,
     memberId,
     request.signal,
@@ -196,9 +196,7 @@ export async function action({ request }: Route.ActionArgs) {
         role: "system" as const,
         content: systemPrompt,
         providerOptions: {
-          [provider === "bedrock" ? "bedrock" : "anthropic"]: provider === "bedrock"
-            ? { cachePoint: { type: "default" } }
-            : { cacheControl: { type: "ephemeral" } },
+          anthropic: { cacheControl: { type: "ephemeral" } },
         },
       }
     : systemPrompt;
@@ -216,16 +214,25 @@ export async function action({ request }: Route.ActionArgs) {
                   ...msg,
                   providerOptions: {
                     ...msg.providerOptions,
-                    [provider === "bedrock" ? "bedrock" : "anthropic"]:
-                      provider === "bedrock"
-                        ? { cachePoint: { type: "default" } }
-                        : { cacheControl: { type: "ephemeral" } },
+                    anthropic: { cacheControl: { type: "ephemeral" } },
                   },
                 }
               : msg
           ),
         })
       : undefined,
+    providerOptions: {
+      anthropic: {
+        contextManagement: {
+          edits: [
+            {
+              type: "compact_20260112",
+              trigger: { type: "input_tokens", value: 80000 },
+            },
+          ],
+        },
+      },
+    },
     stopWhen: stepCountIs(50),
     abortSignal: request.signal,
     onStepFinish: ({ usage, toolCalls }) => {

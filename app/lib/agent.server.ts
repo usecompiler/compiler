@@ -65,6 +65,5 @@ export async function getAgentConfig(
     tools,
     systemPrompt,
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,
-    provider: aiProviderConfig?.provider ?? ("anthropic" as const),
   };
 }

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import type { LanguageModel } from "ai";
 import { getAIProviderConfig } from "./ai-provider.server";
 import { db } from "./db/index.server";
@@ -395,7 +395,7 @@ export async function getModel(
   const modelId = await getEffectiveModel(memberId, organizationId);
 
   if (config?.provider === "bedrock" && config.awsRegion && config.awsAccessKeyId && config.awsSecretAccessKey) {
-    const bedrock = createAmazonBedrock({
+    const bedrock = createBedrockAnthropic({
       region: config.awsRegion,
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
