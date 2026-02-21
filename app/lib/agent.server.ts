@@ -5,7 +5,7 @@ import { buildTools } from "./tools/index.server";
 import { buildSystemPrompt } from "./prompts.server";
 import { db } from "./db/index.server";
 import { repositories } from "./db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 
 export type { PendingQuestionData } from "./tools/ask-user-question.server";
 
@@ -28,7 +28,8 @@ async function getCompletedRepos(organizationId: string) {
         eq(repositories.organizationId, organizationId),
         eq(repositories.cloneStatus, "completed"),
       ),
-    );
+    )
+    .orderBy(asc(repositories.name));
 }
 
 export async function getAgentConfig(
