@@ -735,6 +735,123 @@ describe("api.agent action", () => {
     });
   });
 
+  describe("prepareStep prompt caching", () => {
+    it("passes prepareStep when promptCachingEnabled is true", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-sonnet-4-20250514",
+        tools: {},
+        systemPrompt: "test system prompt",
+        aiProviderConfig: null,
+        promptCachingEnabled: true,
+        provider: "anthropic",
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.prepareStep).toBeDefined();
+      expect(typeof streamArgs.prepareStep).toBe("function");
+    });
+
+    it("does not pass prepareStep when promptCachingEnabled is false", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-sonnet-4-20250514",
+        tools: {},
+        systemPrompt: "test system prompt",
+        aiProviderConfig: null,
+        promptCachingEnabled: false,
+        provider: "anthropic",
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.prepareStep).toBeUndefined();
+    });
+
+    it("prepareStep adds anthropic cacheControl to last message", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-sonnet-4-20250514",
+        tools: {},
+        systemPrompt: "test system prompt",
+        aiProviderConfig: null,
+        promptCachingEnabled: true,
+        provider: "anthropic",
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      const stepMessages = [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+        { role: "user", content: "How are you?" },
+      ];
+      const result = streamArgs.prepareStep({ messages: stepMessages });
+      expect(result.messages[0]).toEqual({ role: "user", content: "Hello" });
+      expect(result.messages[1]).toEqual({ role: "assistant", content: "Hi" });
+      expect(result.messages[2]).toMatchObject({
+        role: "user",
+        content: "How are you?",
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      });
+    });
+
+    it("prepareStep adds bedrock cachePoint to last message for bedrock provider", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-sonnet-4-20250514",
+        tools: {},
+        systemPrompt: "test system prompt",
+        aiProviderConfig: null,
+        promptCachingEnabled: true,
+        provider: "bedrock",
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      const stepMessages = [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+      ];
+      const result = streamArgs.prepareStep({ messages: stepMessages });
+      expect(result.messages[0]).toEqual({ role: "user", content: "Hello" });
+      expect(result.messages[1]).toMatchObject({
+        role: "assistant",
+        content: "Hi",
+        providerOptions: {
+          bedrock: { cachePoint: { type: "default" } },
+        },
+      });
+    });
+  });
+
   describe("onStepFinish token tracking", () => {
     it("does not count askUserQuestion toward toolUseCount", async () => {
       mockDb._selectResults = [

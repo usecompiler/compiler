@@ -175,21 +175,6 @@ export async function action({ request }: Route.ActionArgs) {
     request.signal,
   );
 
-  if (promptCachingEnabled) {
-    const providerKey = provider === "bedrock" ? "bedrock" : "anthropic";
-    const providerValue = provider === "bedrock"
-      ? { cachePoint: { type: "default" } }
-      : { cacheControl: { type: "ephemeral" } };
-    const cacheOpts = { [providerKey]: providerValue };
-    const toolNames = Object.keys(tools);
-    if (toolNames.length > 0) {
-      tools[toolNames[toolNames.length - 1]].providerOptions = cacheOpts;
-    }
-    if (modelMessages.length >= 2) {
-      modelMessages[modelMessages.length - 2].providerOptions = cacheOpts;
-    }
-  }
-
   const assistantItemId = crypto.randomUUID();
   await db.insert(items).values({
     id: assistantItemId,
@@ -223,6 +208,24 @@ export async function action({ request }: Route.ActionArgs) {
     system: systemForStream,
     messages: modelMessages,
     tools,
+    prepareStep: promptCachingEnabled
+      ? ({ messages: stepMessages }) => ({
+          messages: stepMessages.map((msg, index) =>
+            index === stepMessages.length - 1
+              ? {
+                  ...msg,
+                  providerOptions: {
+                    ...msg.providerOptions,
+                    [provider === "bedrock" ? "bedrock" : "anthropic"]:
+                      provider === "bedrock"
+                        ? { cachePoint: { type: "default" } }
+                        : { cacheControl: { type: "ephemeral" } },
+                  },
+                }
+              : msg
+          ),
+        })
+      : undefined,
     stopWhen: stepCountIs(50),
     abortSignal: request.signal,
     onStepFinish: ({ usage, toolCalls }) => {
