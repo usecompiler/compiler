@@ -6,6 +6,7 @@ import {
   getAIProviderConfig,
   saveAIProviderConfig,
   savePromptCachingConfig,
+  saveCompactionConfig,
   validateAnthropicKey,
   validateBedrockCredentials,
   type AIProvider,
@@ -66,6 +67,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       provider: config.provider,
       awsRegion: config.awsRegion || null,
       promptCachingEnabled: config.promptCachingEnabled !== false,
+      compactionEnabled: config.compactionEnabled !== false,
     },
     availableModels: apiModels,
     modelConfig,
@@ -117,11 +119,21 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: null, success: true, intent };
   }
 
+  if (intent === "save-compaction") {
+    const enabled = formData.get("compaction") === "on";
+    await saveCompactionConfig(user.organization.id, enabled);
+    await logAuditEvent(user.organization.id, user.id, `${enabled ? "enabled" : "disabled"} compaction`);
+    return { error: null, success: true, intent };
+  }
+
   const provider = formData.get("provider") as AIProvider;
 
   if (!provider || (provider !== "anthropic" && provider !== "bedrock")) {
     return { error: "Please select a provider", success: false, intent: "save-provider" };
   }
+
+  const promptCachingEnabled = formData.get("promptCaching") === "true";
+  const compactionEnabled = formData.get("compaction") === "true";
 
   if (provider === "anthropic") {
     const apiKey = (formData.get("anthropicApiKey") as string)?.trim();
@@ -141,6 +153,8 @@ export async function action({ request }: Route.ActionArgs) {
 
     await saveAIProviderConfig(user.organization.id, "anthropic", {
       anthropicApiKey: apiKey,
+      promptCachingEnabled,
+      compactionEnabled,
     });
   } else {
     const awsRegion = (formData.get("awsRegion") as string)?.trim();
@@ -156,13 +170,12 @@ export async function action({ request }: Route.ActionArgs) {
       return { error: validation.error || "Invalid AWS credentials", success: false, intent: "save-provider" };
     }
 
-    const promptCachingEnabled = formData.get("promptCaching") === "true";
-
     await saveAIProviderConfig(user.organization.id, "bedrock", {
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
       promptCachingEnabled,
+      compactionEnabled,
     });
   }
 
@@ -187,6 +200,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
   const promptCachingEnabled = cachingFetcher.formData
     ? cachingFetcher.formData.get("promptCaching") === "on"
     : config?.promptCachingEnabled ?? true;
+  const compactionFetcher = useFetcher();
+  const compactionEnabled = compactionFetcher.formData
+    ? compactionFetcher.formData.get("compaction") === "on"
+    : config?.compactionEnabled ?? true;
 
   useEffect(() => {
     if (actionData?.success && actionData?.intent === "save-provider") {
@@ -438,23 +455,40 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                     </p>
                   </div>
 
-                  <label className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
-                    <input
-                      type="checkbox"
-                      name="promptCaching"
-                      value="true"
-                      defaultChecked={config?.promptCachingEnabled ?? true}
-                      className="w-4 h-4"
-                    />
-                    <div>
-                      <span className="font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        Caches system prompts and conversation history to reduce input token costs
-                      </p>
-                    </div>
-                  </label>
                 </div>
               )}
+
+              <label className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <input
+                  type="checkbox"
+                  name="promptCaching"
+                  value="true"
+                  defaultChecked={config?.promptCachingEnabled ?? true}
+                  className="w-4 h-4"
+                />
+                <div>
+                  <span className="font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Caches system prompts and conversation history to reduce input token costs
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <input
+                  type="checkbox"
+                  name="compaction"
+                  value="true"
+                  defaultChecked={config?.compactionEnabled ?? true}
+                  className="w-4 h-4"
+                />
+                <div>
+                  <span className="font-medium text-neutral-900 dark:text-neutral-100">Compaction</span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Automatically compacts conversation context when it approaches token limits
+                  </p>
+                </div>
+              </label>
 
               <button
                 type="submit"
@@ -479,27 +513,44 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                   </div>
                 )}
               </div>
-              {config.provider === "bedrock" && (
-                <label className="flex items-center gap-3 mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={promptCachingEnabled}
-                    onChange={(e) => {
-                      cachingFetcher.submit(
-                        { intent: "save-caching", promptCaching: e.target.checked ? "on" : "" },
-                        { method: "post" },
-                      );
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                      Caches system prompts and conversation history to reduce input token costs
-                    </p>
-                  </div>
-                </label>
-              )}
+              <label className="flex items-center gap-3 mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={promptCachingEnabled}
+                  onChange={(e) => {
+                    cachingFetcher.submit(
+                      { intent: "save-caching", promptCaching: e.target.checked ? "on" : "" },
+                      { method: "post" },
+                    );
+                  }}
+                  className="w-4 h-4"
+                />
+                <div>
+                  <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Prompt Caching</span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Caches system prompts and conversation history to reduce input token costs
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 mt-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={compactionEnabled}
+                  onChange={(e) => {
+                    compactionFetcher.submit(
+                      { intent: "save-compaction", compaction: e.target.checked ? "on" : "" },
+                      { method: "post" },
+                    );
+                  }}
+                  className="w-4 h-4"
+                />
+                <div>
+                  <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Compaction</span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Automatically compacts conversation context when it approaches token limits
+                  </p>
+                </div>
+              </label>
             </div>
           ) : null}
         </section>

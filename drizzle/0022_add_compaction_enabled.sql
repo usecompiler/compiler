@@ -1,0 +1,1 @@
+ALTER TABLE "ai_provider_configurations" ADD COLUMN "compaction_enabled" boolean DEFAULT true;

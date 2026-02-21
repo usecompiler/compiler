@@ -13,6 +13,7 @@ export interface AIProviderConfig {
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
   promptCachingEnabled?: boolean;
+  compactionEnabled?: boolean;
 }
 
 export async function getAIProviderConfig(
@@ -35,6 +36,8 @@ export async function getAIProviderConfig(
     return {
       provider: "anthropic",
       anthropicApiKey: decrypt(config.encryptedAnthropicApiKey, config.anthropicApiKeyIv),
+      promptCachingEnabled: config.promptCachingEnabled ?? true,
+      compactionEnabled: config.compactionEnabled ?? true,
     };
   }
 
@@ -54,6 +57,7 @@ export async function getAIProviderConfig(
       awsAccessKeyId: decrypt(config.encryptedAwsAccessKeyId, config.awsAccessKeyIdIv),
       awsSecretAccessKey: decrypt(config.encryptedAwsSecretAccessKey, config.awsSecretAccessKeyIv),
       promptCachingEnabled: config.promptCachingEnabled ?? true,
+      compactionEnabled: config.compactionEnabled ?? true,
     };
   }
 
@@ -69,6 +73,7 @@ export async function saveAIProviderConfig(
     awsAccessKeyId?: string;
     awsSecretAccessKey?: string;
     promptCachingEnabled?: boolean;
+    compactionEnabled?: boolean;
   }
 ): Promise<void> {
   const existing = await db
@@ -93,6 +98,8 @@ export async function saveAIProviderConfig(
       awsAccessKeyIdIv: null,
       encryptedAwsSecretAccessKey: null,
       awsSecretAccessKeyIv: null,
+      promptCachingEnabled: credentials.promptCachingEnabled ?? true,
+      compactionEnabled: credentials.compactionEnabled ?? true,
     };
   } else if (
     provider === "bedrock" &&
@@ -112,6 +119,7 @@ export async function saveAIProviderConfig(
       encryptedAwsSecretAccessKey: secretKeyEncrypted.ciphertext,
       awsSecretAccessKeyIv: secretKeyEncrypted.iv,
       promptCachingEnabled: credentials.promptCachingEnabled ?? true,
+      compactionEnabled: credentials.compactionEnabled ?? true,
     };
   }
 
@@ -137,6 +145,16 @@ export async function savePromptCachingConfig(
   await db
     .update(aiProviderConfigurations)
     .set({ promptCachingEnabled: enabled, updatedAt: new Date() })
+    .where(eq(aiProviderConfigurations.organizationId, organizationId));
+}
+
+export async function saveCompactionConfig(
+  organizationId: string,
+  enabled: boolean,
+): Promise<void> {
+  await db
+    .update(aiProviderConfigurations)
+    .set({ compactionEnabled: enabled, updatedAt: new Date() })
     .where(eq(aiProviderConfigurations.organizationId, organizationId));
 }
 

@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, smoothStream, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -169,7 +169,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, provider, tools, systemPrompt, promptCachingEnabled } = await getAgentConfig(
+  const { model, modelId, provider, tools, systemPrompt, promptCachingEnabled, compactionEnabled } = await getAgentConfig(
     organizationId,
     memberId,
     request.signal,
@@ -221,7 +221,7 @@ export async function action({ request }: Route.ActionArgs) {
           ),
         })
       : undefined,
-    providerOptions: provider !== "bedrock"
+    providerOptions: compactionEnabled
       ? {
           anthropic: {
             contextManagement: {
@@ -235,6 +235,7 @@ export async function action({ request }: Route.ActionArgs) {
           },
         }
       : undefined,
+    experimental_transform: smoothStream(),
     stopWhen: stepCountIs(50),
     abortSignal: request.signal,
     onStepFinish: ({ usage, toolCalls }) => {

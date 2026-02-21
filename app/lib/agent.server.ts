@@ -67,5 +67,6 @@ export async function getAgentConfig(
     tools,
     systemPrompt,
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,
+    compactionEnabled: aiProviderConfig?.compactionEnabled !== false,
   };
 }

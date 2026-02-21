@@ -155,6 +155,13 @@
       "when": 1770496438327,
       "tag": "0021_drop_review_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1771641909168,
+      "tag": "0022_add_compaction_enabled",
+      "breakpoints": true
     }
   ]
 }
