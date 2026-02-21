@@ -169,7 +169,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, modelId, provider, tools, systemPrompt, promptCachingEnabled, compactionEnabled } = await getAgentConfig(
+  const { model, tools, systemPrompt, promptCachingEnabled, compactionEnabled } = await getAgentConfig(
     organizationId,
     memberId,
     request.signal,
