@@ -24,6 +24,7 @@ vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
+  smoothStream: () => "mock-smooth-stream",
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -89,6 +90,7 @@ beforeEach(() => {
     modelId: "claude-sonnet-4-20250514",
     tools: {},
     systemPrompt: "test system prompt",
+    compactionEnabled: true,
   });
   setupMockStreamText();
   mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
@@ -742,6 +744,7 @@ describe("api.agent action", () => {
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: true,
+        compactionEnabled: true,
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -763,6 +766,7 @@ describe("api.agent action", () => {
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: false,
+        compactionEnabled: true,
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -783,6 +787,7 @@ describe("api.agent action", () => {
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: true,
+        compactionEnabled: true,
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -844,6 +849,7 @@ describe("api.agent action", () => {
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: false,
+        compactionEnabled: true,
       });
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
