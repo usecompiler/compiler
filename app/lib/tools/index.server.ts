@@ -6,6 +6,27 @@ import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
 import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
 
+const GREP_MAX_CHARS = 5000;
+const GLOB_MAX_CHARS = 5000;
+
+export function truncateForModel(
+  output: string,
+  maxChars: number,
+): { type: "text"; value: string } {
+  if (output.length <= maxChars) {
+    return { type: "text" as const, value: output };
+  }
+  const truncated = output.slice(0, maxChars);
+  const lastNewline = truncated.lastIndexOf("\n");
+  const clean = lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated;
+  const totalLines = output.split("\n").length;
+  const shownLines = clean.split("\n").length;
+  return {
+    type: "text" as const,
+    value: `${clean}\n\n[Truncated: showing ${shownLines} of ${totalLines} lines]`,
+  };
+}
+
 export function validatePath(inputPath: string, allowedDirs: string[], cwd: string): string {
   const resolved = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
@@ -42,11 +63,13 @@ export function buildTools(options: BuildToolsOptions) {
       description: grepDescription,
       inputSchema: grepParameters,
       execute: async (args) => executeGrep(args, toolOptions),
+      toModelOutput: ({ output }) => truncateForModel(output, GREP_MAX_CHARS),
     }),
     glob: tool({
       description: globDescription,
       inputSchema: globParameters,
       execute: async (args) => executeGlob(args, toolOptions),
+      toModelOutput: ({ output }) => truncateForModel(output, GLOB_MAX_CHARS),
     }),
     read: tool({
       description: readDescription,
