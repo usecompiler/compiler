@@ -49,6 +49,7 @@ export async function getAgentConfig(
 
   const { model, modelId } = await getModel(memberId, organizationId);
   const aiProviderConfig = await getAIProviderConfig(organizationId);
+  const provider = aiProviderConfig?.provider ?? "anthropic";
 
   const tools = buildTools({
     cwd: agentCwd,
@@ -62,6 +63,7 @@ export async function getAgentConfig(
   return {
     model,
     modelId,
+    provider,
     tools,
     systemPrompt,
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,

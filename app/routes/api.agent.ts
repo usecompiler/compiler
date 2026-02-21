@@ -169,7 +169,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, tools, systemPrompt, promptCachingEnabled } = await getAgentConfig(
+  const { model, provider, tools, systemPrompt, promptCachingEnabled } = await getAgentConfig(
     organizationId,
     memberId,
     request.signal,
@@ -221,18 +221,20 @@ export async function action({ request }: Route.ActionArgs) {
           ),
         })
       : undefined,
-    providerOptions: {
-      anthropic: {
-        contextManagement: {
-          edits: [
-            {
-              type: "compact_20260112",
-              trigger: { type: "input_tokens", value: 80000 },
+    providerOptions: provider !== "bedrock"
+      ? {
+          anthropic: {
+            contextManagement: {
+              edits: [
+                {
+                  type: "compact_20260112",
+                  trigger: { type: "input_tokens", value: 80000 },
+                },
+              ],
             },
-          ],
-        },
-      },
-    },
+          },
+        }
+      : undefined,
     stopWhen: stepCountIs(50),
     abortSignal: request.signal,
     onStepFinish: ({ usage, toolCalls }) => {
