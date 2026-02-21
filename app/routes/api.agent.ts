@@ -251,6 +251,75 @@ export async function action({ request }: Route.ActionArgs) {
         }
       }
     },
+    onAbort: async ({ steps }) => {
+      try {
+        const durationMs = Date.now() - startTime;
+        let abortInputTokens = 0;
+        let abortOutputTokens = 0;
+        let abortToolUses = 0;
+
+        const parts: Array<
+          | { type: "text"; text: string }
+          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string }
+        > = [];
+        for (const step of steps) {
+          if (step.text) {
+            parts.push({ type: "text", text: step.text });
+          }
+          for (const tc of step.toolCalls || []) {
+            if (tc.toolName === "askUserQuestion") continue;
+            abortToolUses++;
+            const matchingResult = step.toolResults?.find(
+              (r) => r.toolCallId === tc.toolCallId
+            );
+            parts.push({
+              type: "tool-call",
+              toolName: tc.toolName,
+              toolCallId: tc.toolCallId,
+              input: tc.input,
+              output: typeof matchingResult?.output === "string"
+                ? matchingResult.output
+                : JSON.stringify(matchingResult?.output || ""),
+            });
+          }
+          if (step.usage) {
+            abortInputTokens += step.usage.inputTokens || 0;
+            abortOutputTokens += step.usage.outputTokens || 0;
+          }
+        }
+
+        const text = parts
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("");
+        const stats = {
+          toolUses: abortToolUses,
+          tokens: abortInputTokens + abortOutputTokens,
+          durationMs,
+        };
+
+        await db
+          .update(items)
+          .set({ content: { parts, text, stats }, status: "aborted" })
+          .where(eq(items.id, assistantItemId));
+
+        await db
+          .update(conversations)
+          .set({ updatedAt: new Date() })
+          .where(eq(conversations.id, conversationId));
+
+        console.log(`[agent] Stream aborted for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
+      } catch (err) {
+        console.error(`[agent] Abort cleanup error for conversation=${conversationId}:`, err);
+      }
+    },
+    onError: ({ error }) => {
+      console.error(`[agent] Stream error for conversation=${conversationId}:`, error);
+      db.update(items)
+        .set({ status: "error" })
+        .where(eq(items.id, assistantItemId))
+        .catch((err: unknown) => console.error(`[agent] Error status update failed:`, err));
+    },
   });
 
   const response = result.toUIMessageStreamResponse({
