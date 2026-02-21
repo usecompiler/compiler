@@ -27,9 +27,9 @@ import { logAuditEvent } from "~/lib/audit.server";
 const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
 
 const OPTIONAL_TOOLS = [
-  { id: "Bash", description: "Execute shell commands" },
-  { id: "WebFetch", description: "Fetch web page content" },
-  { id: "WebSearch", description: "Search the web" },
+  { id: "bash", label: "Bash", description: "Execute shell commands" },
+  { id: "webfetch", label: "WebFetch", description: "Fetch web page content" },
+  { id: "websearch", label: "WebSearch", description: "Search the web" },
 ];
 
 interface ModelOption {
@@ -45,13 +45,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (!user.organization) {
-    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["Bash"] };
+    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["bash"] };
   }
 
   const config = await getAIProviderConfig(user.organization.id);
 
   if (!config) {
-    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["Bash"] };
+    return { config: null, availableModels: [], modelConfig: null, enabledTools: ["bash"] };
   }
 
   const [apiModels, modelConfig, toolConfig] = await Promise.all([
@@ -701,7 +701,7 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                       />
                       <div className="flex-1">
                         <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                          {tool.id}
+                          {tool.label}
                         </span>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400">
                           {tool.description}
