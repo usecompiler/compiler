@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("~/lib/db/index.server", () => ({ db: {} }));
+vi.mock("~/lib/ai-provider.server", () => ({ getAIProviderConfig: vi.fn() }));
+
 import { bedrockCompactionFetch } from "./models.server";
 
 const mockFetch = vi.fn().mockResolvedValue(new Response("ok"));
