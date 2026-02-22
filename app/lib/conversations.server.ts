@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "~/lib/db/index.server";
-import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, blobs as blobsTable } from "~/lib/db/schema";
-import { eq, desc, and, isNull, or, ilike, inArray, sql } from "drizzle-orm";
+import { conversations as conversationsTable, items as itemsTable, members, conversationShares, users, blobs as blobsTable, itemBlobs as itemBlobsTable } from "~/lib/db/schema";
+import { eq, desc, and, isNull, or, ilike, inArray, sql, asc } from "drizzle-orm";
 import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
@@ -16,12 +16,13 @@ export async function isUserInOrg(userId: string, organizationId: string): Promi
   return result.length > 0;
 }
 
-export async function getConversation(conversationId: string): Promise<{ id: string; userId: string; title: string } | null> {
+export async function getConversation(conversationId: string): Promise<{ id: string; userId: string; title: string; conversationId: string | null } | null> {
   const result = await db
     .select({
       id: conversationsTable.id,
       userId: conversationsTable.userId,
       title: conversationsTable.title,
+      conversationId: conversationsTable.conversationId,
     })
     .from(conversationsTable)
     .where(eq(conversationsTable.id, conversationId))
@@ -33,6 +34,7 @@ export async function getConversation(conversationId: string): Promise<{ id: str
 export interface ConversationMeta {
   id: string;
   title: string;
+  isForked: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -50,6 +52,7 @@ export async function getConversations(
     .select({
       id: conversationsTable.id,
       title: conversationsTable.title,
+      conversationId: conversationsTable.conversationId,
       createdAt: conversationsTable.createdAt,
       updatedAt: conversationsTable.updatedAt,
     })
@@ -63,6 +66,7 @@ export async function getConversations(
   const conversations = rows.slice(0, limit).map((row) => ({
     id: row.id,
     title: row.title,
+    isForked: !!row.conversationId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }));
@@ -209,14 +213,14 @@ export async function getConversationBlobs(
       id: blobsTable.id,
       contentType: blobsTable.contentType,
       filename: blobsTable.filename,
-      itemId: blobsTable.itemId,
+      itemId: itemBlobsTable.itemId,
     })
-    .from(blobsTable)
-    .where(inArray(blobsTable.itemId, itemIds));
+    .from(itemBlobsTable)
+    .innerJoin(blobsTable, eq(itemBlobsTable.blobId, blobsTable.id))
+    .where(inArray(itemBlobsTable.itemId, itemIds));
 
   const result: Record<string, Array<{ id: string; contentType: string; filename: string }>> = {};
   for (const row of rows) {
-    if (!row.itemId) continue;
     if (!result[row.itemId]) result[row.itemId] = [];
     result[row.itemId].push({ id: row.id, contentType: row.contentType, filename: row.filename });
   }
@@ -317,5 +321,82 @@ export async function getConversationByShareToken(
     organizationId: row.organizationId,
     ownerName: row.ownerName,
   };
+}
+
+export async function duplicateConversation(
+  sourceConversationId: string,
+  userId: string
+): Promise<string> {
+  const source = await db
+    .select()
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, sourceConversationId))
+    .limit(1);
+
+  if (source.length === 0) {
+    throw new Error("Source conversation not found");
+  }
+
+  const sourceConv = source[0];
+
+  const sourceItems = await db
+    .select()
+    .from(itemsTable)
+    .where(eq(itemsTable.conversationId, sourceConversationId))
+    .orderBy(asc(itemsTable.createdAt));
+
+  const newConversationId = crypto.randomUUID();
+
+  await db.insert(conversationsTable).values({
+    id: newConversationId,
+    userId,
+    title: sourceConv.title,
+    conversationId: sourceConversationId,
+  });
+
+  const oldToNewItemId = new Map<string, string>();
+
+  for (const item of sourceItems) {
+    const newItemId = crypto.randomUUID();
+    oldToNewItemId.set(item.id, newItemId);
+  }
+
+  for (const item of sourceItems) {
+    const newItemId = oldToNewItemId.get(item.id)!;
+    const remappedToolCallId = item.toolCallId
+      ? oldToNewItemId.get(item.toolCallId) ?? item.toolCallId
+      : null;
+
+    await db.insert(itemsTable).values({
+      id: newItemId,
+      conversationId: newConversationId,
+      type: item.type,
+      role: item.role,
+      content: item.content,
+      toolCallId: remappedToolCallId,
+      status: item.status,
+      createdAt: item.createdAt,
+    });
+  }
+
+  const sourceItemIds = sourceItems.map((i) => i.id);
+  if (sourceItemIds.length > 0) {
+    const blobLinks = await db
+      .select()
+      .from(itemBlobsTable)
+      .where(inArray(itemBlobsTable.itemId, sourceItemIds));
+
+    if (blobLinks.length > 0) {
+      await db.insert(itemBlobsTable).values(
+        blobLinks.map((link) => ({
+          id: crypto.randomUUID(),
+          itemId: oldToNewItemId.get(link.itemId)!,
+          blobId: link.blobId,
+        }))
+      );
+    }
+  }
+
+  return newConversationId;
 }
 

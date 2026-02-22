@@ -248,6 +248,15 @@ function ConversationItem({ conversation, readOnly = false, impersonating }: Con
 
       {!readOnly && (
         <>
+          {conversation.isForked && (
+            <svg className="absolute right-8 w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 16 16" aria-label="Fork">
+              <title>Fork</title>
+              <circle cx="5" cy="3.5" r="1.5" />
+              <circle cx="5" cy="12.5" r="1.5" />
+              <circle cx="11" cy="3.5" r="1.5" />
+              <path d="M5 5v6M11 5c0 2-1 3-3 4" />
+            </svg>
+          )}
           <button
             onClick={(e) => {
               e.preventDefault();

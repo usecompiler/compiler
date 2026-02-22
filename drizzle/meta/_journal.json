@@ -162,6 +162,20 @@
       "when": 1771641909168,
       "tag": "0022_add_compaction_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1771891200000,
+      "tag": "0023_add_conversation_id_to_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1771891200001,
+      "tag": "0024_create_item_blobs",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useRevalidator, useBlocker } from "react-router";
+import { useRevalidator, useBlocker, Link } from "react-router";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import Markdown from "react-markdown";
@@ -29,6 +29,8 @@ interface AgentConversationProps {
   readOnly?: boolean;
   isSharedView?: boolean;
   ownsConversation?: boolean;
+  onFork?: () => void;
+  source?: { id: string; title: string; shareToken: string | null } | null;
   initialPendingQuestion?: PendingQuestionData[] | null;
   initialBlobsByItemId?: Record<string, BlobMeta[]>;
   initialBlobIds?: string;
@@ -43,6 +45,8 @@ export function AgentConversation({
   readOnly = false,
   isSharedView = false,
   ownsConversation = false,
+  onFork,
+  source,
   initialPendingQuestion,
   initialBlobsByItemId,
   initialBlobIds,
@@ -332,6 +336,22 @@ export function AgentConversation({
       <NavigationBlocker blocker={blocker} />
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
+          {source && (
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+              <span className="text-xs text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                Forked from{" "}
+                {source.shareToken ? (
+                  <Link to={`/c/${source.id}?share=${source.shareToken}`} className="underline font-medium hover:text-neutral-600 dark:hover:text-neutral-300">
+                    {source.title}
+                  </Link>
+                ) : (
+                  source.title
+                )}
+              </span>
+              <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+            </div>
+          )}
           {allDisplayItems.map((displayItem, index) => {
             if (displayItem.kind === "system") {
               return (
@@ -397,7 +417,15 @@ export function AgentConversation({
           {readOnly ? (
             <div className="text-center py-3">
               <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                Read-only mode
+                {isSharedView
+                  ? <>Viewing shared conversation &mdash;{" "}
+                      <button
+                        onClick={onFork}
+                        className="underline hover:text-neutral-700 dark:hover:text-neutral-300"
+                      >fork it</button>
+                      {" "}to continue
+                    </>
+                  : "Read-only mode"}
               </p>
             </div>
           ) : (

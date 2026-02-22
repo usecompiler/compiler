@@ -6,6 +6,7 @@ import {
   uniqueIndex,
   boolean,
   integer,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -67,6 +68,7 @@ export const conversations = pgTable("conversations", {
     .notNull(),
   title: text("title").notNull(),
   sessionId: text("session_id"),
+  conversationId: text("conversation_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -224,3 +226,18 @@ export const blobs = pgTable("blobs", {
     .references(() => items.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const itemBlobs = pgTable(
+  "item_blobs",
+  {
+    id: text("id").primaryKey(),
+    itemId: text("item_id")
+      .references(() => items.id, { onDelete: "cascade" })
+      .notNull(),
+    blobId: text("blob_id")
+      .references(() => blobs.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("item_blob_unique").on(table.itemId, table.blobId)]
+);

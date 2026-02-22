@@ -3,7 +3,7 @@ import { streamText, convertToModelMessages, stepCountIs, smoothStream, type UIM
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
-import { conversations, items, blobs } from "~/lib/db/schema";
+import { conversations, items, blobs, itemBlobs } from "~/lib/db/schema";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 import { itemsToUIMessages } from "~/components/conversation-helpers";
@@ -74,10 +74,13 @@ export async function action({ request }: Route.ActionArgs) {
     }).onConflictDoNothing();
 
     if (blobIds && blobIds.length > 0) {
-      await db
-        .update(blobs)
-        .set({ itemId: userItemId })
-        .where(and(inArray(blobs.id, blobIds), eq(blobs.organizationId, organizationId)));
+      await db.insert(itemBlobs).values(
+        blobIds.map((blobId) => ({
+          id: crypto.randomUUID(),
+          itemId: userItemId,
+          blobId,
+        }))
+      ).onConflictDoNothing();
     }
 
     if (conv[0]?.title === "New Chat") {

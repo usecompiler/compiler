@@ -537,7 +537,7 @@ describe("api.agent action", () => {
       expect(response.status).not.toBe(400);
     });
 
-    it("links blobs to user item via DB update", async () => {
+    it("links blobs to user item via item_blobs insert", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -550,10 +550,17 @@ describe("api.agent action", () => {
       const request = buildRequest(body);
       await callAction(request);
 
-      const setCalls = mockDb._updateSet.mock.calls;
-      const blobUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).itemId !== undefined);
-      expect(blobUpdate).toBeDefined();
-      expect((blobUpdate![0] as Record<string, string>).itemId).toBe(body.message.id);
+      const insertCalls = mockDb._insertValues.mock.calls;
+      const blobInsert = insertCalls.find((c: unknown[]) => {
+        const val = c[0];
+        return Array.isArray(val) && val.length > 0 && (val[0] as Record<string, unknown>).blobId !== undefined;
+      });
+      expect(blobInsert).toBeDefined();
+      const rows = blobInsert![0] as Array<Record<string, string>>;
+      expect(rows).toHaveLength(2);
+      expect(rows[0].itemId).toBe(body.message.id);
+      expect(rows[0].blobId).toBe("blob-1");
+      expect(rows[1].blobId).toBe("blob-2");
     });
 
     it("sets title to 'File attachment' when blobIds present with empty text on New Chat", async () => {
