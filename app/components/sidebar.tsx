@@ -249,7 +249,7 @@ function ConversationItem({ conversation, readOnly = false, impersonating }: Con
       {!readOnly && (
         <>
           {conversation.isForked && (
-            <svg className="absolute right-8 w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 16 16" aria-label="Fork">
+            <svg className={`absolute right-2 w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0 transition-opacity ${isOpen ? "opacity-0" : "group-hover:opacity-0"}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 16 16" aria-label="Fork">
               <title>Fork</title>
               <circle cx="5" cy="3.5" r="1.5" />
               <circle cx="5" cy="12.5" r="1.5" />
