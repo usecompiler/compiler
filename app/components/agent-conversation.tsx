@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRevalidator, useBlocker, Link } from "react-router";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
+import { useStickToBottom } from "use-stick-to-bottom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Item } from "~/lib/types";
@@ -66,10 +67,7 @@ export function AgentConversation({
     initialItems.filter((i) => i.type === "system")
   );
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const isAtBottomRef = useRef(true);
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
   const pendingBlobIdsRef = useRef<string[]>([]);
@@ -138,38 +136,6 @@ export function AgentConversation({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isStreaming]);
 
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const checkScrollPosition = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setShowScrollButton(!isAtBottom);
-      isAtBottomRef.current = isAtBottom;
-    };
-
-    container.addEventListener("scroll", checkScrollPosition);
-    checkScrollPosition();
-
-    return () => container.removeEventListener("scroll", checkScrollPosition);
-  }, []);
-
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    if (initialItems.length > 0) {
-      messagesEndRef.current?.scrollIntoView();
-    }
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
 
   const handleFilesChange = useCallback((files: File[]) => {
     const remaining = 5 - pendingFiles.length;
@@ -286,8 +252,7 @@ export function AgentConversation({
         }));
       }
 
-      isAtBottomRef.current = true;
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollToBottom();
 
       revalidator.revalidate();
 
@@ -334,8 +299,8 @@ export function AgentConversation({
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       <NavigationBlocker blocker={blocker} />
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 py-6 pb-32">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-3xl mx-auto px-4 py-6 pb-32">
           {source && (
             <div className="flex items-center gap-3 mb-6">
               <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
@@ -396,13 +361,12 @@ export function AgentConversation({
               </div>
             </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {showScrollButton && (
+      {!isAtBottom && (
         <button
-          onClick={scrollToBottom}
+          onClick={() => scrollToBottom()}
           className="absolute left-1/2 -translate-x-1/2 bottom-32 z-10 w-8 h-8 rounded-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-pointer"
           aria-label="Scroll to bottom"
         >
