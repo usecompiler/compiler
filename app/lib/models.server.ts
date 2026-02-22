@@ -387,21 +387,53 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
   return [...baseTools, ...mapped];
 }
 
-export async function bedrockCompactionFetch(
-  url: RequestInfo | URL,
-  options?: RequestInit,
-): Promise<Response> {
-  if (options?.body && typeof options.body === "string") {
-    const body = JSON.parse(options.body);
-    if (body.context_management) {
-      const betas = new Set<string>(body.anthropic_beta || []);
-      betas.add("compact-2026-01-12");
-      betas.add("context-management-2025-06-27");
-      body.anthropic_beta = Array.from(betas);
-      options = { ...options, body: JSON.stringify(body) };
+export function createBedrockCompactionFetch(
+  region: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+) {
+  const signingKeyCache = new Map<string, ArrayBuffer>();
+  return async (
+    url: RequestInfo | URL,
+    options?: RequestInit,
+  ): Promise<Response> => {
+    if (options?.body && typeof options.body === "string") {
+      const body = JSON.parse(options.body);
+      if (body.context_management) {
+        const betas = new Set<string>(body.anthropic_beta || []);
+        betas.add("compact-2026-01-12");
+        betas.add("context-management-2025-06-27");
+        body.anthropic_beta = Array.from(betas);
+        const newBody = JSON.stringify(body);
+
+        const { AwsV4Signer } = await import("aws4fetch");
+        const urlStr =
+          typeof url === "string"
+            ? url
+            : url instanceof URL
+              ? url.href
+              : (url as Request).url;
+        const signer = new AwsV4Signer({
+          url: urlStr,
+          method: "POST",
+          headers: (options.headers ?? {}) as HeadersInit,
+          body: newBody,
+          region,
+          accessKeyId,
+          secretAccessKey,
+          service: "bedrock",
+          cache: signingKeyCache,
+        });
+        const signed = await signer.sign();
+        return fetch(url, {
+          ...options,
+          body: newBody,
+          headers: signed.headers,
+        });
+      }
     }
-  }
-  return fetch(url, options);
+    return fetch(url, options);
+  };
 }
 
 export async function getModel(
@@ -416,7 +448,11 @@ export async function getModel(
       region: config.awsRegion,
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
-      fetch: bedrockCompactionFetch,
+      fetch: createBedrockCompactionFetch(
+        config.awsRegion,
+        config.awsAccessKeyId,
+        config.awsSecretAccessKey,
+      ),
     });
     return { model: bedrock(modelId), modelId };
   }
