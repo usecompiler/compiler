@@ -387,6 +387,23 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
   return [...baseTools, ...mapped];
 }
 
+export async function bedrockCompactionFetch(
+  url: RequestInfo | URL,
+  options?: RequestInit,
+): Promise<Response> {
+  if (options?.body && typeof options.body === "string") {
+    const body = JSON.parse(options.body);
+    if (body.context_management) {
+      const betas = new Set<string>(body.anthropic_beta || []);
+      betas.add("compact-2026-01-12");
+      betas.add("context-management-2025-06-27");
+      body.anthropic_beta = Array.from(betas);
+      options = { ...options, body: JSON.stringify(body) };
+    }
+  }
+  return fetch(url, options);
+}
+
 export async function getModel(
   memberId: string,
   organizationId: string,
@@ -399,6 +416,7 @@ export async function getModel(
       region: config.awsRegion,
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
+      fetch: bedrockCompactionFetch,
     });
     return { model: bedrock(modelId), modelId };
   }
