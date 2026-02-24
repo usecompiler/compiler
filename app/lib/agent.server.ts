@@ -2,7 +2,7 @@ import path from "node:path";
 import { getAIProviderConfig } from "./ai-provider.server";
 import { getModel, getToolConfig } from "./models.server";
 import { buildTools } from "./tools/index.server";
-import { buildSystemPrompt } from "./prompts.server";
+import { buildSystemPrompt, COMPACTION_INSTRUCTIONS } from "./prompts.server";
 import { db } from "./db/index.server";
 import { repositories, projectRepositories } from "./db/schema";
 import { eq, and, asc } from "drizzle-orm";
@@ -91,5 +91,6 @@ export async function getAgentConfig(
     systemPrompt,
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,
     compactionEnabled: aiProviderConfig?.compactionEnabled !== false,
+    compactionInstructions: COMPACTION_INSTRUCTIONS,
   };
 }

@@ -86,6 +86,22 @@ EXPLORATION STRATEGY:
 - Start broad: use glob to understand project structure, then grep to find relevant content, then read to examine details
 - Call multiple independent tools in parallel for efficiency`;
 
+export const COMPACTION_INSTRUCTIONS = `When summarizing the conversation so far, follow these rules strictly:
+
+1. Summarize WHAT was discussed in terms of features, functionality, and user-facing behavior
+2. Preserve all functional conclusions — what the system does, how features work, what was explained to the user
+3. NEVER include any of the following in your summary:
+   - File names, file paths, or directory names
+   - Class names, method names, function names, or variable names
+   - Database table or column names
+   - Code snippets, syntax, or programming identifiers
+   - Library names, package names, or framework names
+   - Environment variable names or values
+4. Describe everything in plain, non-technical language as capabilities and behaviors
+5. If a tool was used to explore code, summarize only the functional insight gained — not the technical details observed
+
+Wrap your summary in <summary></summary> tags.`;
+
 export function buildSystemPrompt(repoNames: string[]): string {
   const projectContext = repoNames.length <= 1
     ? `\n\nYour current working directory IS the project you should explore.`
