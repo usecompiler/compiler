@@ -1,21 +1,19 @@
 import { Outlet, redirect } from "react-router";
 import type { Route } from "./+types/app-layout";
 import { requireActiveAuth, type Organization, type Membership } from "~/lib/auth.server";
-import { getConversations, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
+import { getConversations, getConversationProjectId, getMostRecentProjectId, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/models.server";
 import { getStorageConfigPublic } from "~/lib/storage.server";
 import { repoExists, triggerRepoSync } from "~/lib/clone.server";
-import { repositories } from "~/lib/db/schema";
-import { db } from "~/lib/db/index.server";
-import { eq } from "drizzle-orm";
+import { getProjects, getProjectRepos, type ProjectMeta } from "~/lib/projects.server";
 
 function getModelDisplayName(id: string): string {
   return getDisplayName(id);
 }
 
-export type { Item, ConversationMeta, Organization, Membership, Member };
+export type { Item, ConversationMeta, Organization, Membership, Member, ProjectMeta };
 
 export interface ImpersonatingUser {
   id: string;
@@ -30,7 +28,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const canManageOrg = canManageOrganization(user.membership?.role);
 
   if (user.organization && !user.organization.onboardingCompleted && isOwner) {
-    throw redirect("/onboarding/github");
+    throw redirect("/onboarding/github-app");
   }
 
   const url = new URL(request.url);
@@ -41,7 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let conversations: ConversationMeta[] = [];
   let hasMore = false;
   let availableModels: { id: string; displayName: string }[] = [];
-  let defaultModel = "claude-sonnet-4-20250514";
+  let defaultModel = "claude-sonnet-4-6-20260217";
   let userPreferredModel: string | null = null;
   let hasStorageConfig = false;
   let repoSyncStatus: { repos: { name: string; fullName: string; status: string }[]; allReady: boolean; hasRepos: boolean } = {
@@ -49,14 +47,35 @@ export async function loader({ request }: Route.LoaderArgs) {
     allReady: true,
     hasRepos: false,
   };
+  let projectsList: ProjectMeta[] = [];
+  let activeProject: ProjectMeta | null = null;
 
   if (user.organization) {
-    const allRepos = await db
-      .select()
-      .from(repositories)
-      .where(eq(repositories.organizationId, user.organization.id));
+    projectsList = await getProjects(user.organization.id);
 
-    const repoStatuses = allRepos.map((repo) => {
+    const conversationMatch = url.pathname.match(/^\/c\/(.+)/);
+    let resolvedProjectId: string | null = null;
+
+    if (conversationMatch) {
+      resolvedProjectId = await getConversationProjectId(conversationMatch[1]);
+    }
+
+    if (!resolvedProjectId) {
+      resolvedProjectId = url.searchParams.get("project");
+    }
+
+    if (!resolvedProjectId) {
+      resolvedProjectId = await getMostRecentProjectId(user.id);
+    }
+
+    activeProject =
+      projectsList.find((p) => p.id === resolvedProjectId) || projectsList[0] || null;
+
+    const projectRepos = activeProject
+      ? await getProjectRepos(activeProject.id)
+      : [];
+
+    const repoStatuses = projectRepos.map((repo) => {
       const onDisk = repoExists(user.organization!.id, repo.name);
       const status = repo.cloneStatus === "completed" && !onDisk ? "pending" : repo.cloneStatus;
       return { name: repo.name, fullName: repo.fullName, status };
@@ -104,7 +123,9 @@ export async function loader({ request }: Route.LoaderArgs) {
           name: targetMember.user.name,
           email: targetMember.user.email,
         };
-        const result = await getConversations(impersonateUserId);
+        const result = await getConversations(impersonateUserId, {
+          projectId: activeProject?.id,
+        });
         conversations = result.conversations;
         hasMore = result.hasMore;
       }
@@ -112,7 +133,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (!impersonating) {
-    const result = await getConversations(user.id);
+    const result = await getConversations(user.id, {
+      projectId: activeProject?.id,
+    });
     conversations = result.conversations;
     hasMore = result.hasMore;
   }
@@ -130,6 +153,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     userPreferredModel,
     hasStorageConfig,
     repoSyncStatus,
+    projects: projectsList,
+    activeProject,
   };
 }
 
@@ -163,6 +188,8 @@ export interface AppContext {
   userPreferredModel: string | null;
   hasStorageConfig: boolean;
   repoSyncStatus: RepoSyncStatus;
+  projects: ProjectMeta[];
+  activeProject: ProjectMeta | null;
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
@@ -179,6 +206,8 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     userPreferredModel: loaderData.userPreferredModel,
     hasStorageConfig: loaderData.hasStorageConfig,
     repoSyncStatus: loaderData.repoSyncStatus,
+    projects: loaderData.projects,
+    activeProject: loaderData.activeProject,
   };
 
   return <Outlet context={context} />;

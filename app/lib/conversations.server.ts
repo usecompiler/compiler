@@ -43,10 +43,15 @@ const CONVERSATIONS_PAGE_SIZE = 20;
 
 export async function getConversations(
   userId: string,
-  options?: { limit?: number; offset?: number }
+  options?: { limit?: number; offset?: number; projectId?: string }
 ): Promise<{ conversations: ConversationMeta[]; hasMore: boolean }> {
   const limit = options?.limit ?? CONVERSATIONS_PAGE_SIZE;
   const offset = options?.offset ?? 0;
+
+  const conditions = [eq(conversationsTable.userId, userId)];
+  if (options?.projectId) {
+    conditions.push(eq(conversationsTable.projectId, options.projectId));
+  }
 
   const rows = await db
     .select({
@@ -57,7 +62,7 @@ export async function getConversations(
       updatedAt: conversationsTable.updatedAt,
     })
     .from(conversationsTable)
-    .where(eq(conversationsTable.userId, userId))
+    .where(and(...conditions))
     .orderBy(desc(conversationsTable.updatedAt))
     .limit(limit + 1)
     .offset(offset);
@@ -85,13 +90,22 @@ export interface SearchResult {
 export async function searchConversations(
   userId: string,
   query: string,
-  limit: number = 10
+  limit: number = 10,
+  projectId?: string
 ): Promise<SearchResult[]> {
   if (!query.trim()) {
     return [];
   }
 
   const searchPattern = `%${query.toLowerCase()}%`;
+
+  const titleConditions = [
+    eq(conversationsTable.userId, userId),
+    ilike(conversationsTable.title, searchPattern),
+  ];
+  if (projectId) {
+    titleConditions.push(eq(conversationsTable.projectId, projectId));
+  }
 
   const titleMatches = await db
     .select({
@@ -100,14 +114,21 @@ export async function searchConversations(
       updatedAt: conversationsTable.updatedAt,
     })
     .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.userId, userId),
-        ilike(conversationsTable.title, searchPattern)
-      )
-    )
+    .where(and(...titleConditions))
     .orderBy(desc(conversationsTable.updatedAt))
     .limit(limit);
+
+  const contentConditions = [
+    eq(conversationsTable.userId, userId),
+    eq(itemsTable.type, "message"),
+    or(
+      sql`LOWER(${itemsTable.content}::text) LIKE ${searchPattern}`,
+      sql`LOWER(${itemsTable.content}->>'text') LIKE ${searchPattern}`
+    ),
+  ];
+  if (projectId) {
+    contentConditions.push(eq(conversationsTable.projectId, projectId));
+  }
 
   const contentMatches = await db
     .select({
@@ -118,16 +139,7 @@ export async function searchConversations(
     })
     .from(itemsTable)
     .innerJoin(conversationsTable, eq(itemsTable.conversationId, conversationsTable.id))
-    .where(
-      and(
-        eq(conversationsTable.userId, userId),
-        eq(itemsTable.type, "message"),
-        or(
-          sql`LOWER(${itemsTable.content}::text) LIKE ${searchPattern}`,
-          sql`LOWER(${itemsTable.content}->>'text') LIKE ${searchPattern}`
-        )
-      )
-    )
+    .where(and(...contentConditions))
     .orderBy(desc(conversationsTable.updatedAt))
     .limit(limit * 2);
 
@@ -177,6 +189,27 @@ export async function searchConversations(
   results.sort((a, b) => b.updatedAt - a.updatedAt);
 
   return results.slice(0, limit);
+}
+
+export async function getConversationProjectId(conversationId: string): Promise<string | null> {
+  const result = await db
+    .select({ projectId: conversationsTable.projectId })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, conversationId))
+    .limit(1);
+
+  return result[0]?.projectId ?? null;
+}
+
+export async function getMostRecentProjectId(userId: string): Promise<string | null> {
+  const result = await db
+    .select({ projectId: conversationsTable.projectId })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.userId, userId))
+    .orderBy(desc(conversationsTable.updatedAt))
+    .limit(1);
+
+  return result[0]?.projectId ?? null;
 }
 
 export async function getConversationItems(conversationId: string): Promise<Item[]> {
@@ -352,6 +385,7 @@ export async function duplicateConversation(
     userId,
     title: sourceConv.title,
     conversationId: sourceConversationId,
+    projectId: sourceConv.projectId,
   });
 
   const oldToNewItemId = new Map<string, string>();

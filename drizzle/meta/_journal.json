@@ -176,6 +176,13 @@
       "when": 1771891200001,
       "tag": "0024_create_item_blobs",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1771817559291,
+      "tag": "0025_create_projects",
+      "breakpoints": true
     }
   ]
 }

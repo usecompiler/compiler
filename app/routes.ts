@@ -21,6 +21,7 @@ export default [
   route("onboarding/github", "routes/onboarding.github.tsx"),
   route("onboarding/github-callback", "routes/onboarding.github-callback.tsx"),
   route("onboarding/repos", "routes/onboarding.repos.tsx"),
+  route("onboarding/project", "routes/onboarding.project.tsx"),
   route("onboarding/syncing", "routes/onboarding.syncing.tsx"),
 
   // Invitation acceptance route (public, no layout)
@@ -38,7 +39,6 @@ export default [
   route("api/upload", "routes/api.upload.ts"),
   route("api/image/:blobId", "routes/api.image.$blobId.ts"),
   route("api/blobs", "routes/api.blobs.ts"),
-
   // App routes (with layout that handles auth + conversations)
   layout("routes/app-layout.tsx", [
     index("routes/home.tsx"),
@@ -50,6 +50,7 @@ export default [
     route("settings/authentication", "routes/settings.authentication.tsx"),
     route("settings/storage", "routes/settings.storage.tsx"),
     route("settings/audit-log", "routes/settings.audit-log.tsx"),
+    route("settings/projects", "routes/settings.projects.tsx"),
     route("analytics", "routes/analytics.tsx"),
   ]),
 ] satisfies RouteConfig;

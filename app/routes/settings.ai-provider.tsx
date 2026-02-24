@@ -190,10 +190,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
   const [showEdit, setShowEdit] = useState(!config);
   const [provider, setProvider] = useState<AIProvider>(config?.provider || "anthropic");
   const [selectedModels, setSelectedModels] = useState<string[]>(
-    modelConfig?.availableModels || ["claude-sonnet-4-20250514"]
+    modelConfig?.availableModels || ["claude-sonnet-4-6-20260217"]
   );
   const [defaultModel, setDefaultModel] = useState<string>(
-    modelConfig?.defaultModel || "claude-sonnet-4-20250514"
+    modelConfig?.defaultModel || "claude-sonnet-4-6-20260217"
   );
   const [selectedTools, setSelectedTools] = useState<string[]>(enabledTools);
   const cachingFetcher = useFetcher();
@@ -296,6 +296,12 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
               className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
             >
               Organization
+            </Link>
+            <Link
+              to="/settings/projects"
+              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
+            >
+              Projects
             </Link>
             <Link
               to="/settings/storage"

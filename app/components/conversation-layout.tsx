@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Sidebar } from "./sidebar";
 import { ModelSelector } from "./model-selector";
-import type { ConversationMeta, Member, ImpersonatingUser, ModelOption } from "~/routes/app-layout";
+import type { ConversationMeta, Member, ImpersonatingUser, ModelOption, ProjectMeta } from "~/routes/app-layout";
 import type { User } from "~/lib/auth.server";
 
 interface ConversationLayoutProps {
@@ -19,6 +19,8 @@ interface ConversationLayoutProps {
   defaultModel?: string;
   userPreferredModel?: string | null;
   showHeaderBorder?: boolean;
+  projects?: ProjectMeta[];
+  activeProject?: ProjectMeta | null;
 }
 
 export function ConversationLayout({
@@ -32,9 +34,11 @@ export function ConversationLayout({
   headerRight,
   children,
   availableModels = [],
-  defaultModel = "claude-sonnet-4-20250514",
+  defaultModel = "claude-sonnet-4-6-20260217",
   userPreferredModel,
   showHeaderBorder = true,
+  projects = [],
+  activeProject = null,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(
@@ -94,6 +98,8 @@ export function ConversationLayout({
           orgMembers={orgMembers}
           isOwner={isOwner}
           isAdmin={isAdmin}
+          projects={projects}
+          activeProject={activeProject}
         />
       </div>
 

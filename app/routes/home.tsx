@@ -28,11 +28,13 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const id = crypto.randomUUID();
+  const activeProjectId = formData.get("projectId")?.toString() || null;
 
   await db.insert(conversations).values({
     id,
     userId: user.id,
     title: "New Chat",
+    projectId: activeProjectId,
   });
 
   if (user.organization) {
@@ -60,6 +62,8 @@ export default function Home() {
     userPreferredModel,
     hasStorageConfig,
     repoSyncStatus,
+    projects,
+    activeProject,
   } = useOutletContext<AppContext>();
 
   return (
@@ -75,12 +79,14 @@ export default function Home() {
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
       showHeaderBorder={false}
+      projects={projects}
+      activeProject={activeProject}
     >
       <RepoSyncGate repoSyncStatus={repoSyncStatus}>
         {impersonating ? (
           <ImpersonatingView name={impersonating.name} />
         ) : (
-          <HomePromptInput hasStorageConfig={hasStorageConfig} />
+          <HomePromptInput hasStorageConfig={hasStorageConfig} activeProjectId={activeProject?.id} />
         )}
       </RepoSyncGate>
     </ConversationLayout>
@@ -93,7 +99,7 @@ const suggestedPrompts = [
   "Walk me through one of the key features",
 ];
 
-function HomePromptInput({ hasStorageConfig }: { hasStorageConfig: boolean }) {
+function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConfig: boolean; activeProjectId?: string }) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
@@ -167,6 +173,7 @@ function HomePromptInput({ hasStorageConfig }: { hasStorageConfig: boolean }) {
       </h1>
 
       <Form ref={formRef} method="post" className="w-full max-w-3xl" onSubmit={handleSubmit}>
+        <input type="hidden" name="projectId" value={activeProjectId || ""} />
         <input type="hidden" ref={blobIdsInputRef} name="blobIds" />
         <PromptInput
           name="prompt"

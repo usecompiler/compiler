@@ -87,7 +87,7 @@ beforeEach(() => {
   requireActiveAuth.mockResolvedValue(mockUser());
   getAgentConfig.mockResolvedValue({
     model: "mock-model",
-    modelId: "claude-sonnet-4-20250514",
+    modelId: "claude-sonnet-4-6-20260217",
     tools: {},
     systemPrompt: "test system prompt",
     compactionEnabled: true,
@@ -747,7 +747,7 @@ describe("api.agent action", () => {
     it("passes prepareStep when promptCachingEnabled is true", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
-        modelId: "claude-sonnet-4-20250514",
+        modelId: "claude-sonnet-4-6-20260217",
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: true,
@@ -769,7 +769,7 @@ describe("api.agent action", () => {
     it("does not pass prepareStep when promptCachingEnabled is false", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
-        modelId: "claude-sonnet-4-20250514",
+        modelId: "claude-sonnet-4-6-20260217",
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: false,
@@ -790,7 +790,7 @@ describe("api.agent action", () => {
     it("prepareStep adds anthropic cacheControl to last message", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
-        modelId: "claude-sonnet-4-20250514",
+        modelId: "claude-sonnet-4-6-20260217",
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: true,
@@ -852,7 +852,7 @@ describe("api.agent action", () => {
     it("does not pass providerOptions when compactionEnabled is false", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
-        modelId: "claude-sonnet-4-20250514",
+        modelId: "claude-sonnet-4-6-20260217",
         tools: {},
         systemPrompt: "test system prompt",
         compactionEnabled: false,
@@ -872,7 +872,7 @@ describe("api.agent action", () => {
     it("includes contextManagement regardless of promptCachingEnabled", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
-        modelId: "claude-sonnet-4-20250514",
+        modelId: "claude-sonnet-4-6-20260217",
         tools: {},
         systemPrompt: "test system prompt",
         promptCachingEnabled: false,

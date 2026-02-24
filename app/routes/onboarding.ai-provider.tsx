@@ -9,6 +9,10 @@ import {
   validateBedrockCredentials,
   type AIProvider,
 } from "~/lib/ai-provider.server";
+import { getGitHubAppConfig, getInstallation } from "~/lib/github.server";
+import { db } from "~/lib/db/index.server";
+import { repositories } from "~/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -25,9 +29,21 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/");
   }
 
+  const appConfig = await getGitHubAppConfig(user.organization.id);
+  const installation = await getInstallation(user.organization.id);
+  const existingRepos = await db
+    .select({ id: repositories.id })
+    .from(repositories)
+    .where(eq(repositories.organizationId, user.organization.id))
+    .limit(1);
+
+  if (!appConfig && existingRepos.length === 0) {
+    return redirect("/onboarding/github-app");
+  }
+
   const config = await getAIProviderConfig(user.organization.id);
   if (config) {
-    return redirect("/onboarding/github-app");
+    return redirect("/onboarding/project");
   }
 
   return null;
@@ -87,7 +103,7 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
-  return redirect("/onboarding/github-app");
+  return redirect("/onboarding/project");
 }
 
 export default function OnboardingAIProvider() {

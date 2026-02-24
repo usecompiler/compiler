@@ -14,6 +14,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const limit = parseInt(url.searchParams.get("limit") || "20");
   const impersonateUserId = url.searchParams.get("impersonate");
+  const projectId = url.searchParams.get("projectId") || undefined;
 
   let targetUserId = user.id;
 
@@ -28,7 +29,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  const { conversations: convList, hasMore } = await getConversations(targetUserId, { limit, offset });
+  const { conversations: convList, hasMore } = await getConversations(targetUserId, { limit, offset, projectId });
   return Response.json({ conversations: convList, hasMore });
 }
 
@@ -42,11 +43,13 @@ export async function action({ request }: Route.ActionArgs) {
     const body = await request.json();
     const id = body.id || crypto.randomUUID();
     const title = body.title || "New Chat";
+    const projectId = body.projectId || null;
 
     await db.insert(conversations).values({
       id,
       userId: user.id,
       title,
+      projectId,
     });
 
     const newConv = await db

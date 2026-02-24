@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useFetcher, Link, NavLink, useParams } from "react-router";
-import type { ConversationMeta, Member, ImpersonatingUser } from "~/routes/app-layout";
+import type { ConversationMeta, Member, ImpersonatingUser, ProjectMeta } from "~/routes/app-layout";
 import { CommandPalette } from "./command-palette";
 import type { User } from "~/lib/auth.server";
 import { canImpersonate, canManageOrganization, type Role } from "~/lib/permissions";
@@ -21,6 +21,8 @@ interface SidebarProps {
   orgMembers: Member[];
   isOwner: boolean;
   isAdmin: boolean;
+  projects?: ProjectMeta[];
+  activeProject?: ProjectMeta | null;
 }
 
 export function Sidebar({
@@ -31,6 +33,8 @@ export function Sidebar({
   orgMembers,
   isOwner,
   isAdmin,
+  projects = [],
+  activeProject = null,
 }: SidebarProps) {
   const { id: currentConversationId } = useParams();
   const navigate = useNavigate();
@@ -58,8 +62,10 @@ export function Sidebar({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && fetcher.state === "idle" && hasMore) {
-          const impersonateParam = impersonating ? `&impersonate=${impersonating.id}` : "";
-          fetcher.load(`/api/conversations?offset=${conversations.length}${impersonateParam}`);
+          const params = new URLSearchParams({ offset: conversations.length.toString() });
+          if (impersonating) params.set("impersonate", impersonating.id);
+          if (activeProject?.id) params.set("projectId", activeProject.id);
+          fetcher.load(`/api/conversations?${params}`);
         }
       },
       { threshold: 0.1 }
@@ -77,22 +83,25 @@ export function Sidebar({
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "o") {
         e.preventDefault();
-        navigate("/");
+        navigate(activeProject ? `/?project=${activeProject.id}` : "/");
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
+  }, [navigate, activeProject]);
 
   const isLoadingMore = fetcher.state === "loading";
 
   return (
     <aside className="w-64 h-full pl-safe bg-neutral-100 dark:bg-black flex flex-col border-r border-neutral-200 dark:border-neutral-800">
+      {projects.length > 1 && (
+        <ProjectSwitcher projects={projects} activeProject={activeProject} />
+      )}
       <div className="p-3 space-y-1">
         {!impersonating && (
           <Link
-            to="/"
+            to={activeProject ? `/?project=${activeProject.id}` : "/"}
             prefetch="intent"
             className="group w-full flex items-center gap-3 px-3 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
           >
@@ -163,6 +172,7 @@ export function Sidebar({
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         impersonateUserId={impersonating?.id}
+        projectId={activeProject?.id}
       />
     </aside>
   );
@@ -444,6 +454,88 @@ function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: Acco
               Log out
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectSwitcher({
+  projects,
+  activeProject,
+}: {
+  projects: ProjectMeta[];
+  activeProject: ProjectMeta | null;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = () => setIsOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [isOpen]);
+
+  const handleSelect = (projectId: string) => {
+    setIsOpen(false);
+    navigate(`/?project=${projectId}`);
+  };
+
+  return (
+    <div className="relative p-3 pb-0">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-neutral-900 dark:text-neutral-100 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <svg
+            className="w-4 h-4 text-neutral-500 dark:text-neutral-400 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+            />
+          </svg>
+          <span className="truncate">{activeProject?.name || "Select project"}</span>
+        </div>
+        <svg
+          className={`w-4 h-4 text-neutral-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50 max-h-64 overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => handleSelect(project.id)}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                project.id === activeProject?.id
+                  ? "bg-neutral-100 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-medium"
+                  : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              }`}
+            >
+              {project.name}
+            </button>
+          ))}
         </div>
       )}
     </div>

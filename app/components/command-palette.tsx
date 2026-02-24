@@ -16,6 +16,7 @@ interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   impersonateUserId?: string | null;
+  projectId?: string;
 }
 
 function buildConversationUrl(id: string, impersonateUserId?: string | null): string {
@@ -60,6 +61,7 @@ export function CommandPalette({
   isOpen,
   onClose,
   impersonateUserId,
+  projectId,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -82,6 +84,9 @@ export function CommandPalette({
       const params = new URLSearchParams({ q: searchQuery, limit: "15" });
       if (impersonateUserId) {
         params.set("impersonate", impersonateUserId);
+      }
+      if (projectId) {
+        params.set("projectId", projectId);
       }
       const response = await fetch(`/api/search?${params}`);
       if (response.ok) {

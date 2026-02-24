@@ -53,6 +53,7 @@ export async function action({ request }: Route.ActionArgs) {
       id: conversations.id,
       title: conversations.title,
       userId: conversations.userId,
+      projectId: conversations.projectId,
     })
     .from(conversations)
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
@@ -174,6 +175,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const { model, tools, systemPrompt, promptCachingEnabled, compactionEnabled } = await getAgentConfig(
     organizationId,
+    conv[0].projectId,
     memberId,
     request.signal,
   );

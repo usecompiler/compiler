@@ -4,7 +4,7 @@ import { getModel, getToolConfig } from "./models.server";
 import { buildTools } from "./tools/index.server";
 import { buildSystemPrompt } from "./prompts.server";
 import { db } from "./db/index.server";
-import { repositories } from "./db/schema";
+import { repositories, projectRepositories } from "./db/schema";
 import { eq, and, asc } from "drizzle-orm";
 
 export type { PendingQuestionData } from "./tools/ask-user-question.server";
@@ -19,7 +19,24 @@ function getRepoPath(organizationId: string, repoName: string): string {
   return path.join(getOrgReposDir(organizationId), repoName);
 }
 
-async function getCompletedRepos(organizationId: string) {
+async function getCompletedReposForProject(
+  organizationId: string,
+  projectId?: string | null,
+) {
+  if (projectId) {
+    return db
+      .select({ name: repositories.name })
+      .from(projectRepositories)
+      .innerJoin(repositories, eq(projectRepositories.repositoryId, repositories.id))
+      .where(
+        and(
+          eq(projectRepositories.projectId, projectId),
+          eq(repositories.cloneStatus, "completed"),
+        ),
+      )
+      .orderBy(asc(repositories.name));
+  }
+
   return db
     .select({ name: repositories.name })
     .from(repositories)
@@ -34,11 +51,12 @@ async function getCompletedRepos(organizationId: string) {
 
 export async function getAgentConfig(
   organizationId: string,
+  projectId: string | null,
   memberId: string,
   signal?: AbortSignal,
 ) {
   const orgReposDir = getOrgReposDir(organizationId);
-  const completedRepos = await getCompletedRepos(organizationId);
+  const completedRepos = await getCompletedReposForProject(organizationId, projectId);
   const repoNames = completedRepos.map((r) => r.name);
 
   const enabledTools = await getToolConfig(organizationId);
@@ -52,9 +70,13 @@ export async function getAgentConfig(
   const aiProviderConfig = await getAIProviderConfig(organizationId);
   const provider = aiProviderConfig?.provider ?? "anthropic";
 
+  const allowedDirs = repoNames.length > 0
+    ? repoNames.map((name) => getRepoPath(organizationId, name))
+    : [orgReposDir];
+
   const tools = buildTools({
     cwd: agentCwd,
-    allowedDirs: [orgReposDir],
+    allowedDirs,
     signal,
     enabledTools,
   });

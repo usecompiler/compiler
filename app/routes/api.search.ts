@@ -10,6 +10,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const query = url.searchParams.get("q") || "";
   const limit = parseInt(url.searchParams.get("limit") || "10");
   const impersonateUserId = url.searchParams.get("impersonate");
+  const projectId = url.searchParams.get("projectId") || undefined;
 
   let targetUserId = user.id;
 
@@ -24,6 +25,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  const results = await searchConversations(targetUserId, query, limit);
+  const results = await searchConversations(targetUserId, query, limit, projectId);
   return Response.json({ results });
 }

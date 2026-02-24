@@ -49,7 +49,7 @@ export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData 
 
   const installation = await getInstallation(user.organization.id);
   if (installation) {
-    return redirect("/onboarding/repos");
+    return redirect("/onboarding/ai-provider");
   }
 
   try {
@@ -93,7 +93,7 @@ export async function action({ request }: Route.ActionArgs) {
         installationId
       );
       await saveInstallation(user.organization.id, installationId, token, expiresAt);
-      return redirect("/onboarding/repos");
+      return redirect("/onboarding/ai-provider");
     } catch (error) {
       console.error("Failed to link installation:", error);
       return { error: "Failed to connect to GitHub. Please try again." };
@@ -127,12 +127,7 @@ export async function action({ request }: Route.ActionArgs) {
     console.error
   );
 
-  await db
-    .update(organizations)
-    .set({ onboardingCompleted: true })
-    .where(eq(organizations.id, user.organization.id));
-
-  return redirect("/onboarding/syncing");
+  return redirect("/onboarding/ai-provider");
 }
 
 function GitHubIcon({ className }: { className?: string }) {

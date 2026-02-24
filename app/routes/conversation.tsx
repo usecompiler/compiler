@@ -175,6 +175,8 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     userPreferredModel,
     hasStorageConfig,
     repoSyncStatus,
+    projects,
+    activeProject,
   } = useOutletContext<AppContext>();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
@@ -260,6 +262,8 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       availableModels={availableModels}
       defaultModel={defaultModel}
       userPreferredModel={userPreferredModel}
+      projects={projects}
+      activeProject={activeProject}
     >
       <RepoSyncGate repoSyncStatus={repoSyncStatus}>
         <div className="flex flex-col h-full">

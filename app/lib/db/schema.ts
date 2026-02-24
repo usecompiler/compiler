@@ -6,7 +6,6 @@ import {
   uniqueIndex,
   boolean,
   integer,
-  index,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -61,11 +60,38 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const projects = pgTable("projects", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectRepositories = pgTable(
+  "project_repositories",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    repositoryId: text("repository_id")
+      .references(() => repositories.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("project_repo_unique").on(table.projectId, table.repositoryId)]
+);
+
 export const conversations = pgTable("conversations", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
+  projectId: text("project_id")
+    .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   sessionId: text("session_id"),
   conversationId: text("conversation_id"),
@@ -176,8 +202,8 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
   promptCachingEnabled: boolean("prompt_caching_enabled").default(true),
   compactionEnabled: boolean("compaction_enabled").default(true),
-  availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-20250514"]),
-  defaultModel: text("default_model").default("claude-sonnet-4-20250514"),
+  availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-6-20260217"]),
+  defaultModel: text("default_model").default("claude-sonnet-4-6-20260217"),
   allowedTools: jsonb("allowed_tools").$type<string[]>().default(["Bash"]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

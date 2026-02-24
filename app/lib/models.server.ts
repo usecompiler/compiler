@@ -25,6 +25,11 @@ const CACHE_TTL = 60 * 60 * 1000;
 
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
+    id: "claude-sonnet-4-6-20260217",
+    displayName: "Claude Sonnet 4.6",
+    createdAt: "2026-02-17T00:00:00Z",
+  },
+  {
     id: "claude-sonnet-4-5-20250929",
     displayName: "Claude Sonnet 4.5",
     createdAt: "2025-09-29T00:00:00Z",
@@ -40,7 +45,7 @@ const FALLBACK_MODELS: ClaudeModel[] = [
     createdAt: "2025-10-01T00:00:00Z",
   },
   {
-    id: "claude-sonnet-4-20250514",
+    id: "claude-sonnet-4-6-20260217",
     displayName: "Claude Sonnet 4",
     createdAt: "2025-05-14T00:00:00Z",
   },
@@ -269,9 +274,9 @@ export async function getModelConfig(
 
   return {
     availableModels: (result[0].availableModels as string[]) || [
-      "claude-sonnet-4-20250514",
+      "claude-sonnet-4-6-20260217",
     ],
-    defaultModel: result[0].defaultModel || "claude-sonnet-4-20250514",
+    defaultModel: result[0].defaultModel || "claude-sonnet-4-6-20260217",
   };
 }
 
@@ -324,16 +329,16 @@ export async function getEffectiveModel(
     const config = await getAIProviderConfig(organizationId);
     if (config?.provider === "bedrock") {
       const models = await getAvailableClaudeModels(organizationId);
-      return models[0]?.id || "claude-sonnet-4-20250514";
+      return models[0]?.id || "claude-sonnet-4-6-20260217";
     }
-    return "claude-sonnet-4-20250514";
+    return "claude-sonnet-4-6-20260217";
   }
 
   if (userPreferred && modelConfig.availableModels.includes(userPreferred)) {
     return userPreferred;
   }
 
-  return modelConfig.defaultModel || "claude-sonnet-4-20250514";
+  return modelConfig.defaultModel || "claude-sonnet-4-6-20260217";
 }
 
 export function getDisplayName(modelId: string): string {
