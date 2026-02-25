@@ -25,6 +25,7 @@ COPY --from=build-env /app/build /app/build
 COPY docker-entrypoint.sh drizzle.config.ts /app/
 COPY drizzle /app/drizzle
 COPY scripts /app/scripts
+COPY app/lib/db /app/app/lib/db
 WORKDIR /app
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npm", "run", "start"]
