@@ -10,7 +10,9 @@ export const staleAssetMiddleware: Route.MiddlewareFunction = async (
   if (url.pathname.startsWith("/assets/")) {
     return new Response("Not Found", { status: 404 });
   }
-  return next();
+  const response = await next();
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 };
 
 export const loggingMiddleware: Route.MiddlewareFunction = async (
