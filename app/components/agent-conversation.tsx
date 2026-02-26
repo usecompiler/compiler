@@ -57,6 +57,9 @@ export function AgentConversation({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [blobsByItemId, setBlobsByItemId] = useState<Record<string, BlobMeta[]>>(initialBlobsByItemId || {});
   const [streamStartTime, setStreamStartTime] = useState<number | undefined>();
+  const [networkError, setNetworkError] = useState(false);
+  const savedPromptRef = useRef("");
+  const savedFilesRef = useRef<PendingFile[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<{
     questions: PendingQuestionData[];
     toolCallId: string;
@@ -117,6 +120,20 @@ export function AgentConversation({
     },
     onError() {
       setStreamStartTime(undefined);
+      setNetworkError(true);
+      setMessages((prev) => {
+        let lastUserIndex = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === "user") {
+            lastUserIndex = i;
+            break;
+          }
+        }
+        if (lastUserIndex === -1) return prev;
+        return prev.filter((_, i) => i !== lastUserIndex);
+      });
+      setInput((current) => current || savedPromptRef.current);
+      setPendingFiles((current) => current.length > 0 ? current : savedFilesRef.current);
     },
   });
 
@@ -136,6 +153,11 @@ export function AgentConversation({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isStreaming]);
 
+  useEffect(() => {
+    if (!networkError) return;
+    const timer = setTimeout(() => setNetworkError(false), 8000);
+    return () => clearTimeout(timer);
+  }, [networkError]);
 
   const handleFilesChange = useCallback((files: File[]) => {
     const remaining = 5 - pendingFiles.length;
@@ -215,6 +237,9 @@ export function AgentConversation({
       const allBlobIds = [...fileBlobIds, ...extraParsed];
 
       const userMessageId = crypto.randomUUID();
+
+      savedPromptRef.current = promptText.trim() || "Describe this file.";
+      savedFilesRef.current = [...pendingFiles];
 
       setInput("");
       setPendingFiles([]);
@@ -299,6 +324,24 @@ export function AgentConversation({
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
       <NavigationBlocker blocker={blocker} />
+      {networkError && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900 shadow-lg animate-[slideIn_0.3s_ease-out]">
+          <svg className="w-5 h-5 text-amber-500 dark:text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          <span className="text-sm text-amber-800 dark:text-amber-200">
+            We couldn't connect. Please check your network connection and try again.
+          </span>
+          <button
+            onClick={() => setNetworkError(false)}
+            className="p-1 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div ref={contentRef} className="max-w-3xl mx-auto px-4 py-6 pb-32">
           {source && (
