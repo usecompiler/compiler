@@ -3,7 +3,7 @@ import { useNavigate, useFetcher, Link, NavLink, useParams } from "react-router"
 import type { ConversationMeta, Member, ImpersonatingUser, ProjectMeta } from "~/routes/app-layout";
 import { CommandPalette } from "./command-palette";
 import type { User } from "~/lib/auth.server";
-import { canImpersonate, canManageOrganization, type Role } from "~/lib/permissions";
+import { canManageOrganization, type Role } from "~/lib/permissions";
 
 function buildConversationUrl(id: string, impersonating: ImpersonatingUser | null, shareToken?: string): string {
   const params = new URLSearchParams();
@@ -352,11 +352,6 @@ function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: Acco
 
   const userRole: Role | undefined = user.membership?.role as Role | undefined;
   const canManageOrg = canManageOrganization(userRole);
-  const impersonatableMembers = orgMembers.filter(
-    (m) => m.userId !== user.id && canImpersonate(userRole, m.role)
-  );
-  const showImpersonate = canManageOrg && impersonatableMembers.length > 0;
-
   if (impersonating) {
     return (
       <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
@@ -437,13 +432,6 @@ function AccountMenu({ user, isOwner, isAdmin, orgMembers, impersonating }: Acco
           </div>
 
           <div className="py-1">
-            {showImpersonate && (
-              <ImpersonateDropdown
-                members={impersonatableMembers}
-                onSelect={() => setIsOpen(false)}
-              />
-            )}
-
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-neutral-900 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
@@ -542,91 +530,3 @@ function ProjectSwitcher({
   );
 }
 
-interface ImpersonateDropdownProps {
-  members: Member[];
-  onSelect: () => void;
-}
-
-function ImpersonateDropdown({ members, onSelect }: ImpersonateDropdownProps) {
-  const [isHovered, setIsHovered] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0 });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const sortedMembers = [...members].sort((a, b) =>
-    a.user.name.localeCompare(b.user.name)
-  );
-
-  const showMenu = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setMenuPosition({
-        bottom: window.innerHeight - rect.bottom,
-        left: rect.right + 8,
-      });
-    }
-    setIsHovered(true);
-  };
-
-  const hideMenu = () => {
-    timeoutRef.current = setTimeout(() => {
-      setIsHovered(false);
-    }, 100);
-  };
-
-  return (
-    <div
-      className="relative"
-      onMouseEnter={showMenu}
-      onMouseLeave={hideMenu}
-    >
-      <button
-        ref={buttonRef}
-        className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-neutral-900 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
-      >
-        <div className="flex items-center gap-3">
-          <svg className="w-5 h-5 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-          </svg>
-          Impersonate
-        </div>
-        <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-        </svg>
-      </button>
-      {isHovered && (
-        <div
-          className="fixed w-48 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto z-[9999]"
-          style={{
-            bottom: menuPosition.bottom,
-            left: menuPosition.left,
-          }}
-          onMouseEnter={showMenu}
-          onMouseLeave={hideMenu}
-        >
-          {sortedMembers.map((member) => (
-            <Link
-              key={member.userId}
-              to={`/?impersonate=${member.userId}`}
-              onClick={onSelect}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-            >
-              <div className="w-6 h-6 rounded-full bg-neutral-300 dark:bg-neutral-600 flex items-center justify-center text-[10px] font-medium text-neutral-700 dark:text-neutral-200">
-                {member.user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="truncate">{member.user.name}</div>
-                {member.isDeactivated && (
-                  <span className="text-xs text-red-500">Deactivated</span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
