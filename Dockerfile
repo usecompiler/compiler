@@ -1,5 +1,5 @@
 FROM node:20-alpine AS development-dependencies-env
-RUN apk add --no-cache git bash curl ripgrep \
+RUN apk add --no-cache git bash curl ripgrep openssh-client github-cli \
     && curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared \
     && chmod +x /usr/local/bin/cloudflared
 COPY . /app
