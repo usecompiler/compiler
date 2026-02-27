@@ -1,5 +1,6 @@
 services:
   app:
+    env_file: ../.env
     build:
       context: ..
       dockerfile: Dockerfile
@@ -12,7 +13,6 @@ services:
       - repos:/repos
     command: sleep infinity
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://compiler:compiler@db:5432/compiler
       - SHELL=/bin/bash
     depends_on:
