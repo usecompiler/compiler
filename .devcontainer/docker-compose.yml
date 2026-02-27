@@ -15,6 +15,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://compiler:compiler@db:5432/compiler
       - SHELL=/bin/bash
+      - APP_MODE=saas
     depends_on:
       db:
         condition: service_healthy
