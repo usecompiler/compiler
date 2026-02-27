@@ -1,6 +1,6 @@
 import type { Route } from "../+types/root";
 import { requestIdContext } from "./context.server";
-import "./startup.server";
+import { ready } from "./startup.server";
 
 export const staleAssetMiddleware: Route.MiddlewareFunction = async (
   { request },
@@ -19,6 +19,7 @@ export const loggingMiddleware: Route.MiddlewareFunction = async (
   { request, context },
   next
 ) => {
+  await ready;
   const requestId = crypto.randomUUID();
   context.set(requestIdContext, requestId);
 
