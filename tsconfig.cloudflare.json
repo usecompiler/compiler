@@ -6,7 +6,8 @@
     "app/**/.server/**/*",
     "app/**/.client/**/*",
     "workers/**/*",
-    "wrangler.jsonc"
+    "wrangler.jsonc",
+    "worker-configuration.d.ts"
   ],
   "exclude": ["node_modules", "repos"],
   "compilerOptions": {
