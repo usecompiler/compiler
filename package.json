@@ -6,7 +6,10 @@
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "typecheck": "npm run cf-typegen && react-router typegen && tsc -b",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "test": "vitest",
@@ -18,7 +21,6 @@
     "@ai-sdk/react": "^3.0.83",
     "@node-saml/node-saml": "^5.1.0",
     "@react-router/node": "7.13.0",
-    "@react-router/serve": "7.13.0",
     "@tailwindcss/typography": "^0.5.19",
     "ai": "^6.0.78",
     "bcrypt": "^6.0.0",
@@ -38,6 +40,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.13.7",
     "@react-router/dev": "7.13.0",
     "@tailwindcss/vite": "^4.1.13",
     "@types/bcrypt": "^6.0.0",
@@ -50,6 +53,7 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "wrangler": "^4.40.2"
   }
 }
