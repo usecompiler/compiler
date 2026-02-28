@@ -641,7 +641,7 @@ function AssistantMessageRow({ message, isStreaming, streamStartTime }: Assistan
     return () => clearInterval(interval);
   }, [isStreaming, streamStartTime]);
 
-  const segments = buildSegments(message.parts);
+  const segments = buildSegments(message.parts, isStreaming);
 
   const allText = segments
     .filter((s): s is { kind: "text"; text: string } => s.kind === "text")

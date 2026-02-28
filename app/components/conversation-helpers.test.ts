@@ -391,6 +391,17 @@ describe("buildSegments", () => {
       expect(segments.map((s) => s.kind)).toEqual(["tools", "qa", "tools"]);
     });
 
+    it("skips collapsing when isStreaming is true", () => {
+      const parts = [
+        textPart("Let me check."),
+        toolPart("read", "output-available"),
+        textPart("Now searching more."),
+        toolPart("grep", "input-available"),
+      ];
+      const segments = buildSegments(parts as UIMessage["parts"], true);
+      expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "text", "tools"]);
+    });
+
     it("positions qa after merged tools and preserves post-qa text", () => {
       const parts = [
         textPart("Let me ask you something."),

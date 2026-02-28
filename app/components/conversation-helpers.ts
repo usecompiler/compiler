@@ -112,7 +112,7 @@ export function buildDisplayItems(messages: UIMessage[], systemItems: Item[]): D
   return items;
 }
 
-export function buildSegments(parts: UIMessage["parts"]): Segment[] {
+export function buildSegments(parts: UIMessage["parts"], isStreaming = false): Segment[] {
   const raw: Segment[] = [];
   for (const part of parts) {
     if (part.type === "text") {
@@ -147,6 +147,10 @@ export function buildSegments(parts: UIMessage["parts"]): Segment[] {
         raw.push({ kind: "tools", tools: [part] });
       }
     }
+  }
+
+  if (isStreaming) {
+    return raw;
   }
 
   const segments: Segment[] = [];
