@@ -113,14 +113,14 @@ export function buildDisplayItems(messages: UIMessage[], systemItems: Item[]): D
 }
 
 export function buildSegments(parts: UIMessage["parts"]): Segment[] {
-  const segments: Segment[] = [];
+  const raw: Segment[] = [];
   for (const part of parts) {
     if (part.type === "text") {
-      const last = segments[segments.length - 1];
+      const last = raw[raw.length - 1];
       if (last && last.kind === "text") {
         last.text += "\n\n" + (part as { text: string }).text;
       } else {
-        segments.push({ kind: "text", text: (part as { text: string }).text });
+        raw.push({ kind: "text", text: (part as { text: string }).text });
       }
     } else if (part.type === "dynamic-tool" || (part.type as string).startsWith("tool-")) {
       const tp = part as { toolName?: string; type: string; state?: string; output?: string };
@@ -133,21 +133,52 @@ export function buildSegments(parts: UIMessage["parts"]): Segment[] {
               .filter(([, v]) => v)
               .map(([k, v]) => `Q: ${k}\nA: ${v}`);
             if (qaLines.length > 0) {
-              segments.push({ kind: "qa", text: qaLines.join("\n\n") });
+              raw.push({ kind: "qa", text: qaLines.join("\n\n") });
             }
           } catch {
-            // skip malformed output
           }
         }
         continue;
       }
-      const last = segments[segments.length - 1];
+      const last = raw[raw.length - 1];
       if (last && last.kind === "tools") {
         last.tools.push(part);
       } else {
-        segments.push({ kind: "tools", tools: [part] });
+        raw.push({ kind: "tools", tools: [part] });
       }
     }
   }
+
+  const segments: Segment[] = [];
+  let mergedTools: Array<UIMessage["parts"][number]> = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const seg = raw[i];
+
+    if (seg.kind === "tools") {
+      mergedTools.push(...seg.tools);
+      continue;
+    }
+
+    const nextNonText = raw.slice(i + 1).find((s) => s.kind !== "text");
+    const prevSeg = raw[i - 1];
+    const isAfterQa = prevSeg && prevSeg.kind === "qa";
+    const isBeforeTools = nextNonText && nextNonText.kind === "tools";
+
+    if (seg.kind === "text" && isBeforeTools && !isAfterQa) {
+      continue;
+    }
+
+    if (mergedTools.length > 0) {
+      segments.push({ kind: "tools", tools: mergedTools });
+      mergedTools = [];
+    }
+    segments.push(seg);
+  }
+
+  if (mergedTools.length > 0) {
+    segments.push({ kind: "tools", tools: mergedTools });
+  }
+
   return segments;
 }

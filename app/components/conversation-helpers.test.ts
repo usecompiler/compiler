@@ -232,14 +232,55 @@ describe("buildSegments", () => {
     }
   });
 
-  it("separates text and tool segments", () => {
+  it("drops intermediate text before tools and keeps final text", () => {
     const parts = [
       textPart("Before tools"),
       toolPart("read", "output-available"),
       textPart("After tools"),
     ];
     const segments = buildSegments(parts as UIMessage["parts"]);
-    expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "text"]);
+    expect(segments.map((s) => s.kind)).toEqual(["tools", "text"]);
+    expect(segments[1]).toMatchObject({ kind: "text", text: "After tools" });
+  });
+
+  it("merges multiple tool groups separated by intermediate text into one", () => {
+    const parts = [
+      textPart("Let me check."),
+      toolPart("read", "output-available"),
+      toolPart("glob", "output-available"),
+      textPart("Now searching more."),
+      toolPart("grep", "output-available"),
+      textPart("Let me verify."),
+      toolPart("bash", "output-available"),
+      textPart("Here is the answer."),
+    ];
+    const segments = buildSegments(parts as UIMessage["parts"]);
+    expect(segments.map((s) => s.kind)).toEqual(["tools", "text"]);
+    if (segments[0].kind === "tools") {
+      expect(segments[0].tools).toHaveLength(4);
+    }
+    expect(segments[1]).toMatchObject({ kind: "text", text: "Here is the answer." });
+  });
+
+  it("keeps text-only messages unchanged", () => {
+    const parts = [textPart("Just a plain response.")];
+    const segments = buildSegments(parts as UIMessage["parts"]);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ kind: "text", text: "Just a plain response." });
+  });
+
+  it("merges all tools when no final text exists yet", () => {
+    const parts = [
+      textPart("Checking..."),
+      toolPart("read", "output-available"),
+      textPart("More checking..."),
+      toolPart("grep", "input-available"),
+    ];
+    const segments = buildSegments(parts as UIMessage["parts"]);
+    expect(segments.map((s) => s.kind)).toEqual(["tools"]);
+    if (segments[0].kind === "tools") {
+      expect(segments[0].tools).toHaveLength(2);
+    }
   });
 
   describe("askUserQuestion handling", () => {
@@ -350,7 +391,7 @@ describe("buildSegments", () => {
       expect(segments.map((s) => s.kind)).toEqual(["tools", "qa", "tools"]);
     });
 
-    it("positions qa between pre-question text and continuation", () => {
+    it("positions qa after merged tools and preserves post-qa text", () => {
       const parts = [
         textPart("Let me ask you something."),
         toolPart("read", "output-available", "file data"),
@@ -363,10 +404,14 @@ describe("buildSegments", () => {
         toolPart("bash", "output-available", "ok"),
       ];
       const segments = buildSegments(parts as UIMessage["parts"]);
-      expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "qa", "text", "tools"]);
-      expect(segments[2]).toMatchObject({
+      expect(segments.map((s) => s.kind)).toEqual(["tools", "qa", "text", "tools"]);
+      expect(segments[1]).toMatchObject({
         kind: "qa",
         text: "Q: Approach\nA: Option A",
+      });
+      expect(segments[2]).toMatchObject({
+        kind: "text",
+        text: "Thanks, continuing with Option A.",
       });
     });
   });
