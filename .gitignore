@@ -2,6 +2,7 @@
 .env
 .env.local
 /node_modules/
+.claude/settings.local.json
 
 # React Router
 /.react-router/
