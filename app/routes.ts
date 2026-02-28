@@ -15,6 +15,11 @@ export default [
   // Deactivated user page (no layout)
   route("deactivated", "routes/deactivated.tsx"),
 
+  // New project wizard (standalone, no layout)
+  route("projects/new", "routes/projects.new.tsx"),
+  route("projects/new/:projectId/repos", "routes/projects.new.$projectId.repos.tsx"),
+  route("projects/new/:projectId/syncing", "routes/projects.new.$projectId.syncing.tsx"),
+
   // Onboarding routes (no layout)
   route("onboarding/ai-provider", "routes/onboarding.ai-provider.tsx"),
   route("onboarding/github-app", "routes/onboarding.github-app.tsx"),

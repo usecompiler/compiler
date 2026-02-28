@@ -470,9 +470,17 @@ export default function SettingsProjects() {
         )}
 
         <section>
-          <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
-            Create Project
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              Create Project
+            </h2>
+            <Link
+              to="/projects/new"
+              className="text-sm text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
+            >
+              New project wizard
+            </Link>
+          </div>
           <div className="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg p-6">
             <div className="flex gap-3">
               <input

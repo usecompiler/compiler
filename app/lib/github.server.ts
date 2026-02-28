@@ -40,16 +40,29 @@ export async function getGitHubAppConfig(
     .where(eq(githubAppConfigurations.organizationId, organizationId))
     .limit(1);
 
-  if (result.length === 0) return null;
+  if (result.length > 0) {
+    const config = result[0];
+    const privateKey = decrypt(config.encryptedPrivateKey, config.privateKeyIv);
+    return {
+      appId: config.appId,
+      appSlug: config.appSlug,
+      privateKey: privateKey.replace(/\\n/g, "\n"),
+    };
+  }
 
-  const config = result[0];
-  const privateKey = decrypt(config.encryptedPrivateKey, config.privateKeyIv);
+  const envAppId = process.env.GITHUB_APP_ID;
+  const envAppSlug = process.env.GITHUB_APP_SLUG;
+  const envPrivateKey = process.env.GITHUB_APP_PRIVATE_KEY;
 
-  return {
-    appId: config.appId,
-    appSlug: config.appSlug,
-    privateKey: privateKey.replace(/\\n/g, "\n"),
-  };
+  if (envAppId && envAppSlug && envPrivateKey) {
+    return {
+      appId: envAppId,
+      appSlug: envAppSlug,
+      privateKey: envPrivateKey.replace(/\\n/g, "\n"),
+    };
+  }
+
+  return null;
 }
 
 export async function saveGitHubAppConfig(

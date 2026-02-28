@@ -34,6 +34,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/settings/github?showAdd=true");
   }
 
+  const state = url.searchParams.get("state") || "";
+  const projectMatch = state.match(/^project:(.+)$/);
+  if (projectMatch) {
+    return redirect(`/projects/new/${projectMatch[1]}/repos`);
+  }
+
   return redirect("/onboarding/repos");
 }
 

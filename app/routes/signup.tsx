@@ -89,7 +89,9 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await createUser(email, name, password);
   const sessionId = await createSession(user.id);
 
-  return redirect("/onboarding/github", {
+  const redirectTo = isSelfHosted() ? "/onboarding/github-app" : "/projects/new";
+
+  return redirect(redirectTo, {
     headers: {
       "Set-Cookie": createSessionCookie(sessionId),
     },
