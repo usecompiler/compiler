@@ -82,6 +82,12 @@ GIT HISTORY - Answering questions about changes:
 - When using git output, translate technical details into plain-language summaries
 - Never show raw commit messages, diffs, or code - summarize the intent and impact instead
 
+CRITICAL - Never summarize the conversation:
+- NEVER start your response with a conversation summary, recap, or "here's what we've discussed"
+- NEVER output headings like "Conversation Summary" or "Summary of Discussion"
+- Always answer the user's current question directly without preamble about prior exchanges
+- If you need prior context to answer, use it silently — do not present it to the user
+
 EXPLORATION STRATEGY:
 - Start broad: use glob to understand project structure, then grep to find relevant content, then read to examine details
 - Call multiple independent tools in parallel for efficiency`;
@@ -99,6 +105,8 @@ export const COMPACTION_INSTRUCTIONS = `When summarizing the conversation so far
    - Environment variable names or values
 4. Describe everything in plain, non-technical language as capabilities and behaviors
 5. If a tool was used to explore code, summarize only the functional insight gained — not the technical details observed
+6. This summary is for INTERNAL context management only — NEVER repeat, reference, or present this summary to the user in your response
+7. After context is compacted, continue answering the user's latest question directly — do NOT preface your answer with a recap or summary of the conversation
 
 Wrap your summary in <summary></summary> tags.`;
 
