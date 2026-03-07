@@ -17,6 +17,7 @@ import {
   saveModelConfig,
   getToolConfig,
   saveToolConfig,
+  clearModelCache,
   OPTIONAL_TOOLS as SERVER_OPTIONAL_TOOLS,
 } from "~/lib/models.server";
 
@@ -179,6 +180,7 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
+  clearModelCache();
   const providerLabel = provider === "anthropic" ? "Anthropic" : "AWS Bedrock";
   await logAuditEvent(user.organization.id, user.id, `updated AI provider to ${providerLabel}`);
   return { error: null, success: true, intent: "save-provider" };

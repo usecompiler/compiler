@@ -23,11 +23,30 @@ interface ModelCache {
 let modelCache: ModelCache | null = null;
 const CACHE_TTL = 60 * 60 * 1000;
 
+export function clearModelCache() {
+  modelCache = null;
+}
+
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
-    id: "claude-sonnet-4-6-20260217",
+    id: "claude-sonnet-4-6",
     displayName: "Claude Sonnet 4.6",
     createdAt: "2026-02-17T00:00:00Z",
+  },
+  {
+    id: "claude-opus-4-6",
+    displayName: "Claude Opus 4.6",
+    createdAt: "2026-02-04T00:00:00Z",
+  },
+  {
+    id: "claude-opus-4-5-20251101",
+    displayName: "Claude Opus 4.5",
+    createdAt: "2025-11-24T00:00:00Z",
+  },
+  {
+    id: "claude-haiku-4-5-20251001",
+    displayName: "Claude Haiku 4.5",
+    createdAt: "2025-10-15T00:00:00Z",
   },
   {
     id: "claude-sonnet-4-5-20250929",
@@ -35,29 +54,24 @@ const FALLBACK_MODELS: ClaudeModel[] = [
     createdAt: "2025-09-29T00:00:00Z",
   },
   {
-    id: "claude-opus-4-5-20251101",
-    displayName: "Claude Opus 4.5",
-    createdAt: "2025-11-01T00:00:00Z",
+    id: "claude-opus-4-1-20250805",
+    displayName: "Claude Opus 4.1",
+    createdAt: "2025-08-05T00:00:00Z",
   },
   {
-    id: "claude-haiku-4-5-20251001",
-    displayName: "Claude Haiku 4.5",
-    createdAt: "2025-10-01T00:00:00Z",
+    id: "claude-opus-4-20250514",
+    displayName: "Claude Opus 4",
+    createdAt: "2025-05-22T00:00:00Z",
   },
   {
-    id: "claude-sonnet-4-6-20260217",
+    id: "claude-sonnet-4-20250514",
     displayName: "Claude Sonnet 4",
-    createdAt: "2025-05-14T00:00:00Z",
+    createdAt: "2025-05-22T00:00:00Z",
   },
   {
-    id: "claude-3-7-sonnet-20250219",
-    displayName: "Claude 3.7 Sonnet",
-    createdAt: "2025-02-19T00:00:00Z",
-  },
-  {
-    id: "claude-3-5-sonnet-20241022",
-    displayName: "Claude 3.5 Sonnet v2",
-    createdAt: "2024-10-22T00:00:00Z",
+    id: "claude-3-haiku-20240307",
+    displayName: "Claude Haiku 3",
+    createdAt: "2024-03-07T00:00:00Z",
   },
 ];
 
