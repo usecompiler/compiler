@@ -136,6 +136,7 @@ export async function saveAIProviderConfig(
       ...values,
     });
   }
+
 }
 
 export async function savePromptCachingConfig(
@@ -160,25 +161,18 @@ export async function saveCompactionConfig(
 
 export async function validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
+    const response = await fetch("https://api.anthropic.com/v1/models", {
       headers: {
-        "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6-20260217",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      }),
     });
 
     if (response.status === 401) {
       return { valid: false, error: "Invalid API key" };
     }
 
-    if (response.status === 400 || response.status === 200) {
+    if (response.status === 200) {
       return { valid: true };
     }
 

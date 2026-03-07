@@ -9,6 +9,7 @@ import {
   validateBedrockCredentials,
   type AIProvider,
 } from "~/lib/ai-provider.server";
+import { clearModelCache } from "~/lib/models.server";
 import { getGitHubAppConfig, getInstallation } from "~/lib/github.server";
 import { db } from "~/lib/db/index.server";
 import { repositories } from "~/lib/db/schema";
@@ -103,6 +104,7 @@ export async function action({ request }: Route.ActionArgs) {
     });
   }
 
+  clearModelCache();
   return redirect("/onboarding/project");
 }
 
