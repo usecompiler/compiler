@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, stepCountIs, smoothStream, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStreamResponse, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -232,8 +232,14 @@ export async function action({ request }: Route.ActionArgs) {
             contextManagement: {
               edits: [
                 {
+                  type: "clear_tool_uses_20250919",
+                  trigger: { type: "input_tokens", value: 30000 },
+                  keep: { type: "tool_uses", value: 5 },
+                  clearToolInputs: true,
+                },
+                {
                   type: "compact_20260112",
-                  trigger: { type: "input_tokens", value: 80000 },
+                  trigger: { type: "input_tokens", value: 100000 },
                   instructions: compactionInstructions,
                 },
               ],
@@ -328,7 +334,9 @@ export async function action({ request }: Route.ActionArgs) {
     },
   });
 
-  const response = result.toUIMessageStreamResponse({
+  const compactionBlockIds = new Set<string>();
+
+  const uiStream = result.toUIMessageStream({
     originalMessages: uiMessages,
     onFinish: async ({ responseMessage: assistantMessage }) => {
       try {
@@ -346,6 +354,8 @@ export async function action({ request }: Route.ActionArgs) {
         > = [];
         for (const part of assistantMessage.parts) {
           if (part.type === "text") {
+            const meta = (part as { providerMetadata?: { anthropic?: { type?: string } } }).providerMetadata;
+            if (meta?.anthropic?.type === "compaction") continue;
             parts.push({ type: "text", text: (part as { text: string }).text });
           } else if (part.type === "step-start") {
             parts.push({ type: "step-start" });
@@ -387,6 +397,34 @@ export async function action({ request }: Route.ActionArgs) {
       }
     },
   });
+
+  const filteredStream = uiStream.pipeThrough(
+    new TransformStream({
+      transform(chunk, controller) {
+        if (chunk.type === "text-start") {
+          const meta = (chunk as { providerMetadata?: { anthropic?: { type?: string } } }).providerMetadata;
+          if (meta?.anthropic?.type === "compaction") {
+            compactionBlockIds.add((chunk as { id: string }).id);
+            return;
+          }
+        }
+
+        if (chunk.type === "text-delta" || chunk.type === "text-end") {
+          const id = (chunk as { id?: string }).id;
+          if (id && compactionBlockIds.has(id)) {
+            if (chunk.type === "text-end") {
+              compactionBlockIds.delete(id);
+            }
+            return;
+          }
+        }
+
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+
+  const response = createUIMessageStreamResponse({ stream: filteredStream });
 
   Promise.resolve(result.consumeStream()).catch((err) => {
     console.error(`[agent] Stream error for conversation=${conversationId}:`, err);

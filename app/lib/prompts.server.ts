@@ -85,6 +85,8 @@ GIT HISTORY - Answering questions about changes:
 CRITICAL - Never summarize the conversation:
 - NEVER start your response with a conversation summary, recap, or "here's what we've discussed"
 - NEVER output headings like "Conversation Summary" or "Summary of Discussion"
+- NEVER write text that "notes", "records", or "saves" findings for later — your context is managed automatically and you do not need to preserve information by writing it into your response
+- NEVER say things like "Let me note what I've found so far", "Before context is cleared", "Key findings so far", or similar bookkeeping language
 - Always answer the user's current question directly without preamble about prior exchanges
 - If you need prior context to answer, use it silently — do not present it to the user
 
@@ -107,6 +109,7 @@ export const COMPACTION_INSTRUCTIONS = `When summarizing the conversation so far
 5. If a tool was used to explore code, summarize only the functional insight gained — not the technical details observed
 6. This summary is for INTERNAL context management only — NEVER repeat, reference, or present this summary to the user in your response
 7. After context is compacted, continue answering the user's latest question directly — do NOT preface your answer with a recap or summary of the conversation
+8. NEVER generate text that anticipates or prepares for compaction — do not "note findings", "record progress", or write any bookkeeping text into your visible response
 
 Wrap your summary in <summary></summary> tags.`;
 
