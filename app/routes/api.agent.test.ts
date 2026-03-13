@@ -20,11 +20,15 @@ vi.mock("~/lib/storage.server", () => ({
 
 const mockStreamText = vi.fn();
 const mockConvertToModelMessages = vi.fn().mockResolvedValue([]);
+const mockCreateUIMessageStreamResponse = vi.fn().mockImplementation(() =>
+  new Response("data: test\n\n", { headers: { "Content-Type": "text/event-stream" } })
+);
 vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
   smoothStream: () => "mock-smooth-stream",
+  createUIMessageStreamResponse: (...args: unknown[]) => mockCreateUIMessageStreamResponse(...args),
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -57,12 +61,8 @@ function validBody() {
 }
 
 function setupMockStreamText() {
-  const mockResponse = new Response("data: test\n\n", {
-    headers: { "Content-Type": "text/event-stream" },
-  });
-
   mockStreamText.mockReturnValue({
-    toUIMessageStreamResponse: vi.fn().mockReturnValue(mockResponse),
+    toUIMessageStream: vi.fn().mockReturnValue(new ReadableStream()),
     consumeStream: vi.fn().mockResolvedValue(undefined),
   });
 }
@@ -241,7 +241,7 @@ describe("api.agent action", () => {
       );
     });
 
-    it("calls toUIMessageStreamResponse on the result", async () => {
+    it("calls toUIMessageStream on the result", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -252,7 +252,7 @@ describe("api.agent action", () => {
 
       expect(response).toBeInstanceOf(Response);
       const result = mockStreamText.mock.results[0].value;
-      expect(result.toUIMessageStreamResponse).toHaveBeenCalled();
+      expect(result.toUIMessageStream).toHaveBeenCalled();
     });
 
     it("calls consumeStream for guaranteed persistence", async () => {
@@ -293,7 +293,7 @@ describe("api.agent action", () => {
   });
 
   describe("onFinish persistence callback", () => {
-    it("passes onFinish to toUIMessageStreamResponse", async () => {
+    it("passes onFinish to toUIMessageStream", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -303,7 +303,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       expect(callArgs).toHaveProperty("onFinish");
       expect(typeof callArgs.onFinish).toBe("function");
     });
@@ -318,7 +318,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: {
           parts: [
@@ -350,7 +350,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: {
           parts: [
@@ -383,7 +383,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: {
           parts: [
@@ -412,7 +412,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: {
           parts: [
@@ -440,7 +440,7 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: { parts: [{ type: "text", text: "Done." }] },
       });
@@ -840,8 +840,15 @@ describe("api.agent action", () => {
           contextManagement: {
             edits: [
               {
+                type: "clear_tool_uses_20250919",
+                trigger: { type: "input_tokens", value: 30000 },
+                keep: { type: "tool_uses", value: 5 },
+                clearToolInputs: true,
+              },
+              {
                 type: "compact_20260112",
-                trigger: { type: "input_tokens", value: 80000 },
+                trigger: { type: "input_tokens", value: 100000 },
+                instructions: undefined,
               },
             ],
           },
@@ -892,8 +899,15 @@ describe("api.agent action", () => {
           contextManagement: {
             edits: [
               {
+                type: "clear_tool_uses_20250919",
+                trigger: { type: "input_tokens", value: 30000 },
+                keep: { type: "tool_uses", value: 5 },
+                clearToolInputs: true,
+              },
+              {
                 type: "compact_20260112",
-                trigger: { type: "input_tokens", value: 80000 },
+                trigger: { type: "input_tokens", value: 100000 },
+                instructions: undefined,
               },
             ],
           },
@@ -924,7 +938,7 @@ describe("api.agent action", () => {
       });
 
       const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStreamResponse.mock.calls[0][0];
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
       await callArgs.onFinish({
         responseMessage: { parts: [{ type: "text", text: "Done." }] },
       });
