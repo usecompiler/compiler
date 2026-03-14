@@ -841,13 +841,13 @@ describe("api.agent action", () => {
             edits: [
               {
                 type: "clear_tool_uses_20250919",
-                trigger: { type: "input_tokens", value: 30000 },
+                trigger: { type: "input_tokens", value: 100000 },
                 keep: { type: "tool_uses", value: 5 },
                 clearToolInputs: true,
               },
               {
                 type: "compact_20260112",
-                trigger: { type: "input_tokens", value: 100000 },
+                trigger: { type: "input_tokens", value: 350000 },
                 instructions: undefined,
               },
             ],
@@ -900,13 +900,13 @@ describe("api.agent action", () => {
             edits: [
               {
                 type: "clear_tool_uses_20250919",
-                trigger: { type: "input_tokens", value: 30000 },
+                trigger: { type: "input_tokens", value: 100000 },
                 keep: { type: "tool_uses", value: 5 },
                 clearToolInputs: true,
               },
               {
                 type: "compact_20260112",
-                trigger: { type: "input_tokens", value: 100000 },
+                trigger: { type: "input_tokens", value: 350000 },
                 instructions: undefined,
               },
             ],
