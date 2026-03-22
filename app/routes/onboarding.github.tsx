@@ -14,6 +14,7 @@ import { db } from "~/lib/db/index.server";
 import { repositories, organizations } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { clonePublicRepository } from "~/lib/clone.server";
+import { isSaas } from "~/lib/appMode.server";
 
 const PUBLIC_REPOS = [
   { fullName: "basecamp/fizzy", name: "fizzy", cloneUrl: "https://github.com/basecamp/fizzy.git" },
@@ -44,6 +45,9 @@ export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData 
 
   const appConfig = await getGitHubAppConfig(user.organization.id);
   if (!appConfig) {
+    if (isSaas()) {
+      return redirect("/");
+    }
     return redirect("/onboarding/github-app");
   }
 

@@ -15,6 +15,7 @@ import {
 } from "~/lib/github.server";
 import { canManageOrganization } from "~/lib/permissions.server";
 import { logAuditEvent } from "~/lib/audit.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -64,6 +65,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     githubConfigureUrl,
     githubInstallUrl,
     appConfig: appConfig ? { appId: appConfig.appId, appSlug: appConfig.appSlug } : null,
+    isSharedApp: isSaas(),
   };
 }
 
@@ -115,7 +117,7 @@ export async function action({ request }: Route.ActionArgs) {
 export default function GitHubSettings({
   loaderData,
 }: Route.ComponentProps) {
-  const { accessibleReposPromise, hasGitHubConnection, githubConfigureUrl, githubInstallUrl, appConfig } =
+  const { accessibleReposPromise, hasGitHubConnection, githubConfigureUrl, githubInstallUrl, appConfig, isSharedApp } =
     loaderData;
   const actionData = useActionData<typeof action>();
   const [showEditConfig, setShowEditConfig] = useState(!appConfig);
@@ -207,6 +209,7 @@ export default function GitHubSettings({
       </div>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        {!isSharedApp && (
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
@@ -306,6 +309,7 @@ export default function GitHubSettings({
             </div>
           ) : null}
         </section>
+        )}
 
         <section>
           <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">

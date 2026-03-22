@@ -3,6 +3,7 @@ import { db } from "./db/index.server";
 import { githubInstallations, githubAppConfigurations } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { encrypt, decrypt } from "./encryption.server";
+import { isSaas } from "./appMode.server";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -31,9 +32,23 @@ export interface GitHubAppConfig {
   privateKey: string;
 }
 
+function getSharedGitHubAppConfig(): GitHubAppConfig | null {
+  const appId = process.env.GITHUB_APP_ID;
+  const appSlug = process.env.GITHUB_APP_SLUG;
+  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
+
+  if (!appId || !appSlug || !privateKey) return null;
+
+  return { appId, appSlug, privateKey: privateKey.replace(/\\n/g, "\n") };
+}
+
 export async function getGitHubAppConfig(
   organizationId: string
 ): Promise<GitHubAppConfig | null> {
+  if (isSaas()) {
+    return getSharedGitHubAppConfig();
+  }
+
   const result = await db
     .select()
     .from(githubAppConfigurations)

@@ -8,6 +8,7 @@ import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/mod
 import { getStorageConfigPublic } from "~/lib/storage.server";
 import { repoExists, triggerRepoSync } from "~/lib/clone.server";
 import { getProjects, getProjectRepos, type ProjectMeta } from "~/lib/projects.server";
+import { isSaas } from "~/lib/appMode.server";
 
 function getModelDisplayName(id: string): string {
   return getDisplayName(id);
@@ -28,7 +29,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const canManageOrg = canManageOrganization(user.membership?.role);
 
   if (user.organization && !user.organization.onboardingCompleted && isOwner) {
-    throw redirect("/onboarding/github-app");
+    throw redirect(isSaas() ? "/onboarding/github" : "/onboarding/github-app");
   }
 
   const url = new URL(request.url);
