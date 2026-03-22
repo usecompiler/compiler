@@ -6,9 +6,14 @@ import {
   saveGitHubAppConfig,
   validateGitHubAppConfig,
 } from "~/lib/github.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
+
+  if (isSaas()) {
+    return redirect("/onboarding/github");
+  }
 
   if (!user.organization) {
     return redirect("/");

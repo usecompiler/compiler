@@ -26,6 +26,9 @@ env:
   secret:
     - DATABASE_URL
     - TOKEN_ENCRYPTION_KEY
+    - GITHUB_APP_ID
+    - GITHUB_APP_SLUG
+    - GITHUB_APP_PRIVATE_KEY
 
 builder:
   arch: arm64

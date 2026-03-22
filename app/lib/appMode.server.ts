@@ -12,6 +12,10 @@ export function isSelfHosted(): boolean {
   return getAppMode() === "self-hosted";
 }
 
+export function isSaas(): boolean {
+  return getAppMode() === "saas";
+}
+
 export async function isSetupComplete(): Promise<boolean> {
   const result = await db
     .select({ id: members.id })
