@@ -39,7 +39,7 @@ function getSharedGitHubAppConfig(): GitHubAppConfig | null {
 
   if (!appId || !appSlug || !privateKey) return null;
 
-  return { appId, appSlug, privateKey: privateKey.replace(/\\n/g, "\n") };
+  return { appId, appSlug, privateKey: privateKey.replace(/\\+n/g, "\n") };
 }
 
 export async function getGitHubAppConfig(
