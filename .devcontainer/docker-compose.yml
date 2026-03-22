@@ -11,6 +11,7 @@ services:
       - ..:/app:cached
       - /app/node_modules
       - repos:/repos
+      - /var/run/docker.sock:/var/run/docker.sock
     command: sleep infinity
     environment:
       - DATABASE_URL=postgresql://compiler:compiler@db:5432/compiler

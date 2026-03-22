@@ -4,6 +4,9 @@
 /node_modules/
 .claude/settings.local.json
 
+# Kamal
+.kamal/secrets-*
+
 # React Router
 /.react-router/
 /build/
