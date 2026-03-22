@@ -1,0 +1,36 @@
+service: compiler
+image: ghcr.io/usecompiler/compiler
+
+ssh:
+  user: ubuntu
+
+proxy:
+  ssl: true
+  forward_headers: true
+  app_port: 3000
+  healthcheck:
+    path: /up
+    interval: 3
+    timeout: 30
+
+registry:
+  server: ghcr.io
+  username:
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+env:
+  clear:
+    APP_MODE: saas
+  secret:
+    - DATABASE_URL
+    - TOKEN_ENCRYPTION_KEY
+
+builder:
+  arch: arm64
+  dockerfile: Dockerfile
+  context: ..
+
+volumes:
+  - /data/compiler/repos:/repos

@@ -1,0 +1,13 @@
+servers:
+  web:
+    hosts:
+      - 34.236.250.90
+
+proxy:
+  hosts:
+    - app.usecompiler.com
+    - www.app.usecompiler.com
+
+env:
+  clear:
+    PUBLIC_URL: https://usecompiler.com
