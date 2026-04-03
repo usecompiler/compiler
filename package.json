@@ -16,6 +16,7 @@
     "@ai-sdk/amazon-bedrock": "^4.0.63",
     "@ai-sdk/anthropic": "^3.0.41",
     "@ai-sdk/react": "^3.0.83",
+    "@e2b/code-interpreter": "^2.3.3",
     "@node-saml/node-saml": "^5.1.0",
     "@react-router/node": "7.13.0",
     "@react-router/serve": "7.13.0",

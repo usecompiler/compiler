@@ -27,6 +27,8 @@ export function clearModelCache() {
   modelCache = null;
 }
 
+export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
+
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
     id: "claude-sonnet-4-6",
@@ -288,9 +290,9 @@ export async function getModelConfig(
 
   return {
     availableModels: (result[0].availableModels as string[]) || [
-      "claude-sonnet-4-6-20260217",
+      DEFAULT_MODEL_ID,
     ],
-    defaultModel: result[0].defaultModel || "claude-sonnet-4-6-20260217",
+    defaultModel: result[0].defaultModel || DEFAULT_MODEL_ID,
   };
 }
 
@@ -343,16 +345,16 @@ export async function getEffectiveModel(
     const config = await getAIProviderConfig(organizationId);
     if (config?.provider === "bedrock") {
       const models = await getAvailableClaudeModels(organizationId);
-      return models[0]?.id || "claude-sonnet-4-6-20260217";
+      return models[0]?.id || DEFAULT_MODEL_ID;
     }
-    return "claude-sonnet-4-6-20260217";
+    return DEFAULT_MODEL_ID;
   }
 
   if (userPreferred && modelConfig.availableModels.includes(userPreferred)) {
     return userPreferred;
   }
 
-  return modelConfig.defaultModel || "claude-sonnet-4-6-20260217";
+  return modelConfig.defaultModel || DEFAULT_MODEL_ID;
 }
 
 export function getDisplayName(modelId: string): string {

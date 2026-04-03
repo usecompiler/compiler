@@ -19,6 +19,7 @@ import {
 import { eq } from "drizzle-orm";
 import { cloneRepository } from "~/lib/clone.server";
 import { addRepoToProject } from "~/lib/projects.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -35,9 +36,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/");
   }
 
-  const aiConfig = await getAIProviderConfig(user.organization.id);
-  if (!aiConfig) {
-    return redirect("/onboarding/ai-provider");
+  if (!isSaas()) {
+    const aiConfig = await getAIProviderConfig(user.organization.id);
+    if (!aiConfig) {
+      return redirect("/onboarding/ai-provider");
+    }
   }
 
   const installation = await getInstallation(user.organization.id);
@@ -114,18 +117,20 @@ export async function action({ request }: Route.ActionArgs) {
         cloneStatus: "pending",
       });
 
-      await addRepoToProject(projectId, repoId);
-      cloneRepository(
-        user.organization.id,
-        repoId,
-        repo.name,
-        repo.cloneUrl
-      ).catch(console.error);
+      await addRepoToProject(projectId, repoId, user.organization.id);
+      if (!isSaas()) {
+        cloneRepository(
+          user.organization.id,
+          repoId,
+          repo.name,
+          repo.cloneUrl
+        ).catch(console.error);
+      }
     }
   }
 
   for (const repoId of existingRepoIds) {
-    await addRepoToProject(projectId, repoId);
+    await addRepoToProject(projectId, repoId, user.organization.id);
   }
 
   await db
@@ -133,13 +138,21 @@ export async function action({ request }: Route.ActionArgs) {
     .set({ onboardingCompleted: true })
     .where(eq(organizations.id, user.organization.id));
 
+  if (isSaas()) {
+    return redirect("/");
+  }
+
   return redirect("/onboarding/syncing");
 }
 
 export default function OnboardingProject({ loaderData }: Route.ComponentProps) {
   const { availableRepos, existingRepos, hasInstallation } = loaderData;
   const fetcher = useFetcher();
-  const [projectName, setProjectName] = useState("Default");
+  const totalRepos = availableRepos.length + existingRepos.length;
+  const defaultName = totalRepos === 1
+    ? (availableRepos[0]?.name ?? existingRepos[0]?.name ?? "Default")
+    : "Default";
+  const [projectName, setProjectName] = useState(defaultName);
   const [selectedNewRepos, setSelectedNewRepos] = useState<Set<number>>(new Set());
   const [selectedExistingRepos, setSelectedExistingRepos] = useState<Set<string>>(
     new Set(existingRepos.map((r: { id: string }) => r.id))

@@ -44,8 +44,9 @@ export function createMockDb(): MockDb {
     const result = idx < selectResults.length ? selectResults[idx] : selectResults[selectResults.length - 1];
     const promise = Promise.resolve(result);
     const orderByFn = vi.fn(() => promise);
+    const limitFn = vi.fn(() => promise);
     const groupByFn = vi.fn(() => Object.assign(Promise.resolve(result), { orderBy: orderByFn }));
-    return Object.assign(promise, { groupBy: groupByFn, orderBy: orderByFn });
+    return Object.assign(promise, { groupBy: groupByFn, orderBy: orderByFn, limit: limitFn });
   });
 
   const innerJoinFn = vi.fn();

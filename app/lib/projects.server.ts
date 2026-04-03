@@ -91,36 +91,54 @@ export async function createProject(
 
 export async function updateProject(
   projectId: string,
+  organizationId: string,
   name: string
 ): Promise<void> {
   await db
     .update(projects)
     .set({ name, updatedAt: new Date() })
-    .where(eq(projects.id, projectId));
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
 }
 
-export async function deleteProject(projectId: string): Promise<{
+export async function deleteProject(
+  projectId: string,
+  organizationId: string
+): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const project = await getProject(projectId);
-  if (!project) {
+  const orgProjects = await getProjects(organizationId);
+
+  if (!orgProjects.some((p) => p.id === projectId)) {
     return { success: false, error: "Project not found" };
   }
 
-  const orgProjects = await getProjects(project.organizationId);
   if (orgProjects.length <= 1) {
     return { success: false, error: "Cannot delete the last project" };
   }
 
-  await db.delete(projects).where(eq(projects.id, projectId));
+  await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
   return { success: true };
 }
 
 export async function addRepoToProject(
   projectId: string,
-  repositoryId: string
+  repositoryId: string,
+  organizationId: string
 ): Promise<void> {
+  const [proj, repo] = await Promise.all([
+    db.select({ id: projects.id }).from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+      .limit(1),
+    db.select({ id: repositories.id }).from(repositories)
+      .where(and(eq(repositories.id, repositoryId), eq(repositories.organizationId, organizationId)))
+      .limit(1),
+  ]);
+
+  if (!proj[0] || !repo[0]) {
+    throw new Error("Project or repository not found");
+  }
+
   await db
     .insert(projectRepositories)
     .values({
@@ -133,8 +151,22 @@ export async function addRepoToProject(
 
 export async function removeRepoFromProject(
   projectId: string,
-  repositoryId: string
+  repositoryId: string,
+  organizationId: string
 ): Promise<void> {
+  const [proj, repo] = await Promise.all([
+    db.select({ id: projects.id }).from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+      .limit(1),
+    db.select({ id: repositories.id }).from(repositories)
+      .where(and(eq(repositories.id, repositoryId), eq(repositories.organizationId, organizationId)))
+      .limit(1),
+  ]);
+
+  if (!proj[0] || !repo[0]) {
+    throw new Error("Project or repository not found");
+  }
+
   await db
     .delete(projectRepositories)
     .where(
@@ -145,7 +177,7 @@ export async function removeRepoFromProject(
     );
 }
 
-export async function getProjectRepos(projectId: string) {
+export async function getProjectRepos(projectId: string, organizationId: string) {
   return db
     .select({
       id: repositories.id,
@@ -160,7 +192,11 @@ export async function getProjectRepos(projectId: string) {
       repositories,
       eq(projectRepositories.repositoryId, repositories.id)
     )
-    .where(eq(projectRepositories.projectId, projectId))
+    .innerJoin(
+      projects,
+      eq(projectRepositories.projectId, projects.id)
+    )
+    .where(and(eq(projectRepositories.projectId, projectId), eq(projects.organizationId, organizationId)))
     .orderBy(asc(repositories.name));
 }
 

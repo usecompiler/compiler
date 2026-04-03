@@ -3,6 +3,7 @@ import { db } from "./db/index.server";
 import { aiProviderConfigurations } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { encrypt, decrypt } from "./encryption.server";
+import { isSaas } from "./appMode.server";
 
 export type AIProvider = "anthropic" | "bedrock";
 
@@ -25,7 +26,17 @@ export async function getAIProviderConfig(
     .where(eq(aiProviderConfigurations.organizationId, organizationId))
     .limit(1);
 
-  if (result.length === 0) return null;
+  if (result.length === 0) {
+    if (isSaas() && process.env.ANTHROPIC_API_KEY) {
+      return {
+        provider: "anthropic",
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+        promptCachingEnabled: true,
+        compactionEnabled: true,
+      };
+    }
+    return null;
+  }
 
   const config = result[0];
 

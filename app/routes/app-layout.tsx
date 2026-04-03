@@ -4,7 +4,7 @@ import { requireActiveAuth, type Organization, type Membership } from "~/lib/aut
 import { getConversations, getConversationProjectId, getMostRecentProjectId, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
-import { getModelConfig, getUserPreferredModel, getDisplayName } from "~/lib/models.server";
+import { getModelConfig, getUserPreferredModel, getDisplayName, DEFAULT_MODEL_ID } from "~/lib/models.server";
 import { getStorageConfigPublic } from "~/lib/storage.server";
 import { repoExists, triggerRepoSync } from "~/lib/clone.server";
 import { getProjects, getProjectRepos, type ProjectMeta } from "~/lib/projects.server";
@@ -40,7 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let conversations: ConversationMeta[] = [];
   let hasMore = false;
   let availableModels: { id: string; displayName: string }[] = [];
-  let defaultModel = "claude-sonnet-4-6-20260217";
+  let defaultModel = DEFAULT_MODEL_ID;
   let userPreferredModel: string | null = null;
   let hasStorageConfig = false;
   let repoSyncStatus: { repos: { name: string; fullName: string; status: string }[]; allReady: boolean; hasRepos: boolean } = {
@@ -73,22 +73,34 @@ export async function loader({ request }: Route.LoaderArgs) {
       projectsList.find((p) => p.id === resolvedProjectId) || projectsList[0] || null;
 
     const projectRepos = activeProject
-      ? await getProjectRepos(activeProject.id)
+      ? await getProjectRepos(activeProject.id, user.organization.id)
       : [];
 
-    const repoStatuses = projectRepos.map((repo) => {
-      const onDisk = repoExists(user.organization!.id, repo.name);
-      const status = repo.cloneStatus === "completed" && !onDisk ? "pending" : repo.cloneStatus;
-      return { name: repo.name, fullName: repo.fullName, status };
-    });
+    if (isSaas()) {
+      repoSyncStatus = {
+        repos: projectRepos.map((repo) => ({
+          name: repo.name,
+          fullName: repo.fullName,
+          status: "completed",
+        })),
+        allReady: true,
+        hasRepos: projectRepos.length > 0,
+      };
+    } else {
+      const repoStatuses = projectRepos.map((repo) => {
+        const onDisk = repoExists(user.organization!.id, repo.name);
+        const status = repo.cloneStatus === "completed" && !onDisk ? "pending" : repo.cloneStatus;
+        return { name: repo.name, fullName: repo.fullName, status };
+      });
 
-    repoSyncStatus = {
-      repos: repoStatuses,
-      allReady: repoStatuses.length > 0 && repoStatuses.every((r) => r.status === "completed"),
-      hasRepos: repoStatuses.length > 0,
-    };
+      repoSyncStatus = {
+        repos: repoStatuses,
+        allReady: repoStatuses.length > 0 && repoStatuses.every((r) => r.status === "completed"),
+        hasRepos: repoStatuses.length > 0,
+      };
 
-    triggerRepoSync(user.organization.id);
+      triggerRepoSync(user.organization.id);
+    }
 
     const storageConfig = await getStorageConfigPublic(user.organization.id);
     hasStorageConfig = storageConfig !== null;

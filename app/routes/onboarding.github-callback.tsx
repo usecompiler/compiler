@@ -2,6 +2,7 @@ import { redirect } from "react-router";
 import type { Route } from "./+types/onboarding.github-callback";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { getInstallationAccessToken, saveInstallation } from "~/lib/github.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -34,7 +35,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return redirect("/settings/github?showAdd=true");
   }
 
-  return redirect("/onboarding/repos");
+  return redirect(isSaas() ? "/onboarding/project" : "/onboarding/repos");
 }
 
 export default function OnboardingGithubCallback() {

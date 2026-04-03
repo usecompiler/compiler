@@ -18,9 +18,9 @@ export const readParameters = z.object({
   limit: z.number().optional().describe("Number of lines to read (default 2000)"),
 });
 
-const MAX_OUTPUT_BYTES = 50 * 1024;
-const MAX_LINE_CHARS = 2000;
-const DEFAULT_LIMIT = 2000;
+export const MAX_OUTPUT_BYTES = 50 * 1024;
+export const MAX_LINE_CHARS = 2000;
+export const DEFAULT_LIMIT = 2000;
 
 function isBinaryBuffer(buf: Buffer): boolean {
   const sampleSize = Math.min(buf.length, 8192);

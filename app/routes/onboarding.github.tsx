@@ -51,9 +51,15 @@ export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData 
     return redirect("/onboarding/github-app");
   }
 
+  const nextStep = isSaas() ? "/onboarding/project" : "/onboarding/ai-provider";
+
   const installation = await getInstallation(user.organization.id);
   if (installation) {
-    return redirect("/onboarding/ai-provider");
+    return redirect(nextStep);
+  }
+
+  if (isSaas()) {
+    return { status: "no_installation", appSlug: appConfig.appSlug, orgId: user.organization.id };
   }
 
   try {
@@ -85,6 +91,10 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent") as string;
 
   if (intent === "link_installation") {
+    if (isSaas()) {
+      return { error: "Use the GitHub App install flow" };
+    }
+
     const installationId = formData.get("installationId") as string;
 
     if (!installationId) {
@@ -127,11 +137,13 @@ export async function action({ request }: Route.ActionArgs) {
     cloneStatus: "pending",
   });
 
-  clonePublicRepository(user.organization.id, repoId, repo.name, repo.cloneUrl).catch(
-    console.error
-  );
+  if (!isSaas()) {
+    clonePublicRepository(user.organization.id, repoId, repo.name, repo.cloneUrl).catch(
+      console.error
+    );
+  }
 
-  return redirect("/onboarding/ai-provider");
+  return redirect(isSaas() ? "/onboarding/project" : "/onboarding/ai-provider");
 }
 
 function GitHubIcon({ className }: { className?: string }) {
