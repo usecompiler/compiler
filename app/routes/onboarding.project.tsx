@@ -20,6 +20,7 @@ import { eq } from "drizzle-orm";
 import { cloneRepository } from "~/lib/clone.server";
 import { addRepoToProject } from "~/lib/projects.server";
 import { isSaas } from "~/lib/appMode.server";
+import { getOrCreateSandbox } from "~/lib/e2b/sandbox-manager.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
@@ -139,6 +140,9 @@ export async function action({ request }: Route.ActionArgs) {
     .where(eq(organizations.id, user.organization.id));
 
   if (isSaas()) {
+    getOrCreateSandbox(projectId, user.organization.id).catch((err) =>
+      console.error("[onboarding] Background sandbox provision failed:", err)
+    );
     return redirect("/");
   }
 
