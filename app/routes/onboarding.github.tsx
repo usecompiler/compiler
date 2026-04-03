@@ -1,5 +1,5 @@
-import { redirect, useFetcher } from "react-router";
-import { useState } from "react";
+import { redirect, useFetcher, useSearchParams, useRevalidator } from "react-router";
+import { useState, useEffect } from "react";
 import type { Route } from "./+types/onboarding.github";
 import { requireActiveAuth } from "~/lib/auth.server";
 import {
@@ -279,9 +279,44 @@ function NoInstallationView({ appSlug, orgId }: { appSlug: string; orgId: string
   const installUrl = `https://github.com/apps/${appSlug}/installations/new?state=${orgId}`;
   const fetcher = useFetcher();
   const [selected, setSelected] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const requested = searchParams.get("requested") === "true";
+  const revalidator = useRevalidator();
 
   const isSubmitting = fetcher.state !== "idle";
   const error = fetcher.data?.error;
+
+  useEffect(() => {
+    if (!requested) return;
+    const interval = setInterval(() => {
+      revalidator.revalidate();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [requested, revalidator]);
+
+  if (requested) {
+    return (
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+              <GitHubIcon className="w-8 h-8 text-neutral-600 dark:text-neutral-400" />
+            </div>
+            <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+              Installation Requested
+            </h1>
+            <p className="text-neutral-500 dark:text-neutral-400">
+              Your installation request has been sent to your organization admin.
+              This page will update automatically once they approve it.
+            </p>
+          </div>
+          <div className="flex justify-center">
+            <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-neutral-900 dark:border-t-neutral-100 rounded-full animate-spin" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">

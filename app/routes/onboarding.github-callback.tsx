@@ -19,6 +19,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   const installationId = url.searchParams.get("installation_id");
   const setupAction = url.searchParams.get("setup_action");
 
+  if (setupAction === "request") {
+    return redirect("/onboarding/github?requested=true");
+  }
+
   if (!installationId) {
     return redirect("/onboarding/github?error=missing_installation_id");
   }
