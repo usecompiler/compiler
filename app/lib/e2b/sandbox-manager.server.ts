@@ -3,10 +3,7 @@ import crypto from "node:crypto";
 import { db } from "../db/index.server";
 import { projectSandboxes, repositories } from "../db/schema";
 import { eq } from "drizzle-orm";
-import {
-  getOrRefreshAccessToken,
-  getAuthenticatedCloneUrl,
-} from "../github.server";
+import { getOrRefreshAccessToken } from "../github.server";
 import { getProjectRepos } from "../projects.server";
 import { getTemplateName } from "./template.server";
 
@@ -46,15 +43,17 @@ async function provisionSandbox(
 
     await Promise.all(
       repos.map(async (repo) => {
-        let cloneUrl = repo.cloneUrl;
+        const cloneOpts: Parameters<typeof sandbox.git.clone>[1] = {
+          path: `/repos/${repo.name}`,
+          timeoutMs: 300_000,
+        };
+
         if (repo.isPrivate && accessToken) {
-          cloneUrl = getAuthenticatedCloneUrl(repo.cloneUrl, accessToken);
+          cloneOpts.username = "x-access-token";
+          cloneOpts.password = accessToken;
         }
 
-        await sandbox.commands.run("git clone -- \"$CLONE_URL\" /repos/\"$REPO_NAME\"", {
-          timeoutMs: 300_000,
-          envs: { CLONE_URL: cloneUrl, REPO_NAME: repo.name },
-        });
+        await sandbox.git.clone(repo.cloneUrl, cloneOpts);
 
         await db
           .update(repositories)
