@@ -19,7 +19,6 @@ import {
   saveToolConfig,
   clearModelCache,
   OPTIONAL_TOOLS as SERVER_OPTIONAL_TOOLS,
-  DEFAULT_MODEL_ID,
 } from "~/lib/models.server";
 
 const BASE_TOOL_KEYS = ["read", "glob", "grep", "askUserQuestion"];
@@ -193,10 +192,10 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
   const [showEdit, setShowEdit] = useState(!config);
   const [provider, setProvider] = useState<AIProvider>(config?.provider || "anthropic");
   const [selectedModels, setSelectedModels] = useState<string[]>(
-    modelConfig?.availableModels || [DEFAULT_MODEL_ID]
+    modelConfig?.availableModels || ["claude-sonnet-4-6"]
   );
   const [defaultModel, setDefaultModel] = useState<string>(
-    modelConfig?.defaultModel || DEFAULT_MODEL_ID
+    modelConfig?.defaultModel || "claude-sonnet-4-6"
   );
   const [selectedTools, setSelectedTools] = useState<string[]>(enabledTools);
   const cachingFetcher = useFetcher();
