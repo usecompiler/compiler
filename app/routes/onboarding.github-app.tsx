@@ -80,7 +80,7 @@ export async function action({ request }: Route.ActionArgs) {
 export default function OnboardingGitHubApp() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state !== "idle";
+  const isSubmitting = navigation.state === "submitting";
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">
