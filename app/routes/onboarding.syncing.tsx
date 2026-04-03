@@ -5,6 +5,7 @@ import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
 import { repositories } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { isSaas } from "~/lib/appMode.server";
 
 interface Repo {
   id: string;
@@ -17,6 +18,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireActiveAuth(request);
 
   if (!user.organization) {
+    return redirect("/");
+  }
+
+  if (isSaas()) {
     return redirect("/");
   }
 

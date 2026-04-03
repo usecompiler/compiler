@@ -34,7 +34,7 @@ export function ConversationLayout({
   headerRight,
   children,
   availableModels = [],
-  defaultModel = "claude-sonnet-4-6-20260217",
+  defaultModel = "claude-sonnet-4-6",
   userPreferredModel,
   showHeaderBorder = true,
   projects = [],

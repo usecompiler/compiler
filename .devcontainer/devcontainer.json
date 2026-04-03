@@ -17,7 +17,8 @@
   "features": {
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
-    "ghcr.io/rails/devcontainer/features/ruby:2": { "version": "3" }
+    "ghcr.io/rails/devcontainer/features/ruby:2": { "version": "3" },
+    "ghcr.io/joedmck/devcontainer-features/cloudflared:1": {}
   },
   "postCreateCommand": "gem install kamal"
 }

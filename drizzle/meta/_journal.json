@@ -183,6 +183,13 @@
       "when": 1771891200002,
       "tag": "0025_create_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1774172146376,
+      "tag": "0026_create_project_sandboxes",
+      "breakpoints": true
     }
   ]
 }

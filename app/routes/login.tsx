@@ -8,6 +8,7 @@ import {
   getUser,
 } from "~/lib/auth.server";
 import { getDefaultOrgSSOConfig } from "~/lib/saml.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUser(request);
@@ -20,6 +21,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   return {
     ssoEnabled: ssoConfig?.enabled ?? false,
     passwordLoginEnabled: ssoConfig?.allowPasswordLogin ?? true,
+    saasMode: isSaas(),
   };
 }
 
@@ -66,7 +68,7 @@ function getErrorMessage(errorCode: string | null): string | null {
 }
 
 export default function Login() {
-  const { ssoEnabled, passwordLoginEnabled } = useLoaderData<typeof loader>();
+  const { ssoEnabled, passwordLoginEnabled, saasMode } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
@@ -163,6 +165,18 @@ export default function Login() {
             <p>No login methods are configured.</p>
             <p className="text-sm mt-2">Please contact your administrator.</p>
           </div>
+        )}
+
+        {saasMode && (
+          <p className="mt-6 text-center text-sm text-neutral-400 dark:text-neutral-500">
+            Don&apos;t have an account?{" "}
+            <Link
+              to="/signup"
+              className="text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
+            >
+              Sign up
+            </Link>
+          </p>
         )}
       </div>
     </div>

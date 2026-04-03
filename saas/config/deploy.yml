@@ -29,11 +29,11 @@ env:
     - GITHUB_APP_ID
     - GITHUB_APP_SLUG
     - GITHUB_APP_PRIVATE_KEY
+    - E2B_API_KEY
+    - ANTHROPIC_API_KEY
 
 builder:
   arch: arm64
   dockerfile: Dockerfile
   context: ..
 
-volumes:
-  - /data/compiler/repos:/repos

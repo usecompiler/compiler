@@ -53,7 +53,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const projectsWithRepos = await Promise.all(
     projectsList.map(async (project) => {
-      const repos = await getProjectRepos(project.id);
+      const repos = await getProjectRepos(project.id, orgId);
       return { ...project, repos };
     })
   );
@@ -105,7 +105,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!projectId || !name) {
       return Response.json({ error: "Project ID and name are required" }, { status: 400 });
     }
-    await updateProject(projectId, name);
+    await updateProject(projectId, user.organization.id, name);
     return Response.json({ success: true, message: "Project renamed", intent: "rename-project" });
   }
 
@@ -114,7 +114,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!projectId) {
       return Response.json({ error: "Project ID is required" }, { status: 400 });
     }
-    const result = await deleteProject(projectId);
+    const result = await deleteProject(projectId, user.organization.id);
     if (!result.success) {
       return Response.json({ error: result.error }, { status: 400 });
     }
@@ -127,7 +127,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!projectId || !repositoryId) {
       return Response.json({ error: "Project and repository are required" }, { status: 400 });
     }
-    await addRepoToProject(projectId, repositoryId);
+    await addRepoToProject(projectId, repositoryId, user.organization.id);
     return Response.json({ success: true, intent: "assign-repo" });
   }
 
@@ -137,7 +137,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!projectId || !repositoryId) {
       return Response.json({ error: "Project and repository are required" }, { status: 400 });
     }
-    await removeRepoFromProject(projectId, repositoryId);
+    await removeRepoFromProject(projectId, repositoryId, user.organization.id);
     return Response.json({ success: true, intent: "unassign-repo" });
   }
 
@@ -162,7 +162,7 @@ export async function action({ request }: Route.ActionArgs) {
       cloneStatus: "pending",
     });
 
-    await addRepoToProject(projectId, repoId);
+    await addRepoToProject(projectId, repoId, user.organization.id);
 
     cloneRepository(
       user.organization.id,
@@ -212,7 +212,7 @@ export async function action({ request }: Route.ActionArgs) {
       .limit(1);
 
     if (existingByName.length > 0) {
-      await addRepoToProject(projectId, existingByName[0].id);
+      await addRepoToProject(projectId, existingByName[0].id, user.organization.id);
       return Response.json({ success: true });
     }
 
@@ -228,7 +228,7 @@ export async function action({ request }: Route.ActionArgs) {
       cloneStatus: "pending",
     });
 
-    await addRepoToProject(projectId, repoId);
+    await addRepoToProject(projectId, repoId, user.organization.id);
 
     clonePublicRepository(user.organization.id, repoId, name, cloneUrl).catch(console.error);
 

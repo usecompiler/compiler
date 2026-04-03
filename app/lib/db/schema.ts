@@ -202,8 +202,8 @@ export const aiProviderConfigurations = pgTable("ai_provider_configurations", {
   awsSecretAccessKeyIv: text("aws_secret_access_key_iv"),
   promptCachingEnabled: boolean("prompt_caching_enabled").default(true),
   compactionEnabled: boolean("compaction_enabled").default(true),
-  availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-6-20260217"]),
-  defaultModel: text("default_model").default("claude-sonnet-4-6-20260217"),
+  availableModels: jsonb("available_models").$type<string[]>().default(["claude-sonnet-4-6"]),
+  defaultModel: text("default_model").default("claude-sonnet-4-6"),
   allowedTools: jsonb("allowed_tools").$type<string[]>().default(["Bash"]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -251,6 +251,18 @@ export const blobs = pgTable("blobs", {
   itemId: text("item_id")
     .references(() => items.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const projectSandboxes = pgTable("project_sandboxes", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  sandboxId: text("sandbox_id"),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const itemBlobs = pgTable(

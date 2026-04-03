@@ -16,6 +16,25 @@ export function isSaas(): boolean {
   return getAppMode() === "saas";
 }
 
+const REQUIRED_SAAS_ENV_VARS = [
+  "GITHUB_APP_ID",
+  "GITHUB_APP_SLUG",
+  "GITHUB_APP_PRIVATE_KEY",
+  "E2B_API_KEY",
+  "ANTHROPIC_API_KEY",
+];
+
+export function validateSaasEnv(): void {
+  if (!isSaas()) return;
+
+  const missing = REQUIRED_SAAS_ENV_VARS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `SaaS mode requires these environment variables: ${missing.join(", ")}`,
+    );
+  }
+}
+
 export async function isSetupComplete(): Promise<boolean> {
   const result = await db
     .select({ id: members.id })

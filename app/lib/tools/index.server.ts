@@ -6,8 +6,8 @@ import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
 import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
 
-const GREP_MAX_CHARS = 5000;
-const GLOB_MAX_CHARS = 5000;
+export const GREP_MAX_CHARS = 5000;
+export const GLOB_MAX_CHARS = 5000;
 
 export function truncateForModel(
   output: string,
