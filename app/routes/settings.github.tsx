@@ -43,7 +43,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let githubInstallUrl: string | null = null;
   let accessibleReposPromise: Promise<GitHubRepo[]>;
 
-  if (installation && appConfig) {
+  if (installation?.status === "active" && appConfig) {
     githubConfigureUrl = await getGitHubAppConfigureUrl(user.organization.id);
     const orgId = user.organization.id;
 

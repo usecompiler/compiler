@@ -190,6 +190,20 @@
       "when": 1774172146376,
       "tag": "0026_create_project_sandboxes",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1775433600000,
+      "tag": "0027_nullable_installation_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1775433600001,
+      "tag": "0028_add_github_account_login",
+      "breakpoints": true
     }
   ]
 }
