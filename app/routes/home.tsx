@@ -1,4 +1,4 @@
-import { Form, redirect, useOutletContext, useNavigate } from "react-router";
+import { Form, redirect, useOutletContext, useNavigate, useSearchParams } from "react-router";
 import { useRef, useState, useCallback } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
@@ -100,7 +100,8 @@ const suggestedPrompts = [
 ];
 
 function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConfig: boolean; activeProjectId?: string }) {
-  const [input, setInput] = useState("");
+  const [searchParams] = useSearchParams();
+  const [input, setInput] = useState(searchParams.get("prompt") || "");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const blobIdsInputRef = useRef<HTMLInputElement>(null);

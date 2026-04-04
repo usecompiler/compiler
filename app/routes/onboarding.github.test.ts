@@ -26,7 +26,7 @@ vi.mock("~/lib/appMode.server", () => ({
 }));
 
 vi.mock("~/lib/clone.server", () => ({
-  clonePublicRepository: vi.fn(),
+  clonePublicRepository: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -126,6 +126,49 @@ describe("onboarding.github action", () => {
     expect(result).toEqual({ error: "Use the GitHub App install flow" });
     expect(getInstallationAccessToken).not.toHaveBeenCalled();
     expect(saveInstallation).not.toHaveBeenCalled();
+  });
+
+  it("rejects custom repo with empty URL", async () => {
+    const request = buildActionRequest({ repos: "custom", customRepo: "" });
+    const result = await callAction(request);
+    expect(result).toEqual({ error: "Please enter a repository URL" });
+  });
+
+  it("rejects custom repo with invalid URL", async () => {
+    const request = buildActionRequest({ repos: "custom", customRepo: "not-a-url" });
+    const result = await callAction(request);
+    expect(result).toEqual({ error: "Please enter a valid GitHub repository URL (e.g. https://github.com/owner/repo)" });
+  });
+
+  it("rejects custom repo that does not exist on GitHub", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, { status: 404 })
+    );
+    const request = buildActionRequest({ repos: "custom", customRepo: "https://github.com/owner/nonexistent" });
+    const result = await callAction(request);
+    expect(result).toEqual({ error: "Repository not found. Check the URL and make sure it's a public repository." });
+    fetchSpy.mockRestore();
+  });
+
+  it("rejects custom repo that is private", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ private: true }), { status: 200 })
+    );
+    const request = buildActionRequest({ repos: "custom", customRepo: "https://github.com/owner/private-repo" });
+    const result = await callAction(request);
+    expect(result).toEqual({ error: "This is a private repository. Only public repositories are supported here." });
+    fetchSpy.mockRestore();
+  });
+
+  it("accepts valid public custom repo", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ private: false }), { status: 200 })
+    );
+    const request = buildActionRequest({ repos: "custom", customRepo: "https://github.com/owner/public-repo" });
+    const result = await callAction(request);
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(302);
+    fetchSpy.mockRestore();
   });
 
   it("allows link_installation in self-hosted mode", async () => {
