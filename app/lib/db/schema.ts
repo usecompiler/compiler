@@ -129,7 +129,8 @@ export const githubInstallations = pgTable("github_installations", {
     .references(() => organizations.id, { onDelete: "cascade" })
     .notNull()
     .unique(),
-  installationId: text("installation_id").notNull(),
+  installationId: text("installation_id"),
+  githubAccountLogin: text("github_account_login"),
   encryptedAccessToken: text("encrypted_access_token"),
   accessTokenIv: text("access_token_iv"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),

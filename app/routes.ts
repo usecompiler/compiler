@@ -40,6 +40,7 @@ export default [
   route("api/upload", "routes/api.upload.ts"),
   route("api/image/:blobId", "routes/api.image.$blobId.ts"),
   route("api/blobs", "routes/api.blobs.ts"),
+  route("api/github/webhooks", "routes/api.github.webhooks.ts"),
   // App routes (with layout that handles auth + conversations)
   layout("routes/app-layout.tsx", [
     index("routes/home.tsx"),

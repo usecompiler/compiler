@@ -59,7 +59,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   );
 
   let githubReposPromise: Promise<GitHubRepo[]>;
-  if (installation) {
+  if (installation?.status === "active") {
     githubReposPromise = (async () => {
       const accessToken = await getOrRefreshAccessToken(orgId);
       if (!accessToken) return [];

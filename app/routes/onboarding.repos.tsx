@@ -24,7 +24,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const installation = await getInstallation(user.organization.id);
-  if (!installation) {
+  if (installation?.status !== "active") {
     return redirect("/onboarding/github");
   }
 

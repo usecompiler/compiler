@@ -47,7 +47,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const installation = await getInstallation(user.organization.id);
   let availableRepos: GitHubRepo[] = [];
 
-  if (installation) {
+  if (installation?.status === "active") {
     const accessToken = await getOrRefreshAccessToken(user.organization.id);
     if (accessToken) {
       availableRepos = await listInstallationRepos(accessToken);

@@ -1,7 +1,14 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/onboarding.github-callback";
 import { requireActiveAuth } from "~/lib/auth.server";
-import { getInstallationAccessToken, saveInstallation } from "~/lib/github.server";
+import {
+  getInstallationAccessToken,
+  saveInstallation,
+  exchangeCodeForUserToken,
+  getGitHubUser,
+  findInstallationRequestAccount,
+  savePendingInstallation,
+} from "~/lib/github.server";
 import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -20,7 +27,20 @@ export async function loader({ request }: Route.LoaderArgs) {
   const setupAction = url.searchParams.get("setup_action");
 
   if (setupAction === "request") {
-    return redirect("/onboarding/github?requested=true");
+    const code = url.searchParams.get("code");
+    if (code) {
+      try {
+        const userToken = await exchangeCodeForUserToken(code, user.organization.id);
+        const ghUser = await getGitHubUser(userToken);
+        const accountLogin = await findInstallationRequestAccount(user.organization.id, ghUser.login);
+        if (accountLogin) {
+          await savePendingInstallation(user.organization.id, accountLogin);
+        }
+      } catch (error) {
+        console.error("[github-callback] Failed to save pending installation:", error);
+      }
+    }
+    return redirect("/onboarding/github");
   }
 
   if (!installationId) {

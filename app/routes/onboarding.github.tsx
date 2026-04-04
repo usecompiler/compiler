@@ -1,4 +1,4 @@
-import { redirect, useFetcher, useSearchParams, useRevalidator } from "react-router";
+import { redirect, useFetcher, useRevalidator } from "react-router";
 import { useState, useEffect } from "react";
 import type { Route } from "./+types/onboarding.github";
 import { requireActiveAuth } from "~/lib/auth.server";
@@ -23,10 +23,10 @@ const PUBLIC_REPOS = [
 ];
 
 type LoaderData =
-  | { status: "no_installation"; appSlug: string; orgId: string }
+  | { status: "no_installation"; appSlug: string; orgId: string; requested?: boolean }
   | { status: "single_installation"; installation: GitHubAppInstallation; orgId: string }
   | { status: "multiple_installations"; installations: GitHubAppInstallation[]; orgId: string }
-  | { status: "check_failed"; appSlug: string; orgId: string };
+  | { status: "check_failed"; appSlug: string; orgId: string; requested?: boolean };
 
 export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData | Response> {
   const user = await requireActiveAuth(request);
@@ -54,12 +54,17 @@ export async function loader({ request }: Route.LoaderArgs): Promise<LoaderData 
   const nextStep = isSaas() ? "/onboarding/project" : "/onboarding/ai-provider";
 
   const installation = await getInstallation(user.organization.id);
-  if (installation) {
+  if (installation?.status === "active") {
     return redirect(nextStep);
   }
 
   if (isSaas()) {
-    return { status: "no_installation", appSlug: appConfig.appSlug, orgId: user.organization.id };
+    return {
+      status: "no_installation",
+      appSlug: appConfig.appSlug,
+      orgId: user.organization.id,
+      requested: installation?.status === "pending",
+    };
   }
 
   try {
@@ -275,26 +280,25 @@ function MultipleInstallationsView({
   );
 }
 
-function NoInstallationView({ appSlug, orgId }: { appSlug: string; orgId: string }) {
+function NoInstallationView({ appSlug, orgId, requested = false }: { appSlug: string; orgId: string; requested?: boolean }) {
   const installUrl = `https://github.com/apps/${appSlug}/installations/new?state=${orgId}`;
   const fetcher = useFetcher();
   const [selected, setSelected] = useState<string | null>(null);
-  const [searchParams] = useSearchParams();
-  const requested = searchParams.get("requested") === "true";
+  const [showRequested, setShowRequested] = useState(requested);
   const revalidator = useRevalidator();
 
   const isSubmitting = fetcher.state !== "idle";
   const error = fetcher.data?.error;
 
   useEffect(() => {
-    if (!requested) return;
+    if (!showRequested) return;
     const interval = setInterval(() => {
       revalidator.revalidate();
     }, 5000);
     return () => clearInterval(interval);
-  }, [requested, revalidator]);
+  }, [showRequested, revalidator]);
 
-  if (requested) {
+  if (showRequested) {
     return (
       <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
@@ -310,9 +314,16 @@ function NoInstallationView({ appSlug, orgId }: { appSlug: string; orgId: string
               This page will update automatically once they approve it.
             </p>
           </div>
-          <div className="flex justify-center">
+          <div className="flex justify-center mb-6">
             <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-neutral-900 dark:border-t-neutral-100 rounded-full animate-spin" />
           </div>
+          <button
+            type="button"
+            onClick={() => setShowRequested(false)}
+            className="w-full text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+          >
+            Try a different installation option
+          </button>
         </div>
       </div>
     );
@@ -422,5 +433,5 @@ export default function OnboardingGithub({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  return <NoInstallationView appSlug={loaderData.appSlug} orgId={loaderData.orgId} />;
+  return <NoInstallationView appSlug={loaderData.appSlug} orgId={loaderData.orgId} requested={loaderData.requested} />;
 }

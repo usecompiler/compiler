@@ -87,6 +87,7 @@ describe("onboarding.github loader", () => {
       status: "no_installation",
       appSlug: "test-app",
       orgId: "org-1",
+      requested: false,
     });
   });
 
