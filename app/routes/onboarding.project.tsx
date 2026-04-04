@@ -143,7 +143,7 @@ export async function action({ request }: Route.ActionArgs) {
     getOrCreateSandbox(projectId, user.organization.id).catch((err) =>
       console.error("[onboarding] Background sandbox provision failed:", err)
     );
-    return redirect("/");
+    return redirect("/?prompt=What+does+this+project+do+and+what's+changed+recently%3F");
   }
 
   return redirect("/onboarding/syncing");

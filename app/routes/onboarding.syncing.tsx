@@ -101,7 +101,7 @@ export default function OnboardingSyncing({ loaderData }: Route.ComponentProps) 
 
         {allDone ? (
           <Link
-            to="/"
+            to="/?prompt=What+does+this+project+do+and+what's+changed+recently%3F"
             className="block w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors text-center"
           >
             Continue
