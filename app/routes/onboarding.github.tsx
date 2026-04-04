@@ -18,7 +18,6 @@ import { isSaas } from "~/lib/appMode.server";
 
 const PUBLIC_REPOS = [
   { fullName: "basecamp/fizzy", name: "fizzy", cloneUrl: "https://github.com/basecamp/fizzy.git" },
-  { fullName: "WordPress/WordPress", name: "WordPress", cloneUrl: "https://github.com/WordPress/WordPress.git" },
   { fullName: "signalapp/Signal-iOS", name: "Signal-iOS", cloneUrl: "https://github.com/signalapp/Signal-iOS.git" },
 ];
 
@@ -125,9 +124,38 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Please select a repository" };
   }
 
-  const repo = PUBLIC_REPOS.find((r) => r.fullName === selectedRepo);
-  if (!repo) {
-    return { error: "Invalid repository selected" };
+  let fullName: string;
+  let name: string;
+  let cloneUrl: string;
+
+  if (selectedRepo === "custom") {
+    const customUrl = (formData.get("customRepo") as string)?.trim();
+    if (!customUrl) {
+      return { error: "Please enter a repository URL" };
+    }
+    const match = customUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+    if (!match) {
+      return { error: "Please enter a valid GitHub repository URL (e.g. https://github.com/owner/repo)" };
+    }
+    fullName = match[1];
+    const res = await fetch(`https://api.github.com/repos/${fullName}`);
+    if (!res.ok) {
+      return { error: "Repository not found. Check the URL and make sure it's a public repository." };
+    }
+    const repoData = await res.json();
+    if (repoData.private) {
+      return { error: "This is a private repository. Only public repositories are supported here." };
+    }
+    name = fullName.split("/")[1];
+    cloneUrl = `https://github.com/${fullName}.git`;
+  } else {
+    const repo = PUBLIC_REPOS.find((r) => r.fullName === selectedRepo);
+    if (!repo) {
+      return { error: "Invalid repository selected" };
+    }
+    fullName = repo.fullName;
+    name = repo.name;
+    cloneUrl = repo.cloneUrl;
   }
 
   const repoId = crypto.randomUUID();
@@ -135,15 +163,15 @@ export async function action({ request }: Route.ActionArgs) {
     id: repoId,
     organizationId: user.organization.id,
     githubRepoId: null,
-    name: repo.name,
-    fullName: repo.fullName,
-    cloneUrl: repo.cloneUrl,
+    name,
+    fullName,
+    cloneUrl,
     isPrivate: false,
     cloneStatus: "pending",
   });
 
   if (!isSaas()) {
-    clonePublicRepository(user.organization.id, repoId, repo.name, repo.cloneUrl).catch(
+    clonePublicRepository(user.organization.id, repoId, name, cloneUrl).catch(
       console.error
     );
   }
@@ -284,11 +312,22 @@ function NoInstallationView({ appSlug, orgId, requested = false }: { appSlug: st
   const installUrl = `https://github.com/apps/${appSlug}/installations/new?state=${orgId}`;
   const fetcher = useFetcher();
   const [selected, setSelected] = useState<string | null>(null);
+  const [customRepo, setCustomRepo] = useState("");
+  const [customRepoError, setCustomRepoError] = useState<string | null>(null);
   const [showRequested, setShowRequested] = useState(requested);
   const revalidator = useRevalidator();
 
   const isSubmitting = fetcher.state !== "idle";
   const error = fetcher.data?.error;
+
+  function validateCustomRepo(value: string) {
+    if (!value.trim()) {
+      setCustomRepoError(null);
+      return;
+    }
+    const valid = /github\.com\/[^/]+\/[^/]+/.test(value);
+    setCustomRepoError(valid ? null : "Enter a valid GitHub URL, e.g. https://github.com/owner/repo");
+  }
 
   useEffect(() => {
     if (!showRequested) return;
@@ -390,7 +429,7 @@ function NoInstallationView({ appSlug, orgId, requested = false }: { appSlug: st
                     name="repos"
                     value={repo.fullName}
                     checked={selected === repo.fullName}
-                    onChange={() => setSelected(repo.fullName)}
+                    onChange={() => { setSelected(repo.fullName); setCustomRepo(""); setCustomRepoError(null); }}
                     className="w-4 h-4 border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100 focus:ring-neutral-500"
                   />
                   <span className="text-neutral-900 dark:text-neutral-100">
@@ -398,12 +437,38 @@ function NoInstallationView({ appSlug, orgId, requested = false }: { appSlug: st
                   </span>
                 </label>
               ))}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <input
+                  type="radio"
+                  name="repos"
+                  value="custom"
+                  checked={selected === "custom"}
+                  onChange={() => setSelected("custom")}
+                  className="w-4 h-4 border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100 focus:ring-neutral-500"
+                />
+                <input
+                  type="text"
+                  name="customRepo"
+                  placeholder="Public GitHub repository URL"
+                  value={customRepo}
+                  onFocus={() => setSelected("custom")}
+                  onChange={(e) => {
+                    setCustomRepo(e.target.value);
+                    setCustomRepoError(null);
+                  }}
+                  onBlur={(e) => validateCustomRepo(e.target.value)}
+                  className={`flex-1 rounded border ${customRepoError ? "border-red-500" : "border-neutral-300 dark:border-neutral-600"} bg-white dark:bg-neutral-900 px-3 py-1.5 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-neutral-500`}
+                />
+              </div>
+              {customRepoError && (
+                <p className="px-4 py-3 text-xs text-red-500">{customRepoError}</p>
+              )}
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={isSubmitting || !selected}
+            disabled={isSubmitting || !selected || (selected === "custom" && (!customRepo.trim() || !!customRepoError))}
             className="w-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 font-medium rounded-lg px-4 py-3 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? "Setting up..." : "Continue"}

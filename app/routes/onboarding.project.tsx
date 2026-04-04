@@ -153,9 +153,10 @@ export default function OnboardingProject({ loaderData }: Route.ComponentProps) 
   const { availableRepos, existingRepos, hasInstallation } = loaderData;
   const fetcher = useFetcher();
   const totalRepos = availableRepos.length + existingRepos.length;
-  const defaultName = totalRepos === 1
+  const rawName = totalRepos === 1
     ? (availableRepos[0]?.name ?? existingRepos[0]?.name ?? "Default")
     : "Default";
+  const defaultName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
   const [projectName, setProjectName] = useState(defaultName);
   const [selectedNewRepos, setSelectedNewRepos] = useState<Set<number>>(new Set());
   const [selectedExistingRepos, setSelectedExistingRepos] = useState<Set<string>>(
