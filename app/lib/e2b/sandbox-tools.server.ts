@@ -6,6 +6,7 @@ import { readDescription, readParameters, MAX_OUTPUT_BYTES, MAX_LINE_CHARS, DEFA
 import { grepDescription, grepParameters } from "../tools/grep.server";
 import { globDescription, globParameters } from "../tools/glob.server";
 import { askUserQuestionDescription, askUserQuestionParameters } from "../tools/ask-user-question.server";
+import { repoSyncDescription, repoSyncParameters, executeRepoSync } from "../tools/repo-sync.server";
 import { truncateForModel, GREP_MAX_CHARS, GLOB_MAX_CHARS } from "../tools/index.server";
 
 function resolveSandboxPath(inputPath: string, cwd: string): string {
@@ -168,10 +169,13 @@ interface BuildSandboxToolsOptions {
   sandbox: Sandbox;
   cwd: string;
   enabledTools: string[];
+  organizationId: string;
+  projectId?: string | null;
 }
 
 export function buildSandboxTools(options: BuildSandboxToolsOptions) {
-  const { sandbox, cwd, enabledTools } = options;
+  const { sandbox, cwd, enabledTools, organizationId, projectId } = options;
+  const repoSyncOptions = { organizationId, projectId, sandbox };
 
   const allTools: Record<string, AnyTool> = {
     grep: tool({
@@ -208,6 +212,12 @@ export function buildSandboxTools(options: BuildSandboxToolsOptions) {
       filtered[name] = allTools[name];
     }
   }
+
+  filtered.repoSync = tool({
+    description: repoSyncDescription,
+    inputSchema: repoSyncParameters,
+    execute: async (args) => executeRepoSync(args, repoSyncOptions),
+  });
 
   return filtered;
 }

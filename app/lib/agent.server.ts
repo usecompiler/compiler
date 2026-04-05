@@ -1,59 +1,14 @@
-import path from "node:path";
 import { getAIProviderConfig } from "./ai-provider.server";
 import { getModel, getToolConfig } from "./models.server";
 import { buildTools } from "./tools/index.server";
 import { buildSystemPrompt, COMPACTION_INSTRUCTIONS } from "./prompts.server";
-import { db } from "./db/index.server";
-import { repositories, projectRepositories } from "./db/schema";
-import { eq, and, asc } from "drizzle-orm";
 import { isSaas } from "./appMode.server";
 import { getOrCreateSandbox } from "./e2b/sandbox-manager.server";
 import { buildSandboxTools } from "./e2b/sandbox-tools.server";
+import { getOrgRepoDir, getRepoPath } from "./clone.server";
+import { getOrgRepos } from "./projects.server";
 
 export type { PendingQuestionData } from "./tools/ask-user-question.server";
-
-const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
-
-function getOrgReposDir(organizationId: string): string {
-  return path.join(REPOS_BASE_DIR, organizationId);
-}
-
-function getRepoPath(organizationId: string, repoName: string): string {
-  return path.join(getOrgReposDir(organizationId), repoName);
-}
-
-async function getReposForProject(
-  organizationId: string,
-  projectId?: string | null,
-  filterCompleted = true,
-) {
-  const statusFilter = filterCompleted
-    ? eq(repositories.cloneStatus, "completed")
-    : undefined;
-
-  if (projectId) {
-    return db
-      .select({ name: repositories.name })
-      .from(projectRepositories)
-      .innerJoin(repositories, eq(projectRepositories.repositoryId, repositories.id))
-      .where(
-        statusFilter
-          ? and(eq(projectRepositories.projectId, projectId), statusFilter)
-          : eq(projectRepositories.projectId, projectId),
-      )
-      .orderBy(asc(repositories.name));
-  }
-
-  return db
-    .select({ name: repositories.name })
-    .from(repositories)
-    .where(
-      statusFilter
-        ? and(eq(repositories.organizationId, organizationId), statusFilter)
-        : eq(repositories.organizationId, organizationId),
-    )
-    .orderBy(asc(repositories.name));
-}
 
 export async function getAgentConfig(
   organizationId: string,
@@ -71,10 +26,12 @@ export async function getAgentConfig(
   let tools;
   let repoNames: string[];
 
+  const allRepos = await getOrgRepos(organizationId, projectId);
+  const allRepoInfo = allRepos.map((r) => ({ name: r.name, cloneStatus: r.cloneStatus }));
+
   if (isSaas() && projectId) {
     const sandbox = await getOrCreateSandbox(projectId, organizationId);
-    const repos = await getReposForProject(organizationId, projectId, false);
-    repoNames = repos.map((r) => r.name);
+    repoNames = allRepos.map((r) => r.name);
 
     const agentCwd = repoNames.length === 1
       ? `/repos/${repoNames[0]}`
@@ -84,10 +41,12 @@ export async function getAgentConfig(
       sandbox,
       cwd: agentCwd,
       enabledTools,
+      organizationId,
+      projectId,
     });
   } else {
-    const orgReposDir = getOrgReposDir(organizationId);
-    const completedRepos = await getReposForProject(organizationId, projectId);
+    const orgReposDir = getOrgRepoDir(organizationId);
+    const completedRepos = allRepos.filter((r) => r.cloneStatus === "completed");
     repoNames = completedRepos.map((r) => r.name);
 
     const agentCwd =
@@ -104,6 +63,8 @@ export async function getAgentConfig(
       allowedDirs,
       signal,
       enabledTools,
+      organizationId,
+      projectId,
     });
   }
 
@@ -112,7 +73,7 @@ export async function getAgentConfig(
     modelId,
     provider,
     tools,
-    systemPrompt: buildSystemPrompt(repoNames),
+    systemPrompt: buildSystemPrompt(allRepoInfo),
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,
     compactionEnabled: aiProviderConfig?.compactionEnabled !== false,
     compactionInstructions: COMPACTION_INSTRUCTIONS,

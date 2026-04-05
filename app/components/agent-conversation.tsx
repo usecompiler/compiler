@@ -1093,6 +1093,8 @@ function getToolLabel(tool?: string): string {
       return "Searching";
     case "bash":
       return "Running";
+    case "repoSync":
+      return "Fetching code";
     default:
       return "Running";
   }

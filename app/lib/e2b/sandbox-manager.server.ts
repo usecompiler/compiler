@@ -1,10 +1,8 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import crypto from "node:crypto";
 import { db } from "../db/index.server";
-import { projectSandboxes, repositories } from "../db/schema";
+import { projectSandboxes } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { getOrRefreshAccessToken } from "../github.server";
-import { getProjectRepos } from "../projects.server";
 import { getTemplateName } from "./template.server";
 
 const SANDBOX_TIMEOUT_MS = parseInt(
@@ -32,35 +30,6 @@ async function provisionSandbox(
         autoResume: true,
       },
     });
-
-    const repos = await getProjectRepos(projectId, organizationId);
-
-    let accessToken: string | null = null;
-    const hasPrivateRepos = repos.some((r) => r.isPrivate);
-    if (hasPrivateRepos) {
-      accessToken = await getOrRefreshAccessToken(organizationId);
-    }
-
-    await Promise.all(
-      repos.map(async (repo) => {
-        const cloneOpts: Parameters<typeof sandbox.git.clone>[1] = {
-          path: `/repos/${repo.name}`,
-          timeoutMs: 300_000,
-        };
-
-        if (repo.isPrivate && accessToken) {
-          cloneOpts.username = "x-access-token";
-          cloneOpts.password = accessToken;
-        }
-
-        await sandbox.git.clone(repo.cloneUrl, cloneOpts);
-
-        await db
-          .update(repositories)
-          .set({ cloneStatus: "completed", clonedAt: new Date() })
-          .where(eq(repositories.id, repo.id));
-      }),
-    );
 
     await db
       .update(projectSandboxes)
@@ -108,7 +77,11 @@ export async function getOrCreateSandbox(
 
   const record = records[0];
 
-  if (record.status === "pending" || record.status === "error" || record.status === "creating") {
+  if (
+    record.status === "pending" ||
+    record.status === "error" ||
+    record.status === "creating"
+  ) {
     return provisionSandbox(projectId, organizationId);
   }
 
@@ -135,7 +108,7 @@ export async function destroySandbox(projectId: string): Promise<void> {
   if (record.length > 0 && record[0].sandboxId) {
     try {
       const cached = activeSandboxes.get(projectId);
-      const sandbox = cached || await Sandbox.connect(record[0].sandboxId);
+      const sandbox = cached || (await Sandbox.connect(record[0].sandboxId));
       await sandbox.kill();
     } catch {
       // Sandbox may already be dead

@@ -8,6 +8,8 @@ import {
   integer,
 } from "drizzle-orm/pg-core";
 
+export type CloneStatus = "pending" | "cloning" | "completed" | "failed";
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").unique().notNull(),
@@ -148,7 +150,7 @@ export const repositories = pgTable("repositories", {
   fullName: text("full_name").notNull(),
   cloneUrl: text("clone_url").notNull(),
   isPrivate: boolean("is_private").default(false).notNull(),
-  cloneStatus: text("clone_status").default("pending").notNull(),
+  cloneStatus: text("clone_status").default("pending").notNull().$type<CloneStatus>(),
   clonedAt: timestamp("cloned_at"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

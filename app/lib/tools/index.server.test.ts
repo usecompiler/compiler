@@ -1,4 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("~/lib/db/index.server", () => ({ db: {} }));
+vi.mock("~/lib/db/schema", () => ({
+  repositories: {},
+  projectRepositories: {},
+}));
+vi.mock("~/lib/clone.server", () => ({
+  cloneRepository: vi.fn(),
+  clonePublicRepository: vi.fn(),
+  pullRepository: vi.fn(),
+  pullPublicRepository: vi.fn(),
+  repoExists: vi.fn(),
+}));
+vi.mock("~/lib/appMode.server", () => ({ isSaas: () => false }));
+vi.mock("~/lib/github.server", () => ({ getOrRefreshAccessToken: vi.fn() }));
+vi.mock("~/lib/projects.server", () => ({ getOrgRepos: vi.fn().mockResolvedValue([]) }));
+
 import { truncateForModel, buildTools } from "./index.server";
 
 describe("truncateForModel", () => {
@@ -51,6 +68,8 @@ describe("buildTools toModelOutput", () => {
     cwd: "/tmp",
     allowedDirs: ["/tmp"],
     enabledTools: ["grep", "glob", "read", "bash"],
+    organizationId: "test-org",
+    projectId: null,
   };
 
   it("grep has toModelOutput configured", () => {

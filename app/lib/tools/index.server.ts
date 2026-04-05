@@ -5,6 +5,7 @@ import { globDescription, globParameters, executeGlob } from "./glob.server";
 import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
 import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
+import { repoSyncDescription, repoSyncParameters, executeRepoSync } from "./repo-sync.server";
 
 export const GREP_MAX_CHARS = 5000;
 export const GLOB_MAX_CHARS = 5000;
@@ -50,13 +51,16 @@ interface BuildToolsOptions {
   allowedDirs: string[];
   signal?: AbortSignal;
   enabledTools: string[];
+  organizationId: string;
+  projectId?: string | null;
 }
 
 type AnyTool = Tool<any, any>;
 
 export function buildTools(options: BuildToolsOptions) {
-  const { cwd, allowedDirs, signal, enabledTools } = options;
+  const { cwd, allowedDirs, signal, enabledTools, organizationId, projectId } = options;
   const toolOptions = { cwd, allowedDirs, signal };
+  const repoSyncOptions = { organizationId, projectId };
 
   const allTools: Record<string, AnyTool> = {
     grep: tool({
@@ -93,6 +97,12 @@ export function buildTools(options: BuildToolsOptions) {
       filtered[name] = allTools[name];
     }
   }
+
+  filtered.repoSync = tool({
+    description: repoSyncDescription,
+    inputSchema: repoSyncParameters,
+    execute: async (args) => executeRepoSync(args, repoSyncOptions),
+  });
 
   return filtered;
 }
