@@ -119,16 +119,57 @@ export const COMPACTION_INSTRUCTIONS = `When summarizing the conversation so far
 
 Wrap your summary in <summary></summary> tags.`;
 
-export function buildSystemPrompt(repoNames: string[]): string {
-  const projectContext = repoNames.length <= 1
-    ? `\n\nYour current working directory IS the project you should explore.`
-    : `\n\nMULTIPLE PROJECTS AVAILABLE:
-You have access to ${repoNames.length} projects: ${repoNames.join(", ")}
+import type { CloneStatus } from "./db/schema";
+
+interface RepoInfo {
+  name: string;
+  cloneStatus: CloneStatus;
+}
+
+export function buildSystemPrompt(repos: RepoInfo[]): string {
+  const readyRepos = repos.filter((r) => r.cloneStatus === "completed");
+  const notReady = repos.filter((r) => r.cloneStatus !== "completed");
+
+  let projectContext: string;
+  if (readyRepos.length <= 1 && notReady.length === 0) {
+    projectContext = `\n\nYour current working directory IS the project you should explore.`;
+  } else if (readyRepos.length > 1 && notReady.length === 0) {
+    projectContext = `\n\nMULTIPLE PROJECTS AVAILABLE:
+You have access to ${readyRepos.length} projects: ${readyRepos.map((r) => r.name).join(", ")}
 - Each project is in its own subdirectory
 - When the user asks about a specific project, first cd into that directory
 - For git commands (like git log, git blame), you MUST cd into the project directory first
 - If the user doesn't specify which project, ask them to clarify or explore all of them
 - When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
+  } else {
+    const readyList = readyRepos.map((r) => r.name);
+    const notReadyList = notReady.map((r) => `${r.name} (${r.cloneStatus})`);
 
-  return BASE_SYSTEM_PROMPT + projectContext;
+    let navInstructions = "";
+    if (readyRepos.length > 1) {
+      navInstructions = `- Each ready project is in its own subdirectory
+- When the user asks about a specific project, first cd into that directory
+- For git commands (like git log, git blame), you MUST cd into the project directory first
+- When running Bash commands that need to be in a git repository, use: cd <project-name> && <command>`;
+    } else if (readyRepos.length === 1) {
+      navInstructions = "- Your current working directory IS the ready project";
+    }
+
+    projectContext = `\n\nPROJECT REPOSITORIES:
+${readyList.length > 0 ? `Ready: ${readyList.join(", ")}` : "No repositories are ready yet."}
+${notReadyList.length > 0 ? `Not ready: ${notReadyList.join(", ")}` : ""}
+${navInstructions}`;
+  }
+
+  const repoManagement = `\n\nREPOSITORY MANAGEMENT — MANDATORY FIRST STEP:
+- Your VERY FIRST tool call in every conversation MUST be: repoSync with action "sync"
+- This ensures all repositories are cloned and have the latest code before you explore anything
+- Do NOT skip this step even if repos appear ready — the sync tool handles pulling fresh updates
+- Do NOT use any other tool (bash, grep, glob, read) before repoSync completes
+- If sync reports issues, let the user know briefly and proceed with what is available
+- Never mention the repoSync tool by name to the user
+- If the project repositories listed above show any as "not ready" (pending or failed), output a brief message BEFORE calling repoSync, e.g. "Setting up the project for the first time, one moment..."
+- If all repos are already listed as ready/completed above, sync silently without telling the user`;
+
+  return BASE_SYSTEM_PROMPT + projectContext + repoManagement;
 }
