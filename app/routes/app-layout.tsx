@@ -6,8 +6,7 @@ import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
 import { getModelConfig, getUserPreferredModel, getDisplayName, DEFAULT_MODEL_ID } from "~/lib/models.server";
 import { getStorageConfigPublic } from "~/lib/storage.server";
-import { repoExists, triggerRepoSync } from "~/lib/clone.server";
-import { getProjects, getProjectRepos, type ProjectMeta } from "~/lib/projects.server";
+import { getProjects, type ProjectMeta } from "~/lib/projects.server";
 import { isSaas } from "~/lib/appMode.server";
 
 function getModelDisplayName(id: string): string {
@@ -43,11 +42,6 @@ export async function loader({ request }: Route.LoaderArgs) {
   let defaultModel = DEFAULT_MODEL_ID;
   let userPreferredModel: string | null = null;
   let hasStorageConfig = false;
-  let repoSyncStatus: { repos: { name: string; fullName: string; status: string }[]; allReady: boolean; hasRepos: boolean } = {
-    repos: [],
-    allReady: true,
-    hasRepos: false,
-  };
   let projectsList: ProjectMeta[] = [];
   let activeProject: ProjectMeta | null = null;
 
@@ -71,36 +65,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     activeProject =
       projectsList.find((p) => p.id === resolvedProjectId) || projectsList[0] || null;
-
-    const projectRepos = activeProject
-      ? await getProjectRepos(activeProject.id, user.organization.id)
-      : [];
-
-    if (isSaas()) {
-      repoSyncStatus = {
-        repos: projectRepos.map((repo) => ({
-          name: repo.name,
-          fullName: repo.fullName,
-          status: "completed",
-        })),
-        allReady: true,
-        hasRepos: projectRepos.length > 0,
-      };
-    } else {
-      const repoStatuses = projectRepos.map((repo) => {
-        const onDisk = repoExists(user.organization!.id, repo.name);
-        const status = repo.cloneStatus === "completed" && !onDisk ? "pending" : repo.cloneStatus;
-        return { name: repo.name, fullName: repo.fullName, status };
-      });
-
-      repoSyncStatus = {
-        repos: repoStatuses,
-        allReady: repoStatuses.length > 0 && repoStatuses.every((r) => r.status === "completed"),
-        hasRepos: repoStatuses.length > 0,
-      };
-
-      triggerRepoSync(user.organization.id);
-    }
 
     const storageConfig = await getStorageConfigPublic(user.organization.id);
     hasStorageConfig = storageConfig !== null;
@@ -165,16 +129,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
-    repoSyncStatus,
     projects: projectsList,
     activeProject,
   };
-}
-
-export interface RepoSyncStatus {
-  repos: { name: string; fullName: string; status: string }[];
-  allReady: boolean;
-  hasRepos: boolean;
 }
 
 export interface ModelOption {
@@ -200,7 +157,6 @@ export interface AppContext {
   defaultModel: string;
   userPreferredModel: string | null;
   hasStorageConfig: boolean;
-  repoSyncStatus: RepoSyncStatus;
   projects: ProjectMeta[];
   activeProject: ProjectMeta | null;
 }
@@ -218,7 +174,6 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     defaultModel: loaderData.defaultModel,
     userPreferredModel: loaderData.userPreferredModel,
     hasStorageConfig: loaderData.hasStorageConfig,
-    repoSyncStatus: loaderData.repoSyncStatus,
     projects: loaderData.projects,
     activeProject: loaderData.activeProject,
   };

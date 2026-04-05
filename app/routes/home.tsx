@@ -2,7 +2,6 @@ import { Form, redirect, useOutletContext, useNavigate, useSearchParams } from "
 import { useRef, useState, useCallback } from "react";
 import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
-import { RepoSyncGate } from "~/components/repo-sync-gate";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { PromptInput, type PendingFile } from "~/components/prompt-input";
 import { requireAuth } from "~/lib/auth.server";
@@ -61,7 +60,6 @@ export default function Home() {
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
-    repoSyncStatus,
     projects,
     activeProject,
   } = useOutletContext<AppContext>();
@@ -82,13 +80,11 @@ export default function Home() {
       projects={projects}
       activeProject={activeProject}
     >
-      <RepoSyncGate repoSyncStatus={repoSyncStatus}>
-        {impersonating ? (
-          <ImpersonatingView name={impersonating.name} />
-        ) : (
-          <HomePromptInput hasStorageConfig={hasStorageConfig} activeProjectId={activeProject?.id} />
-        )}
-      </RepoSyncGate>
+      {impersonating ? (
+        <ImpersonatingView name={impersonating.name} />
+      ) : (
+        <HomePromptInput hasStorageConfig={hasStorageConfig} activeProjectId={activeProject?.id} />
+      )}
     </ConversationLayout>
   );
 }

@@ -51,6 +51,8 @@ describe("buildTools toModelOutput", () => {
     cwd: "/tmp",
     allowedDirs: ["/tmp"],
     enabledTools: ["grep", "glob", "read", "bash"],
+    organizationId: "test-org",
+    projectId: null,
   };
 
   it("grep has toModelOutput configured", () => {

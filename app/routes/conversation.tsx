@@ -2,7 +2,6 @@ import { useParams, useOutletContext, useSearchParams, redirect, useNavigate, us
 import { useRef, useState, useEffect } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
-import { RepoSyncGate } from "~/components/repo-sync-gate";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
 import { ShareModal } from "~/components/share-modal";
@@ -174,7 +173,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     defaultModel,
     userPreferredModel,
     hasStorageConfig,
-    repoSyncStatus,
     projects,
     activeProject,
   } = useOutletContext<AppContext>();
@@ -265,8 +263,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       projects={projects}
       activeProject={activeProject}
     >
-      <RepoSyncGate repoSyncStatus={repoSyncStatus}>
-        <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full">
           <div className="flex-1 min-h-0">
             <AgentConversation
               key={id}
@@ -285,7 +282,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
             />
           </div>
         </div>
-      </RepoSyncGate>
 
       {ownsConversation && (
         <ShareModal

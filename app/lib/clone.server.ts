@@ -9,13 +9,13 @@ import {
   getAuthenticatedCloneUrl,
 } from "./github.server";
 
-const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
+export const REPOS_BASE_DIR = process.env.REPOS_DIR || "/repos";
 
-function getOrgRepoDir(organizationId: string): string {
+export function getOrgRepoDir(organizationId: string): string {
   return path.join(REPOS_BASE_DIR, organizationId);
 }
 
-function getRepoPath(organizationId: string, repoName: string): string {
+export function getRepoPath(organizationId: string, repoName: string): string {
   return path.join(getOrgRepoDir(organizationId), repoName);
 }
 
@@ -238,48 +238,4 @@ export async function deleteRepository(
 export function repoExists(organizationId: string, repoName: string): boolean {
   const repoPath = getRepoPath(organizationId, repoName);
   return fs.existsSync(path.join(repoPath, ".git"));
-}
-
-export async function triggerRepoSync(organizationId: string): Promise<void> {
-  const allRepos = await db
-    .select()
-    .from(repositories)
-    .where(eq(repositories.organizationId, organizationId));
-
-  for (const repo of allRepos) {
-    const existsOnDisk = repoExists(organizationId, repo.name);
-
-    if (repo.cloneStatus === "cloning") {
-      continue;
-    }
-
-    if (!existsOnDisk || repo.cloneStatus === "pending" || repo.cloneStatus === "failed") {
-      if (repo.isPrivate) {
-        cloneRepository(organizationId, repo.id, repo.name, repo.cloneUrl).catch((err) =>
-          console.error(`[triggerRepoSync] Clone failed for ${repo.name}:`, err),
-        );
-      } else {
-        clonePublicRepository(organizationId, repo.id, repo.name, repo.cloneUrl).catch((err) =>
-          console.error(`[triggerRepoSync] Clone failed for ${repo.name}:`, err),
-        );
-      }
-      continue;
-    }
-
-    if (existsOnDisk && repo.cloneStatus === "completed") {
-      const lastSync = repo.lastSyncedAt || repo.clonedAt;
-      const staleThreshold = 5 * 60 * 1000;
-      if (!lastSync || Date.now() - lastSync.getTime() > staleThreshold) {
-        if (repo.isPrivate) {
-          pullRepository(organizationId, repo.name).catch((err) =>
-            console.error(`[triggerRepoSync] Pull failed for ${repo.name}:`, err),
-          );
-        } else {
-          pullPublicRepository(organizationId, repo.name).catch((err) =>
-            console.error(`[triggerRepoSync] Pull failed for ${repo.name}:`, err),
-          );
-        }
-      }
-    }
-  }
 }

@@ -177,16 +177,20 @@ export async function removeRepoFromProject(
     );
 }
 
+const repoColumns = {
+  id: repositories.id,
+  name: repositories.name,
+  fullName: repositories.fullName,
+  cloneUrl: repositories.cloneUrl,
+  isPrivate: repositories.isPrivate,
+  cloneStatus: repositories.cloneStatus,
+  clonedAt: repositories.clonedAt,
+  lastSyncedAt: repositories.lastSyncedAt,
+};
+
 export async function getProjectRepos(projectId: string, organizationId: string) {
   return db
-    .select({
-      id: repositories.id,
-      name: repositories.name,
-      fullName: repositories.fullName,
-      cloneUrl: repositories.cloneUrl,
-      isPrivate: repositories.isPrivate,
-      cloneStatus: repositories.cloneStatus,
-    })
+    .select(repoColumns)
     .from(projectRepositories)
     .innerJoin(
       repositories,
@@ -197,6 +201,23 @@ export async function getProjectRepos(projectId: string, organizationId: string)
       eq(projectRepositories.projectId, projects.id)
     )
     .where(and(eq(projectRepositories.projectId, projectId), eq(projects.organizationId, organizationId)))
+    .orderBy(asc(repositories.name));
+}
+
+export async function getOrgRepos(organizationId: string, projectId?: string | null) {
+  if (projectId) {
+    return db
+      .select(repoColumns)
+      .from(projectRepositories)
+      .innerJoin(repositories, eq(projectRepositories.repositoryId, repositories.id))
+      .where(eq(projectRepositories.projectId, projectId))
+      .orderBy(asc(repositories.name));
+  }
+
+  return db
+    .select(repoColumns)
+    .from(repositories)
+    .where(eq(repositories.organizationId, organizationId))
     .orderBy(asc(repositories.name));
 }
 
