@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, redirect, useLoaderData, useFetcher } from "react-router";
+
 import type { Route } from "./+types/settings.audit-log";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions.server";
@@ -75,73 +76,6 @@ export default function AuditLogSettings() {
   }, [fetcher.data]);
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
-      <header className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link
-            to="/"
-            className="p-2 -ml-2 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-            </svg>
-          </Link>
-          <h1 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Settings</h1>
-        </div>
-      </header>
-
-      <div className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-3xl mx-auto px-4">
-          <nav className="flex gap-6">
-            <Link
-              to="/settings"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Account
-            </Link>
-            <Link
-              to="/settings/ai-provider"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              AI Provider
-            </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Audit Log
-            </span>
-            <Link
-              to="/settings/authentication"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Authentication
-            </Link>
-            <Link
-              to="/settings/github"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              GitHub
-            </Link>
-            <Link
-              to="/settings/organization"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Organization
-            </Link>
-            <Link
-              to="/settings/projects"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Projects
-            </Link>
-            <Link
-              to="/settings/storage"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Storage
-            </Link>
-          </nav>
-        </div>
-      </div>
-
       <main className="max-w-3xl mx-auto px-4 py-8">
         <section>
           <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-4">
@@ -199,6 +133,5 @@ export default function AuditLogSettings() {
           )}
         </section>
       </main>
-    </div>
   );
 }

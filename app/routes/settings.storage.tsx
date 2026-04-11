@@ -1,13 +1,18 @@
 import type { Route } from "./+types/settings.storage";
-import { Form, Link, useActionData } from "react-router";
+import { Form, useActionData } from "react-router";
 import { useState, useEffect } from "react";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { canManageOrganization } from "~/lib/permissions.server";
 import { getStorageConfigPublic, saveStorageConfig, deleteStorageConfig } from "~/lib/storage.server";
 import { redirect } from "react-router";
 import { logAuditEvent } from "~/lib/audit.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  if (isSaas()) {
+    throw redirect("/settings");
+  }
+
   const user = await requireActiveAuth(request);
 
   if (!canManageOrganization(user.membership?.role)) {
@@ -80,55 +85,6 @@ export default function StorageSettings({ loaderData }: Route.ComponentProps) {
   }, [actionData]);
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
-      <header className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link
-            to="/"
-            className="p-2 -ml-2 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-            </svg>
-          </Link>
-          <h1 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Settings</h1>
-        </div>
-      </header>
-
-      <div className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-3xl mx-auto px-4">
-          <nav className="flex gap-6">
-            <Link to="/settings" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              Account
-            </Link>
-            <Link to="/settings/ai-provider" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              AI Provider
-            </Link>
-            <Link to="/settings/audit-log" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              Audit Log
-            </Link>
-            <Link to="/settings/authentication" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              Authentication
-            </Link>
-            <Link to="/settings/github" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              GitHub
-            </Link>
-            <Link to="/settings/organization" className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent">
-              Organization
-            </Link>
-            <Link
-              to="/settings/projects"
-              className="py-3 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 border-b-2 border-transparent"
-            >
-              Projects
-            </Link>
-            <span className="py-3 text-sm text-neutral-900 dark:text-neutral-100 font-medium border-b-2 border-neutral-900 dark:border-neutral-100">
-              Storage
-            </span>
-          </nav>
-        </div>
-      </div>
-
       <main className="max-w-3xl mx-auto px-4 py-8">
         <section>
           <div className="flex items-center justify-between mb-4">
@@ -291,6 +247,5 @@ export default function StorageSettings({ loaderData }: Route.ComponentProps) {
           ) : null}
         </section>
       </main>
-    </div>
   );
 }
