@@ -837,6 +837,7 @@ describe("api.agent action", () => {
       const streamArgs = mockStreamText.mock.calls[0][0];
       expect(streamArgs.providerOptions).toEqual({
         anthropic: {
+          effort: "xhigh",
           contextManagement: {
             edits: [
               {
@@ -856,7 +857,7 @@ describe("api.agent action", () => {
       });
     });
 
-    it("does not pass providerOptions when compactionEnabled is false", async () => {
+    it("passes effort but no contextManagement when compactionEnabled is false", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
         modelId: "claude-sonnet-4-6",
@@ -873,7 +874,9 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const streamArgs = mockStreamText.mock.calls[0][0];
-      expect(streamArgs.providerOptions).toBeUndefined();
+      expect(streamArgs.providerOptions).toEqual({
+        anthropic: { effort: "xhigh" },
+      });
     });
 
     it("includes contextManagement regardless of promptCachingEnabled", async () => {
@@ -896,6 +899,7 @@ describe("api.agent action", () => {
       const streamArgs = mockStreamText.mock.calls[0][0];
       expect(streamArgs.providerOptions).toEqual({
         anthropic: {
+          effort: "xhigh",
           contextManagement: {
             edits: [
               {
