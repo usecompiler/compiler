@@ -226,27 +226,30 @@ export async function action({ request }: Route.ActionArgs) {
           ),
         })
       : undefined,
-    providerOptions: compactionEnabled
-      ? {
-          anthropic: {
-            contextManagement: {
-              edits: [
-                {
-                  type: "clear_tool_uses_20250919",
-                  trigger: { type: "input_tokens", value: 500000 },
-                  keep: { type: "tool_uses", value: 5 },
-                  clearToolInputs: true,
-                },
-                {
-                  type: "compact_20260112",
-                  trigger: { type: "input_tokens", value: 650000 },
-                  instructions: compactionInstructions,
-                },
-              ],
-            },
-          },
-        }
-      : undefined,
+    providerOptions: {
+      anthropic: {
+        effort: "xhigh",
+        ...(compactionEnabled
+          ? {
+              contextManagement: {
+                edits: [
+                  {
+                    type: "clear_tool_uses_20250919",
+                    trigger: { type: "input_tokens", value: 500000 },
+                    keep: { type: "tool_uses", value: 5 },
+                    clearToolInputs: true,
+                  },
+                  {
+                    type: "compact_20260112",
+                    trigger: { type: "input_tokens", value: 650000 },
+                    instructions: compactionInstructions,
+                  },
+                ],
+              },
+            }
+          : {}),
+      },
+    },
     experimental_transform: smoothStream(),
     stopWhen: stepCountIs(50),
     abortSignal: request.signal,
