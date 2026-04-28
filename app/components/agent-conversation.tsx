@@ -1,10 +1,9 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useRevalidator, useBlocker, Link } from "react-router";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import { useStickToBottom } from "use-stick-to-bottom";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Streamdown } from "streamdown";
 import type { Item } from "~/lib/types";
 import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput, type PendingFile } from "./prompt-input";
@@ -104,6 +103,7 @@ export function AgentConversation({
     id: conversationId,
     messages: initialUIMessages,
     transport,
+    experimental_throttle: 50,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onToolCall({ toolCall }) {
       if (toolCall.toolName === "askUserQuestion") {
@@ -303,6 +303,19 @@ export function AgentConversation({
     stop();
   }, [stop]);
 
+  const allDisplayItems = useMemo(
+    () => buildDisplayItems(messages, systemItems),
+    [messages, systemItems],
+  );
+
+  const lastAssistantId = useMemo(() => {
+    for (let i = allDisplayItems.length - 1; i >= 0; i--) {
+      const d = allDisplayItems[i];
+      if (d.kind === "assistant") return d.message.id;
+    }
+    return null;
+  }, [allDisplayItems]);
+
   const showLoadingState = initialPrompt && !hasProcessedInitialPrompt.current && initialUIMessages.length === 0;
 
   if (showLoadingState) {
@@ -318,8 +331,6 @@ export function AgentConversation({
       </div>
     );
   }
-
-  const allDisplayItems = buildDisplayItems(messages, systemItems);
 
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
@@ -360,7 +371,7 @@ export function AgentConversation({
               <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
             </div>
           )}
-          {allDisplayItems.map((displayItem, index) => {
+          {allDisplayItems.map((displayItem) => {
             if (displayItem.kind === "system") {
               return (
                 <SystemItemRow
@@ -380,14 +391,13 @@ export function AgentConversation({
               );
             }
             if (displayItem.kind === "assistant") {
-              const isLastAssistant = index === allDisplayItems.length - 1 ||
-                !allDisplayItems.slice(index + 1).some((d) => d.kind === "assistant");
+              const isLast = displayItem.message.id === lastAssistantId;
               return (
                 <AssistantMessageRow
                   key={displayItem.message.id}
                   message={displayItem.message}
-                  isStreaming={isStreaming && isLastAssistant}
-                  streamStartTime={streamStartTime}
+                  isStreaming={isStreaming && isLast}
+                  streamStartTime={isLast ? streamStartTime : undefined}
                 />
               );
             }
@@ -530,7 +540,7 @@ export function AgentConversation({
   );
 }
 
-function UserMessageRow({ message, itemBlobs }: { message: UIMessage; itemBlobs?: BlobMeta[] }) {
+const UserMessageRow = memo(function UserMessageRow({ message, itemBlobs }: { message: UIMessage; itemBlobs?: BlobMeta[] }) {
   const [copied, setCopied] = useState(false);
   const contentText = message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -616,7 +626,7 @@ function UserMessageRow({ message, itemBlobs }: { message: UIMessage; itemBlobs?
       </div>
     </div>
   );
-}
+});
 
 interface AssistantMessageRowProps {
   message: UIMessage;
@@ -624,29 +634,18 @@ interface AssistantMessageRowProps {
   streamStartTime?: number;
 }
 
-function AssistantMessageRow({ message, isStreaming, streamStartTime }: AssistantMessageRowProps) {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+const AssistantMessageRow = memo(function AssistantMessageRow({ message, isStreaming, streamStartTime }: AssistantMessageRowProps) {
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (!isStreaming || !streamStartTime) {
-      setElapsedSeconds(0);
-      return;
-    }
+  const segments = useMemo(() => buildSegments(message.parts), [message.parts]);
 
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - streamStartTime) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isStreaming, streamStartTime]);
-
-  const segments = buildSegments(message.parts);
-
-  const allText = segments
-    .filter((s): s is { kind: "text"; text: string } => s.kind === "text")
-    .map((s) => s.text)
-    .join("\n\n");
+  const allText = useMemo(
+    () => segments
+      .filter((s): s is { kind: "text"; text: string } => s.kind === "text")
+      .map((s) => s.text)
+      .join("\n\n"),
+    [segments],
+  );
   const hasContent = allText.trim().length > 0;
   const hasAnything = segments.length > 0;
 
@@ -670,11 +669,7 @@ function AssistantMessageRow({ message, isStreaming, streamStartTime }: Assistan
 
       {segments.map((segment, i) => {
         if (segment.kind === "text" && segment.text.trim()) {
-          return (
-            <div key={i} className="text-neutral-900 dark:text-neutral-100 prose dark:prose-invert prose-neutral max-w-none">
-              <Markdown remarkPlugins={[remarkGfm]}>{segment.text}</Markdown>
-            </div>
-          );
+          return <Streamdown key={i}>{segment.text}</Streamdown>;
         }
         if (segment.kind === "qa") {
           return (
@@ -710,7 +705,7 @@ function AssistantMessageRow({ message, isStreaming, streamStartTime }: Assistan
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    {isLastSegment && elapsedSeconds > 0 && <span>{elapsedSeconds < 60 ? `${elapsedSeconds}s` : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`}</span>}
+                    {isLastSegment && isStreaming && streamStartTime !== undefined && <StreamingElapsed startTime={streamStartTime} />}
                   </span>
                 )}
               </div>
@@ -748,9 +743,23 @@ function AssistantMessageRow({ message, isStreaming, streamStartTime }: Assistan
       )}
     </div>
   );
+});
+
+function StreamingElapsed({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  if (elapsed === 0) return null;
+  return <span>{elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}</span>;
 }
 
-function SystemItemRow({ item, ownsConversation }: { item: Item; ownsConversation?: boolean }) {
+const SystemItemRow = memo(function SystemItemRow({ item, ownsConversation }: { item: Item; ownsConversation?: boolean }) {
   const [copied, setCopied] = useState(false);
   const systemContent = item.content as { text?: string; shareUrl?: string } | string;
   const text = typeof systemContent === "string" ? systemContent : systemContent?.text || "";
@@ -793,7 +802,7 @@ function SystemItemRow({ item, ownsConversation }: { item: Item; ownsConversatio
       )}
     </div>
   );
-}
+});
 
 interface QuestionCardProps {
   pendingQuestion: { questions: PendingQuestionData[]; toolCallId: string };
