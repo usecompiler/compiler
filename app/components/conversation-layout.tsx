@@ -21,6 +21,7 @@ interface ConversationLayoutProps {
   showHeaderBorder?: boolean;
   projects?: ProjectMeta[];
   activeProject?: ProjectMeta | null;
+  saasMode?: boolean;
 }
 
 export function ConversationLayout({
@@ -39,6 +40,7 @@ export function ConversationLayout({
   showHeaderBorder = true,
   projects = [],
   activeProject = null,
+  saasMode = false,
 }: ConversationLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(
@@ -124,11 +126,15 @@ export function ConversationLayout({
                 />
               </svg>
             </button>
-            <ModelSelector
-              availableModels={availableModels}
-              currentModel={currentModel}
-              onModelChange={handleModelChange}
-            />
+            {saasMode ? (
+              <span className="text-neutral-900 dark:text-neutral-100 text-lg">Compiler</span>
+            ) : (
+              <ModelSelector
+                availableModels={availableModels}
+                currentModel={currentModel}
+                onModelChange={handleModelChange}
+              />
+            )}
           </div>
           {headerRight && (
             <div className="flex items-center">

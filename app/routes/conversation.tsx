@@ -175,6 +175,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     hasStorageConfig,
     projects,
     activeProject,
+    saasMode,
   } = useOutletContext<AppContext>();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const initialPrompt = searchParams.get("prompt");
@@ -262,6 +263,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       userPreferredModel={userPreferredModel}
       projects={projects}
       activeProject={activeProject}
+      saasMode={saasMode}
     >
       <div className="flex flex-col h-full">
           <div className="flex-1 min-h-0">

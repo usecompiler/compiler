@@ -62,6 +62,7 @@ export default function Home() {
     hasStorageConfig,
     projects,
     activeProject,
+    saasMode,
   } = useOutletContext<AppContext>();
 
   return (
@@ -79,6 +80,7 @@ export default function Home() {
       showHeaderBorder={false}
       projects={projects}
       activeProject={activeProject}
+      saasMode={saasMode}
     >
       {impersonating ? (
         <ImpersonatingView name={impersonating.name} />
