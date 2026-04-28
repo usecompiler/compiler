@@ -21,7 +21,7 @@ const TABS = [
   { label: "Account", path: "/settings", adminOnly: false, selfHostedOnly: false },
   { label: "AI Provider", path: "/settings/ai-provider", adminOnly: true, selfHostedOnly: true },
   { label: "Audit Log", path: "/settings/audit-log", adminOnly: true, selfHostedOnly: false },
-  { label: "Authentication", path: "/settings/authentication", adminOnly: true, selfHostedOnly: false },
+  { label: "Authentication", path: "/settings/authentication", adminOnly: true, selfHostedOnly: true },
   { label: "GitHub", path: "/settings/github", adminOnly: true, selfHostedOnly: false },
   { label: "Organization", path: "/settings/organization", adminOnly: true, selfHostedOnly: false },
   { label: "Projects", path: "/settings/projects", adminOnly: true, selfHostedOnly: false },
