@@ -6,8 +6,13 @@ import { canManageOrganization } from "~/lib/permissions";
 import { getSSOConfig, saveSSOConfig, generateSPMetadata } from "~/lib/saml.server";
 import { getPublicBaseUrl } from "~/lib/url.server";
 import { logAuditEvent } from "~/lib/audit.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  if (isSaas()) {
+    throw redirect("/settings");
+  }
+
   const user = await requireActiveAuth(request);
 
   if (!canManageOrganization(user.membership?.role)) {
