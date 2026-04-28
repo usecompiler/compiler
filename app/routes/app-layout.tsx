@@ -131,6 +131,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     hasStorageConfig,
     projects: projectsList,
     activeProject,
+    saasMode: isSaas(),
   };
 }
 
@@ -159,6 +160,7 @@ export interface AppContext {
   hasStorageConfig: boolean;
   projects: ProjectMeta[];
   activeProject: ProjectMeta | null;
+  saasMode: boolean;
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
@@ -176,6 +178,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     hasStorageConfig: loaderData.hasStorageConfig,
     projects: loaderData.projects,
     activeProject: loaderData.activeProject,
+    saasMode: loaderData.saasMode,
   };
 
   return <Outlet context={context} />;
