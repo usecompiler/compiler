@@ -8,6 +8,7 @@ import { eq, and, asc, inArray } from "drizzle-orm";
 import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 import { itemsToUIMessages } from "~/components/conversation-helpers";
 import { logAuditEvent } from "~/lib/audit.server";
+import { generateAndSaveTitle } from "~/lib/title-generation.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -62,6 +63,8 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Conversation not found", { status: 404 });
   }
 
+  let isFirstTurn = false;
+
   if (!isToolResultResubmit) {
     const userItemId = message.id || crypto.randomUUID();
     await db.insert(items).values({
@@ -84,7 +87,9 @@ export async function action({ request }: Route.ActionArgs) {
       ).onConflictDoNothing();
     }
 
-    if (conv[0]?.title === "New Chat") {
+    isFirstTurn = conv[0]?.title === "New Chat";
+
+    if (isFirstTurn) {
       let titleText = userText.trim();
       if (!titleText && blobIds && blobIds.length > 0) {
         titleText = "File attachment";
@@ -393,6 +398,14 @@ export async function action({ request }: Route.ActionArgs) {
           .update(conversations)
           .set({ updatedAt: new Date() })
           .where(eq(conversations.id, conversationId));
+
+        if (isFirstTurn && userText.trim()) {
+          try {
+            await generateAndSaveTitle(conversationId, organizationId, userText);
+          } catch (titleError) {
+            console.error(`[title-gen] Failed for conversation=${conversationId}:`, titleError);
+          }
+        }
 
         console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
       } catch (cleanupError) {
