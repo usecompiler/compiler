@@ -34,7 +34,6 @@ export default [
   // API routes
   route("api/agent", "routes/api.agent.ts"),
   route("api/conversations", "routes/api.conversations.ts"),
-  route("api/items", "routes/api.items.ts"),
   route("api/search", "routes/api.search.ts"),
   route("api/user-model-preference", "routes/api.user-model-preference.tsx"),
   route("api/upload", "routes/api.upload.ts"),
