@@ -435,18 +435,21 @@ export async function action({ request }: Route.ActionArgs) {
 
   const uiStream = createUIMessageStream({
     originalMessages: uiMessages,
-    execute: async ({ writer }) => {
+    execute: ({ writer }) => {
       writer.merge(filteredStream);
 
       if (isFirstTurn && userText.trim()) {
-        try {
-          const title = await generateAndSaveTitle(conversationId, organizationId, userText);
-          if (title) {
-            writer.write({ type: "data-title", data: { title } });
-          }
-        } catch (err) {
-          console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
-        }
+        generateAndSaveTitle(conversationId, organizationId, userText)
+          .then((title) => {
+            if (title) {
+              try {
+                writer.write({ type: "data-title", data: { title } });
+              } catch {}
+            }
+          })
+          .catch((err) => {
+            console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
+          });
       }
     },
   });
