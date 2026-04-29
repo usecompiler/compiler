@@ -4,7 +4,7 @@ import { grepDescription, grepParameters, executeGrep } from "./grep.server";
 import { globDescription, globParameters, executeGlob } from "./glob.server";
 import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
-import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
+import { askUserQuestionDescription, askUserQuestionParameters, type AskUserQuestionOutput } from "./ask-user-question.server";
 import { repoSyncDescription, repoSyncParameters, executeRepoSync } from "./repo-sync.server";
 
 export const GREP_MAX_CHARS = 5000;
@@ -88,6 +88,13 @@ export function buildTools(options: BuildToolsOptions) {
     askUserQuestion: tool({
       description: askUserQuestionDescription,
       inputSchema: askUserQuestionParameters,
+      toModelOutput: ({ output }) => ({
+        type: "text",
+        value: Object.entries(output as AskUserQuestionOutput)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n"),
+      }),
     }),
   };
 

@@ -385,7 +385,7 @@ describe("api.agent action", () => {
       expect(parts[3]).toMatchObject({ type: "text" });
     });
 
-    it("excludes askUserQuestion tool calls from persisted parts", async () => {
+    it("persists askUserQuestion tool calls so they reload as a Q&A bubble", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -400,7 +400,7 @@ describe("api.agent action", () => {
         responseMessage: {
           parts: [
             { type: "text", text: "What color?" },
-            { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", input: {}, output: "{}" },
+            { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", input: {}, output: "{\"Color\":\"Red\"}" },
             { type: "text", text: "Great choice." },
           ],
         },
@@ -410,8 +410,13 @@ describe("api.agent action", () => {
       const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
       const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
       const parts = content.parts as Array<Record<string, unknown>>;
-      expect(parts).toHaveLength(2);
-      expect(parts.every((p) => p.type !== "tool-call" || p.toolName !== "askUserQuestion")).toBe(true);
+      expect(parts).toHaveLength(3);
+      const askUserQuestionPart = parts.find((p) => p.toolName === "askUserQuestion");
+      expect(askUserQuestionPart).toMatchObject({
+        type: "tool-call",
+        toolName: "askUserQuestion",
+        output: "{\"Color\":\"Red\"}",
+      });
     });
 
     it("concatenates text parts into a flat text field", async () => {

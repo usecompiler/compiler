@@ -465,24 +465,6 @@ export function AgentConversation({
                         answersPayload[key] = found?.answer || "";
                       });
 
-                      if (answered.length > 0) {
-                        const qaText = answered
-                          .map((aq) => `Q: ${aq.question}\nA: ${aq.answer}`)
-                          .join("\n\n");
-                        const answerItem: Item = {
-                          id: crypto.randomUUID(),
-                          type: "message",
-                          role: "user",
-                          content: qaText,
-                          createdAt: Date.now(),
-                        };
-                        await fetch("/api/items", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ conversationId, item: answerItem }),
-                        });
-                      }
-
                       const toolCallId = pendingQuestion.toolCallId;
                       setPendingQuestion(null);
                       setStreamStartTime(Date.now());

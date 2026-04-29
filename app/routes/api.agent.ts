@@ -371,7 +371,6 @@ export async function action({ request }: Route.ActionArgs) {
           } else if (part.type === "dynamic-tool" || (part.type as string).startsWith("tool-")) {
             const tp = part as { toolName?: string; toolCallId?: string; input?: unknown; output?: unknown; type: string };
             const name = tp.toolName || tp.type.replace("tool-", "");
-            if (name === "askUserQuestion") continue;
             parts.push({
               type: "tool-call",
               toolName: name,

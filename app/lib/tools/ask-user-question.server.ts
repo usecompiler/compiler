@@ -9,6 +9,8 @@ export interface PendingQuestionData {
 
 export const askUserQuestionDescription = "Ask the user a clarifying question with predefined options. Use when you need the user to choose between alternatives or clarify their intent. Provide clear, concise options.";
 
+export type AskUserQuestionOutput = Record<string, string>;
+
 export const askUserQuestionParameters = z.object({
   questions: z.array(
     z.object({
