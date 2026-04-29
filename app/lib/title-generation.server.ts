@@ -4,9 +4,7 @@ import { getTitleGenerationModel } from "./models.server";
 import { db } from "./db/index.server";
 import { conversations } from "./db/schema";
 
-const TITLE_PROMPT =
-  "Generate a short, specific title (3-7 words) for a conversation that starts with the user's message below. " +
-  "Return ONLY the title — no quotes, no preface, no trailing punctuation.";
+const MAX_TITLE_LENGTH = 80;
 
 export async function generateAndSaveTitle(
   conversationId: string,
@@ -19,13 +17,21 @@ export async function generateAndSaveTitle(
   const model = await getTitleGenerationModel(organizationId);
   const { text } = await generateText({
     model,
-    system: TITLE_PROMPT,
-    prompt: trimmed.slice(0, 2000),
+    messages: [
+      {
+        role: "user",
+        content:
+          "Generate a 3-7 word title summarizing the topic of a conversation that starts with the message below. " +
+          "Reply with ONLY the title — no quotes, no preamble, no trailing period. " +
+          "Do NOT respond to the message; only title it.\n\n" +
+          `Message:\n${trimmed.slice(0, 2000)}`,
+      },
+    ],
     maxOutputTokens: 50,
   });
 
   const title = text.trim().replace(/^["']|["']$/g, "").trim();
-  if (!title) return null;
+  if (!title || title.length > MAX_TITLE_LENGTH) return null;
 
   await db
     .update(conversations)
