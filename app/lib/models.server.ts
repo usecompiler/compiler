@@ -29,6 +29,8 @@ export function clearModelCache() {
 
 export const DEFAULT_MODEL_ID = "claude-opus-4-7";
 
+export const TITLE_MODEL_ID = "claude-sonnet-4-6";
+
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
     id: "claude-sonnet-4-6",
@@ -482,6 +484,26 @@ export async function getModel(
     apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
   });
   return { model: anthropic(modelId), modelId };
+}
+
+export async function getTitleGenerationModel(
+  organizationId: string,
+): Promise<LanguageModel> {
+  const config = await getAIProviderConfig(organizationId);
+
+  if (config?.provider === "bedrock" && config.awsRegion && config.awsAccessKeyId && config.awsSecretAccessKey) {
+    const bedrock = createBedrockAnthropic({
+      region: config.awsRegion,
+      accessKeyId: config.awsAccessKeyId,
+      secretAccessKey: config.awsSecretAccessKey,
+    });
+    return bedrock(TITLE_MODEL_ID);
+  }
+
+  const anthropic = createAnthropic({
+    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
+  });
+  return anthropic(TITLE_MODEL_ID);
 }
 
 export async function saveToolConfig(

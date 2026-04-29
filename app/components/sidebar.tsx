@@ -248,6 +248,7 @@ function ConversationItem({ conversation, readOnly = false, impersonating }: Con
     <NavLink
       to={conversationUrl}
       prefetch="intent"
+      title={conversation.title}
       className={({ isActive }) => `group relative flex items-center px-3 py-2.5 text-sm rounded-lg transition-colors ${
         isActive
           ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"

@@ -23,12 +23,19 @@ const mockConvertToModelMessages = vi.fn().mockResolvedValue([]);
 const mockCreateUIMessageStreamResponse = vi.fn().mockImplementation(() =>
   new Response("data: test\n\n", { headers: { "Content-Type": "text/event-stream" } })
 );
+const mockCreateUIMessageStream = vi.fn();
 vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
   smoothStream: () => "mock-smooth-stream",
+  createUIMessageStream: (...args: unknown[]) => mockCreateUIMessageStream(...args),
   createUIMessageStreamResponse: (...args: unknown[]) => mockCreateUIMessageStreamResponse(...args),
+}));
+
+const generateAndSaveTitle = vi.fn().mockResolvedValue(undefined);
+vi.mock("~/lib/title-generation.server", () => ({
+  generateAndSaveTitle: (...args: unknown[]) => generateAndSaveTitle(...args),
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -64,6 +71,11 @@ function setupMockStreamText() {
   mockStreamText.mockReturnValue({
     toUIMessageStream: vi.fn().mockReturnValue(new ReadableStream()),
     consumeStream: vi.fn().mockResolvedValue(undefined),
+  });
+  mockCreateUIMessageStream.mockImplementation((opts: { execute?: (args: { writer: { merge: (s: unknown) => void; write: (c: unknown) => void } }) => Promise<void> | void }) => {
+    const writer = { merge: vi.fn(), write: vi.fn() };
+    void Promise.resolve(opts.execute?.({ writer }));
+    return new ReadableStream();
   });
 }
 
@@ -448,6 +460,64 @@ describe("api.agent action", () => {
       const setCalls = mockDb._updateSet.mock.calls;
       const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed");
       expect(contentUpdate).toBeDefined();
+    });
+  });
+
+  describe("LLM title generation", () => {
+    it("calls generateAndSaveTitle on first turn (title was 'New Chat')", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      expect(generateAndSaveTitle).toHaveBeenCalledTimes(1);
+      expect(generateAndSaveTitle).toHaveBeenCalledWith("conv-1", "org-1", "Hello");
+    });
+
+    it("does not call generateAndSaveTitle on follow-up turns (title already set)", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      expect(generateAndSaveTitle).not.toHaveBeenCalled();
+    });
+
+    it("does not call generateAndSaveTitle when userText is empty (blob-only message)", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const body = {
+        message: { id: "msg-user-1", role: "user", parts: [] },
+        conversationId: "conv-1",
+        blobIds: ["blob-1"],
+      };
+      const request = buildRequest(body);
+      await callAction(request);
+
+      expect(generateAndSaveTitle).not.toHaveBeenCalled();
+    });
+
+    it("swallows errors from generateAndSaveTitle without blocking the action", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      generateAndSaveTitle.mockRejectedValueOnce(new Error("haiku unavailable"));
+
+      const request = buildRequest(validBody());
+      await expect(callAction(request)).resolves.toBeDefined();
+
+      expect(generateAndSaveTitle).toHaveBeenCalledTimes(1);
     });
   });
 

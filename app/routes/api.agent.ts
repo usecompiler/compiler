@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStreamResponse, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -8,6 +8,7 @@ import { eq, and, asc, inArray } from "drizzle-orm";
 import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 import { itemsToUIMessages } from "~/components/conversation-helpers";
 import { logAuditEvent } from "~/lib/audit.server";
+import { generateAndSaveTitle } from "~/lib/title-generation.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -62,6 +63,8 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Conversation not found", { status: 404 });
   }
 
+  let isFirstTurn = false;
+
   if (!isToolResultResubmit) {
     const userItemId = message.id || crypto.randomUUID();
     await db.insert(items).values({
@@ -84,7 +87,9 @@ export async function action({ request }: Route.ActionArgs) {
       ).onConflictDoNothing();
     }
 
-    if (conv[0]?.title === "New Chat") {
+    isFirstTurn = conv[0]?.title === "New Chat";
+
+    if (isFirstTurn) {
       let titleText = userText.trim();
       if (!titleText && blobIds && blobIds.length > 0) {
         titleText = "File attachment";
@@ -339,8 +344,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const compactionBlockIds = new Set<string>();
 
-  const uiStream = result.toUIMessageStream({
+  const innerUiStream = result.toUIMessageStream({
     originalMessages: uiMessages,
+    sendFinish: false,
     onFinish: async ({ responseMessage: assistantMessage }) => {
       try {
         const durationMs = Date.now() - startTime;
@@ -401,7 +407,7 @@ export async function action({ request }: Route.ActionArgs) {
     },
   });
 
-  const filteredStream = uiStream.pipeThrough(
+  const filteredStream = innerUiStream.pipeThrough(
     new TransformStream({
       transform(chunk, controller) {
         if (chunk.type === "text-start") {
@@ -427,7 +433,28 @@ export async function action({ request }: Route.ActionArgs) {
     }),
   );
 
-  const response = createUIMessageStreamResponse({ stream: filteredStream });
+  const uiStream = createUIMessageStream({
+    originalMessages: uiMessages,
+    execute: ({ writer }) => {
+      writer.merge(filteredStream);
+
+      if (isFirstTurn && userText.trim()) {
+        generateAndSaveTitle(conversationId, organizationId, userText)
+          .then((title) => {
+            if (title) {
+              try {
+                writer.write({ type: "data-title", data: { title } });
+              } catch {}
+            }
+          })
+          .catch((err) => {
+            console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
+          });
+      }
+    },
+  });
+
+  const response = createUIMessageStreamResponse({ stream: uiStream });
 
   Promise.resolve(result.consumeStream()).catch((err) => {
     console.error(`[agent] Stream error for conversation=${conversationId}:`, err);
