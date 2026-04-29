@@ -474,6 +474,7 @@ export function AgentConversation({
                           type: "message",
                           role: "user",
                           content: qaText,
+                          status: "completed",
                           createdAt: Date.now(),
                         };
                         await fetch("/api/items", {
