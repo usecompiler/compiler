@@ -105,6 +105,12 @@ export async function action({ request }: Route.ActionArgs) {
         .where(eq(conversations.id, conversationId));
     }
 
+    if (isFirstTurn && userText.trim()) {
+      generateAndSaveTitle(conversationId, organizationId, userText).catch((err) => {
+        console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
+      });
+    }
+
     await logAuditEvent(organizationId, user.id, "sent message", { conversationId });
   }
 
@@ -398,14 +404,6 @@ export async function action({ request }: Route.ActionArgs) {
           .update(conversations)
           .set({ updatedAt: new Date() })
           .where(eq(conversations.id, conversationId));
-
-        if (isFirstTurn && userText.trim()) {
-          try {
-            await generateAndSaveTitle(conversationId, organizationId, userText);
-          } catch (titleError) {
-            console.error(`[title-gen] Failed for conversation=${conversationId}:`, titleError);
-          }
-        }
 
         console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
       } catch (cleanupError) {

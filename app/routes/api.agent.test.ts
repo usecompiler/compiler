@@ -466,12 +466,6 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
-        responseMessage: { parts: [{ type: "text", text: "Here is the answer." }] },
-      });
-
       expect(generateAndSaveTitle).toHaveBeenCalledTimes(1);
       expect(generateAndSaveTitle).toHaveBeenCalledWith("conv-1", "org-1", "Hello");
     });
@@ -484,12 +478,6 @@ describe("api.agent action", () => {
       mockDb._selectCallCount = 0;
       const request = buildRequest(validBody());
       await callAction(request);
-
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
-        responseMessage: { parts: [{ type: "text", text: "ok" }] },
-      });
 
       expect(generateAndSaveTitle).not.toHaveBeenCalled();
     });
@@ -508,16 +496,10 @@ describe("api.agent action", () => {
       const request = buildRequest(body);
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
-        responseMessage: { parts: [{ type: "text", text: "ok" }] },
-      });
-
       expect(generateAndSaveTitle).not.toHaveBeenCalled();
     });
 
-    it("swallows errors from generateAndSaveTitle so the stream finishes cleanly", async () => {
+    it("swallows errors from generateAndSaveTitle without blocking the action", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "New Chat", userId: "user-1" }],
         [],
@@ -526,13 +508,7 @@ describe("api.agent action", () => {
       generateAndSaveTitle.mockRejectedValueOnce(new Error("haiku unavailable"));
 
       const request = buildRequest(validBody());
-      await callAction(request);
-
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await expect(
-        callArgs.onFinish({ responseMessage: { parts: [{ type: "text", text: "ok" }] } }),
-      ).resolves.toBeUndefined();
+      await expect(callAction(request)).resolves.toBeDefined();
 
       expect(generateAndSaveTitle).toHaveBeenCalledTimes(1);
     });
