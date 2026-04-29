@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStreamResponse, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -103,12 +103,6 @@ export async function action({ request }: Route.ActionArgs) {
         .update(conversations)
         .set({ updatedAt: new Date() })
         .where(eq(conversations.id, conversationId));
-    }
-
-    if (isFirstTurn && userText.trim()) {
-      generateAndSaveTitle(conversationId, organizationId, userText).catch((err) => {
-        console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
-      });
     }
 
     await logAuditEvent(organizationId, user.id, "sent message", { conversationId });
@@ -350,8 +344,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const compactionBlockIds = new Set<string>();
 
-  const uiStream = result.toUIMessageStream({
+  const innerUiStream = result.toUIMessageStream({
     originalMessages: uiMessages,
+    sendFinish: false,
     onFinish: async ({ responseMessage: assistantMessage }) => {
       try {
         const durationMs = Date.now() - startTime;
@@ -412,7 +407,7 @@ export async function action({ request }: Route.ActionArgs) {
     },
   });
 
-  const filteredStream = uiStream.pipeThrough(
+  const filteredStream = innerUiStream.pipeThrough(
     new TransformStream({
       transform(chunk, controller) {
         if (chunk.type === "text-start") {
@@ -438,7 +433,25 @@ export async function action({ request }: Route.ActionArgs) {
     }),
   );
 
-  const response = createUIMessageStreamResponse({ stream: filteredStream });
+  const uiStream = createUIMessageStream({
+    originalMessages: uiMessages,
+    execute: async ({ writer }) => {
+      writer.merge(filteredStream);
+
+      if (isFirstTurn && userText.trim()) {
+        try {
+          const title = await generateAndSaveTitle(conversationId, organizationId, userText);
+          if (title) {
+            writer.write({ type: "data-title", data: { title } });
+          }
+        } catch (err) {
+          console.error(`[title-gen] Failed for conversation=${conversationId}:`, err);
+        }
+      }
+    },
+  });
+
+  const response = createUIMessageStreamResponse({ stream: uiStream });
 
   Promise.resolve(result.consumeStream()).catch((err) => {
     console.error(`[agent] Stream error for conversation=${conversationId}:`, err);

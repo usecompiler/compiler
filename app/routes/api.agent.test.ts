@@ -23,11 +23,13 @@ const mockConvertToModelMessages = vi.fn().mockResolvedValue([]);
 const mockCreateUIMessageStreamResponse = vi.fn().mockImplementation(() =>
   new Response("data: test\n\n", { headers: { "Content-Type": "text/event-stream" } })
 );
+const mockCreateUIMessageStream = vi.fn();
 vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
   smoothStream: () => "mock-smooth-stream",
+  createUIMessageStream: (...args: unknown[]) => mockCreateUIMessageStream(...args),
   createUIMessageStreamResponse: (...args: unknown[]) => mockCreateUIMessageStreamResponse(...args),
 }));
 
@@ -69,6 +71,11 @@ function setupMockStreamText() {
   mockStreamText.mockReturnValue({
     toUIMessageStream: vi.fn().mockReturnValue(new ReadableStream()),
     consumeStream: vi.fn().mockResolvedValue(undefined),
+  });
+  mockCreateUIMessageStream.mockImplementation((opts: { execute?: (args: { writer: { merge: (s: unknown) => void; write: (c: unknown) => void } }) => Promise<void> | void }) => {
+    const writer = { merge: vi.fn(), write: vi.fn() };
+    void Promise.resolve(opts.execute?.({ writer }));
+    return new ReadableStream();
   });
 }
 

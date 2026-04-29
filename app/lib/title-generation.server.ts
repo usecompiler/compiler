@@ -12,9 +12,9 @@ export async function generateAndSaveTitle(
   conversationId: string,
   organizationId: string,
   userText: string,
-): Promise<void> {
+): Promise<string | null> {
   const trimmed = userText.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
 
   const model = await getTitleGenerationModel(organizationId);
   const { text } = await generateText({
@@ -25,10 +25,12 @@ export async function generateAndSaveTitle(
   });
 
   const title = text.trim().replace(/^["']|["']$/g, "").trim();
-  if (!title) return;
+  if (!title) return null;
 
   await db
     .update(conversations)
     .set({ title, updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
+
+  return title;
 }

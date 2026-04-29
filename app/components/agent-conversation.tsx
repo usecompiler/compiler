@@ -114,6 +114,11 @@ export function AgentConversation({
         });
       }
     },
+    onData(dataPart) {
+      if (dataPart.type === "data-title") {
+        revalidator.revalidate();
+      }
+    },
     onFinish() {
       setStreamStartTime(undefined);
       revalidator.revalidate();
