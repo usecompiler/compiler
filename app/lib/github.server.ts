@@ -453,14 +453,14 @@ export async function savePendingInstallation(
 export async function completePendingInstallation(
   githubAccountLogin: string,
   installationId: string
-): Promise<boolean> {
+): Promise<{ organizationId: string } | null> {
   const pending = await db
     .select()
     .from(githubInstallations)
     .where(eq(githubInstallations.githubAccountLogin, githubAccountLogin))
     .limit(1);
 
-  if (pending.length === 0 || pending[0].installationId) return false;
+  if (pending.length === 0 || pending[0].installationId) return null;
 
   const organizationId = pending[0].organizationId;
   const { token, expiresAt } = await getInstallationAccessToken(organizationId, installationId);
@@ -471,7 +471,7 @@ export async function completePendingInstallation(
     .set({ githubAccountLogin })
     .where(eq(githubInstallations.organizationId, organizationId));
 
-  return true;
+  return { organizationId };
 }
 
 export function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {

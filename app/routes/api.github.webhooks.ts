@@ -3,6 +3,8 @@ import {
   verifyWebhookSignature,
   completePendingInstallation,
 } from "~/lib/github.server";
+import { sendInstallationApprovedEmail } from "~/lib/installation-emails.server";
+import { getPublicBaseUrl } from "~/lib/url.server";
 import { db } from "~/lib/db/index.server";
 import { githubInstallations } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -40,6 +42,13 @@ export async function action({ request }: Route.ActionArgs) {
         const linked = await completePendingInstallation(accountLogin, installationId);
         if (linked) {
           console.log(`[webhook] Linked installation ${installationId} for ${accountLogin}`);
+          sendInstallationApprovedEmail({
+            organizationId: linked.organizationId,
+            githubAccountLogin: accountLogin,
+            baseUrl: getPublicBaseUrl(request),
+          }).catch((err) => {
+            console.error(`[webhook] Failed to send install-approved email:`, err);
+          });
         }
       }
     }

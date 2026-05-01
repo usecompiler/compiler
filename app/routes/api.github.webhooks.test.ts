@@ -12,6 +12,11 @@ vi.mock("~/lib/github.server", () => ({
   completePendingInstallation,
 }));
 
+const sendInstallationApprovedEmail = vi.fn().mockResolvedValue(undefined);
+vi.mock("~/lib/installation-emails.server", () => ({
+  sendInstallationApprovedEmail: (...args: unknown[]) => sendInstallationApprovedEmail(...args),
+}));
+
 vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
 }));
@@ -53,7 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
   verifyWebhookSignature.mockReturnValue(true);
-  completePendingInstallation.mockResolvedValue(false);
+  completePendingInstallation.mockResolvedValue(null);
   mockDb._deleteWhere.mockResolvedValue(undefined);
 });
 
@@ -82,7 +87,7 @@ describe("api.github.webhooks", () => {
   });
 
   it("calls completePendingInstallation on installation.created", async () => {
-    completePendingInstallation.mockResolvedValue(true);
+    completePendingInstallation.mockResolvedValue({ organizationId: "org-1" });
     const payload = {
       action: "created",
       installation: { id: 12345, account: { login: "myorg" } },
@@ -92,6 +97,35 @@ describe("api.github.webhooks", () => {
 
     expect(response.status).toBe(200);
     expect(completePendingInstallation).toHaveBeenCalledWith("myorg", "12345");
+  });
+
+  it("sends install-approved email when completePendingInstallation succeeds", async () => {
+    completePendingInstallation.mockResolvedValue({ organizationId: "org-1" });
+    const payload = {
+      action: "created",
+      installation: { id: 12345, account: { login: "myorg" } },
+    };
+    const request = buildWebhookRequest("installation", payload);
+    await callAction(request);
+    await new Promise((r) => setImmediate(r));
+
+    expect(sendInstallationApprovedEmail).toHaveBeenCalledTimes(1);
+    expect(sendInstallationApprovedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: "org-1", githubAccountLogin: "myorg" }),
+    );
+  });
+
+  it("does not send email when completePendingInstallation returns null", async () => {
+    completePendingInstallation.mockResolvedValue(null);
+    const payload = {
+      action: "created",
+      installation: { id: 12345, account: { login: "myorg" } },
+    };
+    const request = buildWebhookRequest("installation", payload);
+    await callAction(request);
+    await new Promise((r) => setImmediate(r));
+
+    expect(sendInstallationApprovedEmail).not.toHaveBeenCalled();
   });
 
   it("deletes installation on installation.deleted", async () => {
