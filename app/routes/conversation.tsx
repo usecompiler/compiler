@@ -172,7 +172,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const {
     conversations,
     user,
@@ -213,7 +213,9 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       if (impersonating) {
         newParams.set("impersonate", impersonating.id);
       }
-      setSearchParams(newParams, { replace: true });
+      const queryString = newParams.toString();
+      const newUrl = `/c/${id}${queryString ? `?${queryString}` : ""}`;
+      window.history.replaceState(null, "", newUrl);
     }
   };
 
