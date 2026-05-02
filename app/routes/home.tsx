@@ -4,6 +4,12 @@ import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { PromptInput, type PendingFile } from "~/components/prompt-input";
 
+export interface NewConversationNavState {
+  prompt?: string;
+  blobIds?: string;
+  projectId?: string;
+}
+
 export function meta() {
   return [
     { title: "Compiler" },

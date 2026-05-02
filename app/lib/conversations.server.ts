@@ -6,6 +6,8 @@ import type { Item, ItemType } from "~/lib/types";
 
 export type { Item, ItemType };
 
+export const NEW_CHAT_TITLE = "New Chat";
+
 export async function isUserInOrg(userId: string, organizationId: string): Promise<boolean> {
   const result = await db
     .select({ id: members.id })

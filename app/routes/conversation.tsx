@@ -2,6 +2,7 @@ import { useParams, useOutletContext, redirect, useNavigate, useFetcher, useLoca
 import { useRef, useState, useEffect } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
+import type { NewConversationNavState } from "./home";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { AgentConversation } from "~/components/agent-conversation";
 import { ShareModal } from "~/components/share-modal";
@@ -28,20 +29,23 @@ export function meta() {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const user = await requireActiveAuth(request);
+  const [user, conversation] = await Promise.all([
+    requireActiveAuth(request),
+    getConversation(params.id!),
+  ]);
   const isOwner = user.membership?.role === "owner";
   const url = new URL(request.url);
   const shareToken = url.searchParams.get("share");
   const impersonateUserId = url.searchParams.get("impersonate");
 
-  const conversation = await getConversation(params.id!);
   if (!conversation) {
+    const sharedByName: string | null = null;
     return {
       items: [],
       blobsByItemId: {},
       isSharedView: false,
       ownsConversation: true,
-      sharedByName: null as string | null,
+      sharedByName,
       shareLink: null,
       shareToken,
       source: null,
@@ -170,9 +174,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
   const location = useLocation();
-  const navState = (location.state ?? null) as
-    | { prompt?: string; blobIds?: string; projectId?: string }
-    | null;
+  const navState = (location.state ?? null) as NewConversationNavState | null;
   const {
     conversations,
     user,
