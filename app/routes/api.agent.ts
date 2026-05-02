@@ -9,6 +9,7 @@ import { getStorageConfig, fetchFile } from "~/lib/storage.server";
 import { itemsToUIMessages } from "~/components/conversation-helpers";
 import { logAuditEvent } from "~/lib/audit.server";
 import { generateAndSaveTitle } from "~/lib/title-generation.server";
+import { NEW_CHAT_TITLE } from "~/lib/conversations.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -24,6 +25,7 @@ export async function action({ request }: Route.ActionArgs) {
   const message: UIMessage | undefined = body.message;
   const conversationId: string | undefined = body.conversationId;
   const blobIds: string[] | undefined = body.blobIds;
+  const projectId: string | undefined = body.projectId;
 
   if (!message || !conversationId) {
     return new Response("Missing message or conversationId", { status: 400 });
@@ -49,7 +51,7 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Member not found", { status: 403 });
   }
 
-  const conv = await db
+  let conv = await db
     .select({
       id: conversations.id,
       title: conversations.title,
@@ -60,7 +62,36 @@ export async function action({ request }: Route.ActionArgs) {
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
 
   if (conv.length === 0) {
-    return new Response("Conversation not found", { status: 404 });
+    const inserted = await db.insert(conversations).values({
+      id: conversationId,
+      userId: user.id,
+      title: NEW_CHAT_TITLE,
+      projectId: projectId || null,
+    }).onConflictDoNothing().returning({
+      id: conversations.id,
+      title: conversations.title,
+      userId: conversations.userId,
+      projectId: conversations.projectId,
+    });
+
+    if (inserted.length > 0) {
+      conv = inserted;
+      await logAuditEvent(organizationId, user.id, "created conversation", { conversationId });
+    } else {
+      conv = await db
+        .select({
+          id: conversations.id,
+          title: conversations.title,
+          userId: conversations.userId,
+          projectId: conversations.projectId,
+        })
+        .from(conversations)
+        .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
+
+      if (conv.length === 0) {
+        return new Response("Conversation not found", { status: 404 });
+      }
+    }
   }
 
   let isFirstTurn = false;
@@ -87,7 +118,7 @@ export async function action({ request }: Route.ActionArgs) {
       ).onConflictDoNothing();
     }
 
-    isFirstTurn = conv[0]?.title === "New Chat";
+    isFirstTurn = conv[0]?.title === NEW_CHAT_TITLE;
 
     if (isFirstTurn) {
       let titleText = userText.trim();
@@ -96,7 +127,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
       await db
         .update(conversations)
-        .set({ title: titleText || "New Chat", updatedAt: new Date() })
+        .set({ title: titleText || NEW_CHAT_TITLE, updatedAt: new Date() })
         .where(eq(conversations.id, conversationId));
     } else {
       await db

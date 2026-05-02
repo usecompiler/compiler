@@ -9,6 +9,7 @@ interface MockDb {
   _selectFrom: ReturnType<typeof vi.fn>;
   _selectWhere: ReturnType<typeof vi.fn>;
   _insertValues: ReturnType<typeof vi.fn>;
+  _insertReturning: ReturnType<typeof vi.fn>;
   _updateSet: ReturnType<typeof vi.fn>;
   _updateWhere: ReturnType<typeof vi.fn>;
   _deleteWhere: ReturnType<typeof vi.fn>;
@@ -30,10 +31,19 @@ export function createMockDb(): MockDb {
   const updateWhereFn = vi.fn().mockResolvedValue(undefined);
   const updateSetFn = vi.fn(() => ({ where: updateWhereFn }));
   const updateFn = vi.fn(() => ({ set: updateSetFn }));
-  const onConflictDoNothingFn = vi.fn().mockResolvedValue(undefined);
+  const insertReturningFn = vi.fn().mockResolvedValue([]);
+  const onConflictDoNothingFn = vi.fn(() => {
+    const p = Promise.resolve(undefined) as unknown as Promise<undefined> & { returning: typeof insertReturningFn };
+    p.returning = insertReturningFn;
+    return p;
+  });
   const insertValuesFn = vi.fn(() => {
-    const p = Promise.resolve(undefined);
-    (p as unknown as Record<string, unknown>).onConflictDoNothing = onConflictDoNothingFn;
+    const p = Promise.resolve(undefined) as unknown as Promise<undefined> & {
+      onConflictDoNothing: typeof onConflictDoNothingFn;
+      returning: typeof insertReturningFn;
+    };
+    p.onConflictDoNothing = onConflictDoNothingFn;
+    p.returning = insertReturningFn;
     return p;
   });
   const insertFn = vi.fn(() => ({ values: insertValuesFn }));
@@ -71,6 +81,7 @@ export function createMockDb(): MockDb {
     _selectFrom: selectFromFn,
     _selectWhere: selectWhereFn,
     _insertValues: insertValuesFn,
+    _insertReturning: insertReturningFn,
     _updateSet: updateSetFn,
     _updateWhere: updateWhereFn,
     _deleteWhere: deleteWhereFn,

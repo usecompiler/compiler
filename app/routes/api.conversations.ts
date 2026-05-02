@@ -3,6 +3,7 @@ import { db } from "~/lib/db/index.server";
 import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireActiveAuth } from "~/lib/auth.server";
+import { NEW_CHAT_TITLE } from "~/lib/conversations.server";
 import { getConversations, isUserInOrg } from "~/lib/conversations.server";
 import { getMembers } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
@@ -42,7 +43,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method === "POST") {
     const body = await request.json();
     const id = body.id || crypto.randomUUID();
-    const title = body.title || "New Chat";
+    const title = body.title || NEW_CHAT_TITLE;
     const projectId = body.projectId || null;
 
     await db.insert(conversations).values({

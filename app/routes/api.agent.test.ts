@@ -88,9 +88,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockDb._selectCallCount = 0;
   mockDb._selectResults = [[]];
+  mockDb._insertReturning.mockResolvedValue([]);
   mockDb._insertValues.mockImplementation(() => {
     const p = Promise.resolve(undefined);
-    (p as unknown as Record<string, unknown>).onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+    (p as unknown as Record<string, unknown>).onConflictDoNothing = vi.fn(() => {
+      const inner = Promise.resolve(undefined) as unknown as Promise<undefined> & {
+        returning: typeof mockDb._insertReturning;
+      };
+      inner.returning = mockDb._insertReturning;
+      return inner;
+    });
     return p;
   });
   mockDb._updateSet.mockClear();
@@ -144,8 +151,29 @@ describe("api.agent action", () => {
       expect(await response.text()).toBe("Member not found");
     });
 
-    it("returns 404 when conversation is not found", async () => {
-      mockDb._setSelectResult([]);
+    it("creates conversation on first message when missing (UPSERT path)", async () => {
+      mockDb._selectResults = [[], []];
+      mockDb._selectCallCount = 0;
+      mockDb._insertReturning.mockResolvedValueOnce([
+        { id: "conv-1", title: "New Chat", userId: "user-1", projectId: "proj-1" },
+      ]);
+      const body = { ...validBody(), projectId: "proj-1" };
+      const request = buildRequest(body);
+      const response = await callAction(request);
+
+      expect(response.status).not.toBe(404);
+      const insertCalls = mockDb._insertValues.mock.calls;
+      const conversationInsert = insertCalls.find(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).id === "conv-1" && (c[0] as Record<string, unknown>).title === "New Chat"
+      );
+      expect(conversationInsert).toBeDefined();
+      expect((conversationInsert![0] as Record<string, unknown>).projectId).toBe("proj-1");
+    });
+
+    it("returns 404 only if INSERT and follow-up SELECT both come back empty (defensive)", async () => {
+      mockDb._selectResults = [[], []];
+      mockDb._selectCallCount = 0;
+      mockDb._insertReturning.mockResolvedValueOnce([]);
       const request = buildRequest(validBody());
       const response = await callAction(request);
       expect(response.status).toBe(404);
