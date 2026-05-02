@@ -112,6 +112,24 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   };
 }
 
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  const navState = (window.history.state?.usr ?? null) as NewConversationNavState | null;
+  if (navState?.prompt || navState?.blobIds) {
+    const sharedByName: string | null = null;
+    return {
+      items: [],
+      blobsByItemId: {},
+      isSharedView: false,
+      ownsConversation: true,
+      sharedByName,
+      shareLink: null,
+      shareToken: null,
+      source: null,
+    };
+  }
+  return serverLoader();
+}
+
 export async function action({ request, params }: Route.ActionArgs) {
   const user = await requireActiveAuth(request);
   const formData = await request.formData();
