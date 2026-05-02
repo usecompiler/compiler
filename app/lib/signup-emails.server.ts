@@ -2,12 +2,12 @@ import { sendEmail } from "./email.server";
 
 const NOTIFY_RECIPIENT = "pete@usecompiler.com";
 
-export async function sendNewUserNotificationEmail(params: {
+export async function sendNewSignupNotificationEmail(params: {
   name: string;
   email: string;
 }): Promise<void> {
   const { name, email } = params;
-  const text = `A new user just signed up for Compiler.
+  const text = `A new signup for Compiler.
 
 Name: ${name}
 Email: ${email}`;
