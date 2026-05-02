@@ -25,7 +25,7 @@ export async function action({ request }: Route.ActionArgs) {
   const message: UIMessage | undefined = body.message;
   const conversationId: string | undefined = body.conversationId;
   const blobIds: string[] | undefined = body.blobIds;
-  const projectIdFromBody: string | undefined = body.projectId;
+  const projectId: string | undefined = body.projectId;
 
   if (!message || !conversationId) {
     return new Response("Missing message or conversationId", { status: 400 });
@@ -66,7 +66,7 @@ export async function action({ request }: Route.ActionArgs) {
       id: conversationId,
       userId: user.id,
       title: NEW_CHAT_TITLE,
-      projectId: projectIdFromBody || null,
+      projectId: projectId || null,
     }).onConflictDoNothing().returning({
       id: conversations.id,
       title: conversations.title,
