@@ -24,6 +24,7 @@ export async function action({ request }: Route.ActionArgs) {
   const message: UIMessage | undefined = body.message;
   const conversationId: string | undefined = body.conversationId;
   const blobIds: string[] | undefined = body.blobIds;
+  const projectIdFromBody: string | undefined = body.projectId;
 
   if (!message || !conversationId) {
     return new Response("Missing message or conversationId", { status: 400 });
@@ -49,7 +50,7 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Member not found", { status: 403 });
   }
 
-  const conv = await db
+  let conv = await db
     .select({
       id: conversations.id,
       title: conversations.title,
@@ -60,7 +61,28 @@ export async function action({ request }: Route.ActionArgs) {
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
 
   if (conv.length === 0) {
-    return new Response("Conversation not found", { status: 404 });
+    await db.insert(conversations).values({
+      id: conversationId,
+      userId: user.id,
+      title: "New Chat",
+      projectId: projectIdFromBody || null,
+    }).onConflictDoNothing();
+
+    await logAuditEvent(organizationId, user.id, "created conversation", { conversationId });
+
+    conv = await db
+      .select({
+        id: conversations.id,
+        title: conversations.title,
+        userId: conversations.userId,
+        projectId: conversations.projectId,
+      })
+      .from(conversations)
+      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)));
+
+    if (conv.length === 0) {
+      return new Response("Conversation not found", { status: 404 });
+    }
   }
 
   let isFirstTurn = false;

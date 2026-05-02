@@ -1,50 +1,14 @@
-import { Form, redirect, useOutletContext, useNavigate, useSearchParams } from "react-router";
+import { useOutletContext, useNavigate, useSearchParams } from "react-router";
 import { useRef, useState, useCallback } from "react";
-import type { Route } from "./+types/home";
 import type { AppContext } from "./app-layout";
 import { ConversationLayout } from "~/components/conversation-layout";
 import { PromptInput, type PendingFile } from "~/components/prompt-input";
-import { requireAuth } from "~/lib/auth.server";
-import { db } from "~/lib/db/index.server";
-import { conversations } from "~/lib/db/schema";
-import { logAuditEvent } from "~/lib/audit.server";
 
 export function meta() {
   return [
     { title: "Compiler" },
     { name: "description", content: "AI-powered project assistant" },
   ];
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const user = await requireAuth(request);
-  const formData = await request.formData();
-  const prompt = formData.get("prompt")?.toString() || "";
-  const blobIds = formData.get("blobIds")?.toString() || "";
-
-  if (!prompt.trim() && !blobIds) {
-    return { error: "Please enter a message" };
-  }
-
-  const id = crypto.randomUUID();
-  const activeProjectId = formData.get("projectId")?.toString() || null;
-
-  await db.insert(conversations).values({
-    id,
-    userId: user.id,
-    title: "New Chat",
-    projectId: activeProjectId,
-  });
-
-  if (user.organization) {
-    await logAuditEvent(user.organization.id, user.id, "created conversation", { conversationId: id });
-  }
-
-  const params = new URLSearchParams();
-  if (prompt.trim()) params.set("prompt", prompt);
-  if (blobIds) params.set("blobIds", blobIds);
-
-  return redirect(`/c/${id}?${params.toString()}`);
 }
 
 export default function Home() {
@@ -102,7 +66,7 @@ function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConf
   const [input, setInput] = useState(searchParams.get("prompt") || "");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
-  const blobIdsInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   const handlePromptClick = (prompt: string) => {
     setInput(prompt);
@@ -155,15 +119,24 @@ function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConf
     });
   }, []);
 
-  const handleSubmit = useCallback((e?: React.FormEvent) => {
-    if (blobIdsInputRef.current) {
-      const ids = pendingFiles
-        .map((f) => f.blobId)
-        .filter((id): id is string => !!id)
-        .join(",");
-      blobIdsInputRef.current.value = ids;
-    }
-  }, [pendingFiles]);
+  const handleSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const promptText = input.trim();
+    const blobIds = pendingFiles
+      .map((f) => f.blobId)
+      .filter((id): id is string => !!id)
+      .join(",");
+
+    if (!promptText && !blobIds) return;
+
+    const id = crypto.randomUUID();
+    const params = new URLSearchParams();
+    if (promptText) params.set("prompt", promptText);
+    if (blobIds) params.set("blobIds", blobIds);
+    if (activeProjectId) params.set("projectId", activeProjectId);
+
+    navigate(`/c/${id}?${params.toString()}`);
+  }, [input, pendingFiles, activeProjectId, navigate]);
 
   return (
     <div className="flex flex-col h-full items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4">
@@ -171,9 +144,7 @@ function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConf
         What can I help with?
       </h1>
 
-      <Form ref={formRef} method="post" className="w-full max-w-3xl" onSubmit={handleSubmit}>
-        <input type="hidden" name="projectId" value={activeProjectId || ""} />
-        <input type="hidden" ref={blobIdsInputRef} name="blobIds" />
+      <form ref={formRef} className="w-full max-w-3xl" onSubmit={handleSubmit}>
         <PromptInput
           name="prompt"
           value={input}
@@ -184,7 +155,7 @@ function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConf
           onFilesChange={hasStorageConfig ? handleFilesChange : undefined}
           onRemoveFile={hasStorageConfig ? handleRemoveFile : undefined}
         />
-      </Form>
+      </form>
 
       <div className="flex flex-wrap justify-center gap-2 mt-6 max-w-3xl">
         {suggestedPrompts.map((prompt) => (

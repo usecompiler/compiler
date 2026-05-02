@@ -36,6 +36,18 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   const conversation = await getConversation(params.id!);
   if (!conversation) {
+    if (url.searchParams.get("prompt") || url.searchParams.get("blobIds")) {
+      return {
+        items: [],
+        blobsByItemId: {},
+        isSharedView: false,
+        ownsConversation: true,
+        sharedByName: null as string | null,
+        shareLink: null,
+        shareToken,
+        source: null,
+      };
+    }
     throw redirect("/");
   }
 
