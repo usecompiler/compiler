@@ -1,4 +1,4 @@
-import { useParams, useOutletContext, useSearchParams, redirect, useNavigate, useFetcher } from "react-router";
+import { useParams, useOutletContext, redirect, useNavigate, useFetcher, useLocation } from "react-router";
 import { useRef, useState, useEffect } from "react";
 import type { Route } from "./+types/conversation";
 import type { AppContext } from "./app-layout";
@@ -36,19 +36,16 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
   const conversation = await getConversation(params.id!);
   if (!conversation) {
-    if (url.searchParams.get("prompt") || url.searchParams.get("blobIds")) {
-      return {
-        items: [],
-        blobsByItemId: {},
-        isSharedView: false,
-        ownsConversation: true,
-        sharedByName: null as string | null,
-        shareLink: null,
-        shareToken,
-        source: null,
-      };
-    }
-    throw redirect("/");
+    return {
+      items: [],
+      blobsByItemId: {},
+      isSharedView: false,
+      ownsConversation: true,
+      sharedByName: null as string | null,
+      shareLink: null,
+      shareToken,
+      source: null,
+    };
   }
 
   const ownsConversation = conversation.userId === user.id;
@@ -172,7 +169,10 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function Conversation({ loaderData }: Route.ComponentProps) {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navState = (location.state ?? null) as
+    | { prompt?: string; blobIds?: string; projectId?: string }
+    | null;
   const {
     conversations,
     user,
@@ -190,9 +190,12 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     saasMode,
   } = useOutletContext<AppContext>();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const initialPrompt = searchParams.get("prompt");
-  const initialBlobIds = searchParams.get("blobIds") || undefined;
-  const hasProcessedInitialPrompt = useRef(false);
+  const initialPromptRef = useRef(navState?.prompt ?? null);
+  const initialBlobIdsRef = useRef(navState?.blobIds);
+  const initialProjectIdRef = useRef(navState?.projectId);
+  const initialPrompt = initialPromptRef.current;
+  const initialBlobIds = initialBlobIdsRef.current;
+  const initialProjectId = initialProjectIdRef.current;
 
   const { items, blobsByItemId, isSharedView, ownsConversation, sharedByName, shareLink, shareToken, source } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
@@ -205,19 +208,6 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
       navigate(`/c/${fetcher.data.conversationId}`);
     }
   }, [fetcher.data, navigate]);
-
-  const handlePromptProcessed = () => {
-    if ((initialPrompt || initialBlobIds) && !hasProcessedInitialPrompt.current) {
-      hasProcessedInitialPrompt.current = true;
-      const newParams = new URLSearchParams();
-      if (impersonating) {
-        newParams.set("impersonate", impersonating.id);
-      }
-      const queryString = newParams.toString();
-      const newUrl = `/c/${id}${queryString ? `?${queryString}` : ""}`;
-      window.history.replaceState(null, "", newUrl);
-    }
-  };
 
   const handleFork = () => {
     if (!shareToken) return;
@@ -286,7 +276,7 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
               conversationId={id!}
               initialItems={items}
               initialPrompt={isReadOnly ? null : initialPrompt}
-              onInitialPromptProcessed={handlePromptProcessed}
+              initialProjectId={isReadOnly ? undefined : initialProjectId}
               readOnly={isReadOnly}
               isSharedView={isSharedView}
               ownsConversation={ownsConversation}

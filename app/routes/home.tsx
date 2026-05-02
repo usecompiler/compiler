@@ -130,12 +130,13 @@ function HomePromptInput({ hasStorageConfig, activeProjectId }: { hasStorageConf
     if (!promptText && !blobIds) return;
 
     const id = crypto.randomUUID();
-    const params = new URLSearchParams();
-    if (promptText) params.set("prompt", promptText);
-    if (blobIds) params.set("blobIds", blobIds);
-    if (activeProjectId) params.set("projectId", activeProjectId);
-
-    navigate(`/c/${id}?${params.toString()}`);
+    navigate(`/c/${id}`, {
+      state: {
+        prompt: promptText || undefined,
+        blobIds: blobIds || undefined,
+        projectId: activeProjectId || undefined,
+      },
+    });
   }, [input, pendingFiles, activeProjectId, navigate]);
 
   return (

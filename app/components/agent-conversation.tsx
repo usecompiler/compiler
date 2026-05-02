@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import { useRevalidator, useBlocker, Link, useSearchParams } from "react-router";
+import { useRevalidator, useBlocker, Link } from "react-router";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -25,7 +25,7 @@ interface AgentConversationProps {
   conversationId: string;
   initialItems: Item[];
   initialPrompt?: string | null;
-  onInitialPromptProcessed?: () => void;
+  initialProjectId?: string;
   readOnly?: boolean;
   isSharedView?: boolean;
   ownsConversation?: boolean;
@@ -41,7 +41,7 @@ export function AgentConversation({
   conversationId,
   initialItems,
   initialPrompt,
-  onInitialPromptProcessed,
+  initialProjectId,
   readOnly = false,
   isSharedView = false,
   ownsConversation = false,
@@ -76,9 +76,6 @@ export function AgentConversation({
 
   const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
 
-  const [searchParams] = useSearchParams();
-  const projectIdFromUrl = useMemo(() => searchParams.get("projectId") ?? undefined, [searchParams]);
-
   const transport = useMemo(() => new DefaultChatTransport({
     api: "/api/agent",
     body: { conversationId },
@@ -89,12 +86,12 @@ export function AgentConversation({
           message: lastMessage,
           conversationId,
           blobIds: pendingBlobIdsRef.current.length > 0 ? pendingBlobIdsRef.current : undefined,
-          projectId: projectIdFromUrl,
+          projectId: initialProjectId,
           ...(extraBody || {}),
         },
       };
     },
-  }), [conversationId, projectIdFromUrl]);
+  }), [conversationId, initialProjectId]);
 
   const {
     messages,
@@ -226,7 +223,6 @@ export function AgentConversation({
     ) {
       hasProcessedInitialPrompt.current = true;
       handleSubmitWithPrompt(initialPrompt || "", initialBlobIds);
-      onInitialPromptProcessed?.();
     }
   }, [initialPrompt, conversationId, messages.length, isStreaming]);
 
