@@ -45,6 +45,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const installation = await getInstallation(user.organization.id);
+
+  if (isSaas() && installation?.status !== "active") {
+    return redirect("/onboarding/github");
+  }
+
   let availableRepos: GitHubRepo[] = [];
 
   if (installation?.status === "active") {
