@@ -47,7 +47,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   const installation = await getInstallation(user.organization.id);
 
   if (isSaas() && installation?.status !== "active") {
-    return redirect("/onboarding/github");
+    const existingRepos = await db.select({ id: repositories.id }).from(repositories).where(eq(repositories.organizationId, user.organization.id)).limit(1);
+    if (existingRepos.length === 0) {
+      return redirect("/onboarding/github");
+    }
   }
 
   let availableRepos: GitHubRepo[] = [];
