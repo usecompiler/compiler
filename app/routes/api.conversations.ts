@@ -4,6 +4,7 @@ import { conversations, items } from "~/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { NEW_CHAT_TITLE } from "~/lib/conversations.server";
+import { sendNewConversationNotificationEmail, fireAndForget } from "~/lib/signup-emails.server";
 import { getConversations, isUserInOrg } from "~/lib/conversations.server";
 import { getMembers } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
@@ -46,27 +47,23 @@ export async function action({ request }: Route.ActionArgs) {
     const title = body.title || NEW_CHAT_TITLE;
     const projectId = body.projectId || null;
 
-    await db.insert(conversations).values({
+    const [newConv] = await db.insert(conversations).values({
       id,
       userId: user.id,
       title,
       projectId,
-    });
-
-    const newConv = await db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, id));
+    }).returning();
 
     if (user.organization) {
       await logAuditEvent(user.organization.id, user.id, "created conversation", { conversationId: id });
     }
+    fireAndForget(sendNewConversationNotificationEmail({ userName: user.name, userEmail: user.email }));
 
     return Response.json({
-      id: newConv[0].id,
-      title: newConv[0].title,
-      createdAt: newConv[0].createdAt.getTime(),
-      updatedAt: newConv[0].updatedAt.getTime(),
+      id: newConv.id,
+      title: newConv.title,
+      createdAt: newConv.createdAt.getTime(),
+      updatedAt: newConv.updatedAt.getTime(),
       items: [],
     });
   }

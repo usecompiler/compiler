@@ -10,6 +10,7 @@ import { itemsToUIMessages } from "~/components/conversation-helpers";
 import { logAuditEvent } from "~/lib/audit.server";
 import { generateAndSaveTitle } from "~/lib/title-generation.server";
 import { NEW_CHAT_TITLE } from "~/lib/conversations.server";
+import { sendNewConversationNotificationEmail, fireAndForget } from "~/lib/signup-emails.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -77,6 +78,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (inserted.length > 0) {
       conv = inserted;
       await logAuditEvent(organizationId, user.id, "created conversation", { conversationId });
+      fireAndForget(sendNewConversationNotificationEmail({ userName: user.name, userEmail: user.email }));
     } else {
       conv = await db
         .select({

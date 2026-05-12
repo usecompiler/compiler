@@ -13,6 +13,7 @@ import {
   deleteProject,
 } from "~/lib/projects.server";
 import { logAuditEvent } from "~/lib/audit.server";
+import { sendNewProjectNotificationEmail, fireAndForget } from "~/lib/signup-emails.server";
 import { db } from "~/lib/db/index.server";
 import { repositories } from "~/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -96,6 +97,7 @@ export async function action({ request }: Route.ActionArgs) {
       return Response.json({ error: "Name is required" }, { status: 400 });
     }
     await createProject(user.organization.id, name);
+    fireAndForget(sendNewProjectNotificationEmail({ userName: user.name, userEmail: user.email, projectName: name }));
     return Response.json({ success: true, message: "Project created", intent: "create-project" });
   }
 
