@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "repositories_org_full_name_idx" ON "repositories" USING btree ("organization_id","full_name");

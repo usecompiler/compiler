@@ -1,6 +1,6 @@
 {
-  "id": "64600946-0939-416e-8e4f-6aa2b1f92f8c",
-  "prevId": "a3cb7bde-6560-42e7-8d53-be8874899f41",
+  "id": "558dac89-e216-41f1-a9d0-f583da46b753",
+  "prevId": "e91b06a4-c5b9-4ed1-a0c4-ab6b3deb7603",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -581,6 +581,12 @@
         },
         "installation_id": {
           "name": "installation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "github_account_login": {
+          "name": "github_account_login",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1317,7 +1323,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "repositories_org_full_name_idx": {
+          "name": "repositories_org_full_name_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "full_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "repositories_organization_id_organizations_id_fk": {
           "name": "repositories_organization_id_organizations_id_fk",

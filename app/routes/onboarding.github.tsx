@@ -168,7 +168,7 @@ export async function action({ request }: Route.ActionArgs) {
     cloneUrl,
     isPrivate: false,
     cloneStatus: "pending",
-  });
+  }).onConflictDoNothing();
 
   if (!isSaas()) {
     clonePublicRepository(user.organization.id, repoId, name, cloneUrl).catch(

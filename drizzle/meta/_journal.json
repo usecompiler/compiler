@@ -204,6 +204,13 @@
       "when": 1775433600001,
       "tag": "0028_add_github_account_login",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1778627136794,
+      "tag": "0029_add_repositories_unique_constraint",
+      "breakpoints": true
     }
   ]
 }
