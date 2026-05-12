@@ -70,9 +70,10 @@ describe("onboarding.project loader", () => {
     return mod.loader({ request } as never);
   }
 
-  it("redirects to /onboarding/github in SaaS mode when installation is null", async () => {
+  it("redirects to /onboarding/github in SaaS mode when installation is null and no repos exist", async () => {
     isSaasMock.mockReturnValue(true);
     getInstallation.mockResolvedValue(null);
+    mockDb._setSelectResult([]);
 
     const response = await callLoader(buildLoaderRequest());
 
@@ -80,14 +81,39 @@ describe("onboarding.project loader", () => {
     expect((response as Response).headers.get("location")).toBe("/onboarding/github");
   });
 
-  it("redirects to /onboarding/github in SaaS mode when installation is pending", async () => {
+  it("redirects to /onboarding/github in SaaS mode when installation is pending and no repos exist", async () => {
     isSaasMock.mockReturnValue(true);
     getInstallation.mockResolvedValue({ status: "pending" });
+    mockDb._setSelectResult([]);
 
     const response = await callLoader(buildLoaderRequest());
 
     expect((response as Response).status).toBe(302);
     expect((response as Response).headers.get("location")).toBe("/onboarding/github");
+  });
+
+  it("does NOT redirect in SaaS mode when installation is null but org has existing repos (public repo path)", async () => {
+    isSaasMock.mockReturnValue(true);
+    getInstallation.mockResolvedValue(null);
+    const existingRepo = { id: "repo-1", name: "fizzy", fullName: "basecamp/fizzy" };
+    mockDb._selectResults = [[existingRepo], [existingRepo]];
+
+    const response = await callLoader(buildLoaderRequest());
+
+    expect(response).not.toBeInstanceOf(Response);
+    expect(response).toMatchObject({ hasInstallation: false, existingRepos: [existingRepo] });
+  });
+
+  it("does NOT redirect in SaaS mode when installation is pending but org has existing repos (public repo path)", async () => {
+    isSaasMock.mockReturnValue(true);
+    getInstallation.mockResolvedValue({ status: "pending" });
+    const existingRepo = { id: "repo-1", name: "fizzy", fullName: "basecamp/fizzy" };
+    mockDb._selectResults = [[existingRepo], [existingRepo]];
+
+    const response = await callLoader(buildLoaderRequest());
+
+    expect(response).not.toBeInstanceOf(Response);
+    expect(response).toMatchObject({ hasInstallation: true, existingRepos: [existingRepo] });
   });
 
   it("does NOT redirect when installation is active in SaaS mode", async () => {
