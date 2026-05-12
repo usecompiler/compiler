@@ -3,7 +3,7 @@ import { db } from "./db/index.server";
 import { users, sessions, organizations, members } from "./db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
-import { sendNewSignupNotificationEmail } from "./signup-emails.server";
+import { sendNewSignupNotificationEmail, fireAndForget } from "./signup-emails.server";
 
 const SESSION_COOKIE = "session";
 const SESSION_EXPIRY_DAYS = 30;
@@ -200,9 +200,7 @@ export async function createUser(
 
   const { organization, memberId } = await createOrganization(id);
 
-  sendNewSignupNotificationEmail({ name, email: email.toLowerCase() }).catch((err) => {
-    console.error(`[signup] Failed to send new-signup notification email:`, err);
-  });
+  fireAndForget(sendNewSignupNotificationEmail({ name, email: email.toLowerCase() }));
 
   return {
     id,
