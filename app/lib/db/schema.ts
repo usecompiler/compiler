@@ -154,7 +154,7 @@ export const repositories = pgTable("repositories", {
   clonedAt: timestamp("cloned_at"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [uniqueIndex("repositories_org_full_name_idx").on(t.organizationId, t.fullName)]);
 
 export const ssoConfigurations = pgTable("sso_configurations", {
   id: text("id").primaryKey(),

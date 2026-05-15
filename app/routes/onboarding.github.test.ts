@@ -31,6 +31,7 @@ vi.mock("~/lib/clone.server", () => ({
 
 vi.mock("drizzle-orm", () => ({
   eq: (...args: unknown[]) => ({ _op: "eq", args }),
+  and: (...args: unknown[]) => ({ _op: "and", args }),
 }));
 
 vi.mock("~/lib/db/schema", () => ({
