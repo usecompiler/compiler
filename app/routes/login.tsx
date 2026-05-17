@@ -71,7 +71,7 @@ export default function Login() {
   const { ssoEnabled, passwordLoginEnabled, saasMode } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting = Boolean(navigation.formAction);
   const [searchParams] = useSearchParams();
   const errorFromUrl = getErrorMessage(searchParams.get("error"));
   const error = actionData?.error || errorFromUrl;

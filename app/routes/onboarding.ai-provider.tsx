@@ -116,7 +116,7 @@ export async function action({ request }: Route.ActionArgs) {
 export default function OnboardingAIProvider() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting = Boolean(navigation.formAction);
   const [provider, setProvider] = useState<AIProvider>("anthropic");
 
   return (

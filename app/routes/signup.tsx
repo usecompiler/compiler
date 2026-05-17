@@ -100,7 +100,7 @@ export default function Signup() {
   const actionData = useActionData<typeof action>();
   const loaderData = useLoaderData<typeof loader>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting = Boolean(navigation.formAction);
   const isInvite = !!loaderData?.inviteToken;
 
   return (
