@@ -4,14 +4,10 @@ import { requireActiveAuth, type Organization, type Membership } from "~/lib/aut
 import { getConversations, getConversationProjectId, getMostRecentProjectId, isUserInOrg, type ConversationMeta, type Item } from "~/lib/conversations.server";
 import { getMembers, type Member } from "~/lib/invitations.server";
 import { canManageOrganization, canImpersonate } from "~/lib/permissions.server";
-import { getModelConfig, getUserPreferredModel, getDisplayName, DEFAULT_MODEL_ID } from "~/lib/models.server";
+import { getModelConfig, getUserPreferredModel, getAvailableClaudeModels, DEFAULT_MODEL_ID } from "~/lib/models.server";
 import { getStorageConfigPublic } from "~/lib/storage.server";
 import { getProjects, type ProjectMeta } from "~/lib/projects.server";
 import { isSaas } from "~/lib/appMode.server";
-
-function getModelDisplayName(id: string): string {
-  return getDisplayName(id);
-}
 
 export type { Item, ConversationMeta, Organization, Membership, Member, ProjectMeta };
 
@@ -76,9 +72,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     const modelConfig = await getModelConfig(user.organization.id);
     if (modelConfig) {
       defaultModel = modelConfig.defaultModel;
+      const claudeModels = await getAvailableClaudeModels(user.organization.id);
+      const displayNames = new Map(claudeModels.map((m) => [m.id, m.displayName]));
       availableModels = modelConfig.availableModels.map((id) => ({
         id,
-        displayName: getModelDisplayName(id),
+        displayName: displayNames.get(id) ?? id,
       }));
 
       if (user.membership) {
