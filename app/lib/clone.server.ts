@@ -19,12 +19,26 @@ export function getRepoPath(organizationId: string, repoName: string): string {
   return path.join(getOrgRepoDir(organizationId), repoName);
 }
 
+const PULL_TIMEOUT_MS = 60_000;
+
+interface ExecGitOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
 function execGit(
   args: string[],
-  cwd?: string
+  cwd?: string,
+  options?: ExecGitOptions
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("git", args, { cwd });
+    const proc = spawn("git", args, {
+      cwd,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      signal: options?.signal,
+      timeout: options?.timeoutMs,
+      killSignal: "SIGKILL",
+    });
     let stdout = "";
     let stderr = "";
 
@@ -36,9 +50,13 @@ function execGit(
       stderr += data.toString();
     });
 
-    proc.on("close", (code) => {
+    proc.on("close", (code, killSignal) => {
       if (code === 0) {
         resolve({ stdout, stderr });
+      } else if (killSignal && options?.timeoutMs) {
+        reject(new Error(`git ${args[0]} timed out after ${Math.round(options.timeoutMs / 1000)}s`));
+      } else if (killSignal) {
+        reject(new Error(`git ${args[0]} terminated (${killSignal})`));
       } else {
         reject(new Error(`git ${args[0]} failed: ${stderr}`));
       }
@@ -48,18 +66,43 @@ function execGit(
   });
 }
 
-export async function cloneRepository(
+const inFlightClones = new Map<string, Promise<void>>();
+
+function withCloneLock(repoId: string, fn: () => Promise<void>): Promise<void> {
+  const existing = inFlightClones.get(repoId);
+  if (existing) return existing;
+  const promise = fn().finally(() => {
+    inFlightClones.delete(repoId);
+  });
+  inFlightClones.set(repoId, promise);
+  return promise;
+}
+
+export function cloneRepository(
   organizationId: string,
   repoId: string,
   repoName: string,
-  cloneUrl: string
+  cloneUrl: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return withCloneLock(repoId, () =>
+    doCloneRepository(organizationId, repoId, repoName, cloneUrl, signal)
+  );
+}
+
+async function doCloneRepository(
+  organizationId: string,
+  repoId: string,
+  repoName: string,
+  cloneUrl: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const orgDir = getOrgRepoDir(organizationId);
   const repoPath = getRepoPath(organizationId, repoName);
 
   await db
     .update(repositories)
-    .set({ cloneStatus: "cloning" })
+    .set({ cloneStatus: "cloning", lastSyncedAt: new Date() })
     .where(eq(repositories.id, repoId));
 
   try {
@@ -78,13 +121,14 @@ export async function cloneRepository(
 
     const authCloneUrl = getAuthenticatedCloneUrl(cloneUrl, accessToken);
 
-    await execGit(["clone", authCloneUrl, repoPath]);
+    await execGit(["clone", authCloneUrl, repoPath], undefined, { signal });
 
     await db
       .update(repositories)
       .set({
         cloneStatus: "completed",
         clonedAt: new Date(),
+        lastSyncedAt: new Date(),
       })
       .where(eq(repositories.id, repoId));
   } catch (error) {
@@ -96,18 +140,31 @@ export async function cloneRepository(
   }
 }
 
-export async function clonePublicRepository(
+export function clonePublicRepository(
   organizationId: string,
   repoId: string,
   repoName: string,
-  cloneUrl: string
+  cloneUrl: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return withCloneLock(repoId, () =>
+    doClonePublicRepository(organizationId, repoId, repoName, cloneUrl, signal)
+  );
+}
+
+async function doClonePublicRepository(
+  organizationId: string,
+  repoId: string,
+  repoName: string,
+  cloneUrl: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const orgDir = getOrgRepoDir(organizationId);
   const repoPath = getRepoPath(organizationId, repoName);
 
   await db
     .update(repositories)
-    .set({ cloneStatus: "cloning" })
+    .set({ cloneStatus: "cloning", lastSyncedAt: new Date() })
     .where(eq(repositories.id, repoId));
 
   try {
@@ -119,13 +176,14 @@ export async function clonePublicRepository(
       fs.rmSync(repoPath, { recursive: true, force: true });
     }
 
-    await execGit(["clone", cloneUrl, repoPath]);
+    await execGit(["clone", cloneUrl, repoPath], undefined, { signal });
 
     await db
       .update(repositories)
       .set({
         cloneStatus: "completed",
         clonedAt: new Date(),
+        lastSyncedAt: new Date(),
       })
       .where(eq(repositories.id, repoId));
   } catch (error) {
@@ -139,7 +197,8 @@ export async function clonePublicRepository(
 
 export async function pullRepository(
   organizationId: string,
-  repoName: string
+  repoName: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const repoPath = getRepoPath(organizationId, repoName);
 
@@ -152,22 +211,28 @@ export async function pullRepository(
     throw new Error("No access token available");
   }
 
+  const gitOpts = { timeoutMs: PULL_TIMEOUT_MS, signal };
+
   const remoteUrl = (
-    await execGit(["remote", "get-url", "origin"], repoPath)
+    await execGit(["remote", "get-url", "origin"], repoPath, gitOpts)
   ).stdout.trim();
   const authUrl = getAuthenticatedCloneUrl(
     remoteUrl.replace(/x-access-token:[^@]+@/, ""),
     accessToken
   );
 
-  await execGit(["remote", "set-url", "origin", authUrl], repoPath);
+  await execGit(["remote", "set-url", "origin", authUrl], repoPath, gitOpts);
 
-  const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath)).stdout.trim();
-  await execGit(["fetch", "--force", "--prune", "origin"], repoPath);
-  await execGit(["reset", "--hard", `origin/${branch}`], repoPath);
-
-  const cleanUrl = remoteUrl.replace(/x-access-token:[^@]+@/, "");
-  await execGit(["remote", "set-url", "origin", cleanUrl], repoPath);
+  try {
+    const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath, gitOpts)).stdout.trim();
+    await execGit(["fetch", "--force", "--prune", "origin"], repoPath, gitOpts);
+    await execGit(["reset", "--hard", `origin/${branch}`], repoPath, gitOpts);
+  } finally {
+    const cleanUrl = remoteUrl.replace(/x-access-token:[^@]+@/, "");
+    await execGit(["remote", "set-url", "origin", cleanUrl], repoPath, {
+      timeoutMs: 10_000,
+    }).catch(() => {});
+  }
 
   const repo = await db
     .select()
@@ -190,7 +255,8 @@ export async function pullRepository(
 
 export async function pullPublicRepository(
   organizationId: string,
-  repoName: string
+  repoName: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const repoPath = getRepoPath(organizationId, repoName);
 
@@ -198,9 +264,11 @@ export async function pullPublicRepository(
     throw new Error(`Repository not found: ${repoPath}`);
   }
 
-  const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath)).stdout.trim();
-  await execGit(["fetch", "--force", "--prune", "origin"], repoPath);
-  await execGit(["reset", "--hard", `origin/${branch}`], repoPath);
+  const gitOpts = { timeoutMs: PULL_TIMEOUT_MS, signal };
+
+  const branch = (await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath, gitOpts)).stdout.trim();
+  await execGit(["fetch", "--force", "--prune", "origin"], repoPath, gitOpts);
+  await execGit(["reset", "--hard", `origin/${branch}`], repoPath, gitOpts);
 
   const repo = await db
     .select()

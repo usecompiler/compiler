@@ -60,7 +60,7 @@ type AnyTool = Tool<any, any>;
 export function buildTools(options: BuildToolsOptions) {
   const { cwd, allowedDirs, signal, enabledTools, organizationId, projectId } = options;
   const toolOptions = { cwd, allowedDirs, signal };
-  const repoSyncOptions = { organizationId, projectId };
+  const repoSyncOptions = { organizationId, projectId, signal };
 
   const allTools: Record<string, AnyTool> = {
     grep: tool({
