@@ -13,14 +13,14 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.63",
-    "@ai-sdk/anthropic": "^3.0.71",
-    "@ai-sdk/react": "^3.0.83",
+    "@ai-sdk/amazon-bedrock": "^4.0.113",
+    "@ai-sdk/anthropic": "^3.0.81",
+    "@ai-sdk/react": "^3.0.199",
     "@e2b/code-interpreter": "^2.3.3",
     "@node-saml/node-saml": "^5.1.0",
     "@react-router/node": "7.13.0",
     "@react-router/serve": "7.13.0",
-    "ai": "^6.0.78",
+    "ai": "^6.0.197",
     "bcrypt": "^6.0.0",
     "chart.js": "^4.5.1",
     "drizzle-kit": "^0.31.8",

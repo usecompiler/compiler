@@ -211,7 +211,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, tools, systemPrompt, promptCachingEnabled, compactionEnabled, compactionInstructions } = await getAgentConfig(
+  const { model, effort, tools, systemPrompt, promptCachingEnabled, compactionEnabled, compactionInstructions } = await getAgentConfig(
     organizationId,
     conv[0].projectId,
     memberId,
@@ -266,7 +266,7 @@ export async function action({ request }: Route.ActionArgs) {
       : undefined,
     providerOptions: {
       anthropic: {
-        effort: "xhigh",
+        ...(effort ? { effort } : {}),
         ...(compactionEnabled
           ? {
               contextManagement: {

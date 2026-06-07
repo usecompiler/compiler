@@ -935,7 +935,6 @@ describe("api.agent action", () => {
       const streamArgs = mockStreamText.mock.calls[0][0];
       expect(streamArgs.providerOptions).toEqual({
         anthropic: {
-          effort: "xhigh",
           contextManagement: {
             edits: [
               {
@@ -955,10 +954,54 @@ describe("api.agent action", () => {
       });
     });
 
-    it("passes effort but no contextManagement when compactionEnabled is false", async () => {
+    it("passes effort from agent config alongside contextManagement", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-opus-4-8",
+        effort: "xhigh",
+        tools: {},
+        systemPrompt: "test system prompt",
+        compactionEnabled: true,
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.providerOptions.anthropic.effort).toBe("xhigh");
+      expect(streamArgs.providerOptions.anthropic.contextManagement).toBeDefined();
+    });
+
+    it("omits effort when agent config has none", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
         modelId: "claude-sonnet-4-6",
+        tools: {},
+        systemPrompt: "test system prompt",
+        compactionEnabled: true,
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.providerOptions.anthropic).not.toHaveProperty("effort");
+      expect(streamArgs.providerOptions.anthropic.contextManagement).toBeDefined();
+    });
+
+    it("passes effort but no contextManagement when compactionEnabled is false", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-opus-4-8",
+        effort: "xhigh",
         tools: {},
         systemPrompt: "test system prompt",
         compactionEnabled: false,
@@ -997,7 +1040,6 @@ describe("api.agent action", () => {
       const streamArgs = mockStreamText.mock.calls[0][0];
       expect(streamArgs.providerOptions).toEqual({
         anthropic: {
-          effort: "xhigh",
           contextManagement: {
             edits: [
               {

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import type { LanguageModel } from "ai";
-import { getAIProviderConfig } from "./ai-provider.server";
+import { getAIProviderConfig, type AIProvider } from "./ai-provider.server";
 import { db } from "./db/index.server";
 import { aiProviderConfigurations, members } from "./db/schema";
 import { eq } from "drizzle-orm";
@@ -467,6 +467,19 @@ export function createBedrockCompactionFetch(
     }
     return fetch(url, options);
   };
+}
+
+const XHIGH_EFFORT_MODELS = ["claude-opus-4-7", "claude-opus-4-8"];
+
+export function getAgentEffort(
+  provider: AIProvider,
+  modelId: string
+): "xhigh" | undefined {
+  if (provider !== "anthropic") return undefined;
+  const supported = XHIGH_EFFORT_MODELS.some(
+    (m) => modelId === m || modelId.startsWith(`${m}-`)
+  );
+  return supported ? "xhigh" : undefined;
 }
 
 export async function getModel(

@@ -1,5 +1,5 @@
 import { getAIProviderConfig } from "./ai-provider.server";
-import { getModel, getToolConfig } from "./models.server";
+import { getAgentEffort, getModel, getToolConfig } from "./models.server";
 import { buildTools } from "./tools/index.server";
 import { buildSystemPrompt, COMPACTION_INSTRUCTIONS } from "./prompts.server";
 import { isSaas } from "./appMode.server";
@@ -72,6 +72,7 @@ export async function getAgentConfig(
     model,
     modelId,
     provider,
+    effort: getAgentEffort(provider, modelId),
     tools,
     systemPrompt: buildSystemPrompt(allRepoInfo),
     promptCachingEnabled: aiProviderConfig?.promptCachingEnabled !== false,
