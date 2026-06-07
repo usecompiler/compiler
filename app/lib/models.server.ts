@@ -27,11 +27,21 @@ export function clearModelCache() {
   modelCache = null;
 }
 
-export const DEFAULT_MODEL_ID = "claude-opus-4-7";
+export const DEFAULT_MODEL_ID = "claude-opus-4-8";
 
 export const TITLE_MODEL_ID = "claude-sonnet-4-6";
 
 const FALLBACK_MODELS: ClaudeModel[] = [
+  {
+    id: "claude-opus-4-8",
+    displayName: "Claude Opus 4.8",
+    createdAt: "2026-05-28T00:00:00Z",
+  },
+  {
+    id: "claude-opus-4-7",
+    displayName: "Claude Opus 4.7",
+    createdAt: "2026-04-16T00:00:00Z",
+  },
   {
     id: "claude-sonnet-4-6",
     displayName: "Claude Sonnet 4.6",
