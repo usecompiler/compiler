@@ -210,12 +210,19 @@ export default function Conversation({ loaderData }: Route.ComponentProps) {
     saasMode,
   } = useOutletContext<AppContext>();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const initialPromptRef = useRef(navState?.prompt ?? null);
-  const initialBlobIdsRef = useRef(navState?.blobIds);
-  const initialProjectIdRef = useRef(navState?.projectId);
-  const initialPrompt = initialPromptRef.current;
-  const initialBlobIds = initialBlobIdsRef.current;
-  const initialProjectId = initialProjectIdRef.current;
+  const initialNavStateRef = useRef({ id, state: navState });
+  if (initialNavStateRef.current.id !== id) {
+    initialNavStateRef.current = { id, state: navState };
+  }
+  const initialPrompt = initialNavStateRef.current.state?.prompt ?? null;
+  const initialBlobIds = initialNavStateRef.current.state?.blobIds;
+  const initialProjectId = initialNavStateRef.current.state?.projectId;
+
+  useEffect(() => {
+    if (navState?.prompt || navState?.blobIds) {
+      window.history.replaceState({ ...window.history.state, usr: undefined }, "");
+    }
+  }, [id, navState]);
 
   const { items, blobsByItemId, isSharedView, ownsConversation, sharedByName, shareLink, shareToken, source } = loaderData;
   const isReadOnly = !!impersonating || isSharedView;
