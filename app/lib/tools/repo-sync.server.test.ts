@@ -105,7 +105,7 @@ describe("executeRepoSync", () => {
     ]);
     const result = await executeRepoSync({ action: "sync" }, options);
     expect(result).toBe("my-repo: cloned successfully");
-    expect(mockClonePublicRepository).toHaveBeenCalledWith("org-1", "r1", "my-repo", "https://github.com/org/my-repo.git");
+    expect(mockClonePublicRepository).toHaveBeenCalledWith("org-1", "r1", "my-repo", "https://github.com/org/my-repo.git", undefined);
   });
 
   it("sync clones a pending private repo", async () => {
@@ -114,7 +114,7 @@ describe("executeRepoSync", () => {
     ]);
     const result = await executeRepoSync({ action: "sync" }, options);
     expect(result).toBe("my-repo: cloned successfully");
-    expect(mockCloneRepository).toHaveBeenCalledWith("org-1", "r1", "my-repo", "https://github.com/org/my-repo.git");
+    expect(mockCloneRepository).toHaveBeenCalledWith("org-1", "r1", "my-repo", "https://github.com/org/my-repo.git", undefined);
   });
 
   it("sync clones a failed repo", async () => {
@@ -142,7 +142,7 @@ describe("executeRepoSync", () => {
     ]);
     const result = await executeRepoSync({ action: "sync" }, options);
     expect(result).toBe("my-repo: pulled latest changes");
-    expect(mockPullPublicRepository).toHaveBeenCalledWith("org-1", "my-repo");
+    expect(mockPullPublicRepository).toHaveBeenCalledWith("org-1", "my-repo", undefined);
   });
 
   it("sync pulls stale private repo", async () => {
@@ -152,7 +152,7 @@ describe("executeRepoSync", () => {
     ]);
     const result = await executeRepoSync({ action: "sync" }, options);
     expect(result).toBe("my-repo: pulled latest changes");
-    expect(mockPullRepository).toHaveBeenCalledWith("org-1", "my-repo");
+    expect(mockPullRepository).toHaveBeenCalledWith("org-1", "my-repo", undefined);
   });
 
   it("sync skips fresh completed repo", async () => {
@@ -165,13 +165,41 @@ describe("executeRepoSync", () => {
     expect(mockPullRepository).not.toHaveBeenCalled();
   });
 
-  it("sync skips repo currently cloning", async () => {
+  it("sync skips repo with a recently started clone", async () => {
     mockDb._setSelectResult([
-      { id: "r1", name: "my-repo", cloneUrl: "https://github.com/org/my-repo.git", isPrivate: false, cloneStatus: "cloning", clonedAt: null, lastSyncedAt: null },
+      { id: "r1", name: "my-repo", cloneUrl: "https://github.com/org/my-repo.git", isPrivate: false, cloneStatus: "cloning", clonedAt: null, lastSyncedAt: new Date() },
     ]);
     const result = await executeRepoSync({ action: "sync" }, options);
     expect(result).toBe("my-repo: currently cloning, please wait");
     expect(mockClonePublicRepository).not.toHaveBeenCalled();
+  });
+
+  it("sync re-clones a repo wedged in cloning state", async () => {
+    const wedgedDate = new Date(Date.now() - 11 * 60 * 1000);
+    mockDb._setSelectResult([
+      { id: "r1", name: "my-repo", cloneUrl: "https://github.com/org/my-repo.git", isPrivate: false, cloneStatus: "cloning", clonedAt: null, lastSyncedAt: wedgedDate },
+    ]);
+    const result = await executeRepoSync({ action: "sync" }, options);
+    expect(result).toBe("my-repo: cloned successfully");
+    expect(mockClonePublicRepository).toHaveBeenCalled();
+  });
+
+  it("sync re-clones a cloning repo with no activity timestamps", async () => {
+    mockDb._setSelectResult([
+      { id: "r1", name: "my-repo", cloneUrl: "https://github.com/org/my-repo.git", isPrivate: false, cloneStatus: "cloning", clonedAt: null, lastSyncedAt: null },
+    ]);
+    const result = await executeRepoSync({ action: "sync" }, options);
+    expect(result).toBe("my-repo: cloned successfully");
+    expect(mockClonePublicRepository).toHaveBeenCalled();
+  });
+
+  it("sync threads the abort signal into clone calls", async () => {
+    const controller = new AbortController();
+    mockDb._setSelectResult([
+      { id: "r1", name: "my-repo", cloneUrl: "https://github.com/org/my-repo.git", isPrivate: true, cloneStatus: "pending", clonedAt: null, lastSyncedAt: null },
+    ]);
+    await executeRepoSync({ action: "sync" }, { ...options, signal: controller.signal });
+    expect(mockCloneRepository).toHaveBeenCalledWith("org-1", "r1", "my-repo", "https://github.com/org/my-repo.git", controller.signal);
   });
 
   it("sync targets a specific repo by name", async () => {

@@ -11,6 +11,7 @@ import { logAuditEvent } from "~/lib/audit.server";
 import { generateAndSaveTitle } from "~/lib/title-generation.server";
 import { NEW_CHAT_TITLE } from "~/lib/conversations.server";
 import { sendNewConversationNotificationEmail, fireAndForget } from "~/lib/signup-emails.server";
+import { isSaas } from "~/lib/appMode.server";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -466,10 +467,32 @@ export async function action({ request }: Route.ActionArgs) {
     }),
   );
 
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  const stopHeartbeat = () => {
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = undefined;
+  };
+
   const uiStream = createUIMessageStream({
     originalMessages: uiMessages,
+    onFinish: stopHeartbeat,
     execute: ({ writer }) => {
-      writer.merge(filteredStream);
+      if (!isSaas()) {
+        heartbeat = setInterval(() => {
+          writer.write({ type: "data-heartbeat", data: null, transient: true });
+        }, 15_000);
+        request.signal.addEventListener("abort", stopHeartbeat, { once: true });
+      }
+
+      writer.merge(
+        filteredStream.pipeThrough(
+          new TransformStream({
+            flush() {
+              stopHeartbeat();
+            },
+          })
+        )
+      );
 
       if (isFirstTurn && userText.trim()) {
         generateAndSaveTitle(conversationId, organizationId, userText)

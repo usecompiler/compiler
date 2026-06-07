@@ -22,6 +22,7 @@ export const repoSyncParameters = z.object({
 });
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+const WEDGED_CLONING_THRESHOLD_MS = 10 * 60 * 1000;
 
 type RepoRow = Awaited<ReturnType<typeof getOrgRepos>>[number];
 
@@ -30,20 +31,32 @@ interface RepoSyncOptions {
   projectId?: string | null;
   sandbox?: Sandbox;
   accessToken?: string | null;
+  signal?: AbortSignal;
 }
 
 async function syncSingleRepo(
   repo: RepoRow,
   options: RepoSyncOptions,
 ): Promise<string> {
-  const { organizationId, sandbox } = options;
+  const { organizationId, sandbox, signal } = options;
 
   if (repo.cloneStatus === "cloning") {
-    return `${repo.name}: currently cloning, please wait`;
+    const cloningSince = repo.lastSyncedAt || repo.clonedAt;
+    const isWedged =
+      !isSaas() &&
+      (!cloningSince ||
+        Date.now() - cloningSince.getTime() > WEDGED_CLONING_THRESHOLD_MS);
+    if (!isWedged) {
+      return `${repo.name}: currently cloning, please wait`;
+    }
   }
 
   const onDisk = !isSaas() && repoExists(organizationId, repo.name);
-  const needsClone = repo.cloneStatus === "pending" || repo.cloneStatus === "failed" || (!isSaas() && !onDisk);
+  const needsClone =
+    repo.cloneStatus === "pending" ||
+    repo.cloneStatus === "failed" ||
+    repo.cloneStatus === "cloning" ||
+    (!isSaas() && !onDisk);
 
   if (needsClone) {
     try {
@@ -63,9 +76,9 @@ async function syncSingleRepo(
           .set({ cloneStatus: "completed", clonedAt: new Date() })
           .where(eq(repositories.id, repo.id));
       } else if (repo.isPrivate) {
-        await cloneRepository(organizationId, repo.id, repo.name, repo.cloneUrl);
+        await cloneRepository(organizationId, repo.id, repo.name, repo.cloneUrl, signal);
       } else {
-        await clonePublicRepository(organizationId, repo.id, repo.name, repo.cloneUrl);
+        await clonePublicRepository(organizationId, repo.id, repo.name, repo.cloneUrl, signal);
       }
       return `${repo.name}: cloned successfully`;
     } catch (error) {
@@ -87,9 +100,9 @@ async function syncSingleRepo(
             .set({ lastSyncedAt: new Date() })
             .where(eq(repositories.id, repo.id));
         } else if (repo.isPrivate) {
-          await pullRepository(organizationId, repo.name);
+          await pullRepository(organizationId, repo.name, signal);
         } else {
-          await pullPublicRepository(organizationId, repo.name);
+          await pullPublicRepository(organizationId, repo.name, signal);
         }
         return `${repo.name}: pulled latest changes`;
       } catch (error) {
