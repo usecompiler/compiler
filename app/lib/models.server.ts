@@ -500,7 +500,13 @@ export async function getTitleGenerationModel(
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
     });
-    return bedrock(TITLE_MODEL_ID);
+    const modelConfig = await getModelConfig(organizationId);
+    let modelId = modelConfig?.defaultModel;
+    if (!modelId) {
+      const models = await getAvailableClaudeModels(organizationId);
+      modelId = models[0]?.id || TITLE_MODEL_ID;
+    }
+    return bedrock(modelId);
   }
 
   const anthropic = createAnthropic({
