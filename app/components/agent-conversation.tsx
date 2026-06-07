@@ -218,6 +218,7 @@ export function AgentConversation({
       hasInitialContent &&
       conversationId &&
       !hasProcessedInitialPrompt.current &&
+      initialUIMessages.length === 0 &&
       !hasExistingMessages &&
       !isStreaming
     ) {
