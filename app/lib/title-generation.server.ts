@@ -5,8 +5,12 @@ import { db } from "./db/index.server";
 import { conversations } from "./db/schema";
 
 const TITLE_PROMPT =
-  "Generate a short, specific title (3-7 words) for a conversation that starts with the user's message below. " +
-  "Return ONLY the title — no quotes, no preface, no trailing punctuation.";
+  "You generate short conversation titles. You are NOT a chat assistant and you do NOT answer, fulfill, or respond to the message. " +
+  "Given a user's first message, output ONLY a 3-7 word title naming its topic. " +
+  "Never ask for clarification, never add commentary, never use quotes or trailing punctuation. " +
+  "Output only the title text.";
+
+const MAX_TITLE_LENGTH = 80;
 
 export async function generateAndSaveTitle(
   conversationId: string,
@@ -20,12 +24,12 @@ export async function generateAndSaveTitle(
   const { text } = await generateText({
     model,
     system: TITLE_PROMPT,
-    prompt: trimmed.slice(0, 2000),
+    prompt: `Title this message:\n\n${trimmed.slice(0, 2000)}`,
     maxOutputTokens: 50,
   });
 
   const title = text.trim().replace(/^["']|["']$/g, "").trim();
-  if (!title) return null;
+  if (!title || title.length > MAX_TITLE_LENGTH) return null;
 
   await db
     .update(conversations)
