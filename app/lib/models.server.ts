@@ -369,26 +369,6 @@ export async function getEffectiveModel(
   return modelConfig.defaultModel || DEFAULT_MODEL_ID;
 }
 
-export function getDisplayName(modelId: string): string {
-  const model = FALLBACK_MODELS.find((m) => m.id === modelId);
-  if (model) return model.displayName;
-
-  let id = modelId;
-  const bedrockPrefixMatch = id.match(/^(?:[\w-]+\.)*anthropic\./);
-  if (bedrockPrefixMatch) {
-    id = id.slice(bedrockPrefixMatch[0].length).replace(/-v\d+:\d+$/, "");
-  }
-
-  const match = id.match(/^claude-(\w+)-(\d+(?:-\d+)?)-/);
-  if (match) {
-    const variant = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-    const version = match[2].replace("-", ".");
-    return `Claude ${variant} ${version}`;
-  }
-
-  return modelId;
-}
-
 export const OPTIONAL_TOOLS = [
   { id: "bash", description: "Execute shell commands" },
   { id: "webfetch", description: "Fetch web page content" },
