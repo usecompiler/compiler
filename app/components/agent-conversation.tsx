@@ -70,6 +70,10 @@ export function AgentConversation({
   const revalidator = useRevalidator();
   const pendingBlobIdsRef = useRef<string[]>([]);
   const pendingSendRef = useRef<string | null>(null);
+  const wasStreamingRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const messagesRef = useRef<CompilerUIMessage[]>([]);
+  const resumeStreamRef = useRef<(() => Promise<void>) | null>(null);
 
   const transport = useMemo(() => new DefaultChatTransport<CompilerUIMessage>({
     api: "/api/agent",
@@ -98,6 +102,7 @@ export function AgentConversation({
     stop,
     addToolOutput,
     setMessages,
+    resumeStream,
   } = useChat<CompilerUIMessage>({
     id: conversationId,
     messages: initialUIMessages,
@@ -127,6 +132,34 @@ export function AgentConversation({
     onError(error) {
       console.error("[chat] Stream error:", error);
       setStreamStartTime(undefined);
+      const canReconnect =
+        !readOnly &&
+        (wasStreamingRef.current || reconnectAttemptsRef.current > 0) &&
+        reconnectAttemptsRef.current < 3;
+      if (canReconnect) {
+        wasStreamingRef.current = false;
+        reconnectAttemptsRef.current += 1;
+        let removedPartial: CompilerUIMessage | null = null;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role !== "assistant") return prev;
+          removedPartial = last;
+          return prev.slice(0, -1);
+        });
+        setTimeout(async () => {
+          await resumeStreamRef.current?.();
+          const last = messagesRef.current[messagesRef.current.length - 1];
+          if (last?.role !== "assistant") {
+            const partial = removedPartial;
+            if (partial) {
+              setMessages((prev) => (prev[prev.length - 1]?.role === "assistant" ? prev : [...prev, partial]));
+            }
+            setStreamStartTime(undefined);
+            setNetworkError(true);
+          }
+        }, 500 * reconnectAttemptsRef.current);
+        return;
+      }
       setNetworkError(true);
       const pendingId = pendingSendRef.current;
       pendingSendRef.current = null;
@@ -140,8 +173,20 @@ export function AgentConversation({
   const isStreaming = status === "streaming" || status === "submitted";
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    resumeStreamRef.current = resumeStream;
+  }, [resumeStream]);
+
+  useEffect(() => {
     if (status === "streaming") {
+      wasStreamingRef.current = true;
       pendingSendRef.current = null;
+    } else if (status === "ready") {
+      wasStreamingRef.current = false;
+      reconnectAttemptsRef.current = 0;
     }
   }, [status]);
 
@@ -274,6 +319,7 @@ export function AgentConversation({
       revalidator.revalidate();
 
       pendingSendRef.current = userMessageId;
+      reconnectAttemptsRef.current = 0;
       await sendMessage({
         id: userMessageId,
         parts: [{ type: "text", text: promptText.trim() || "Describe this file." }],
