@@ -14,17 +14,49 @@ function resolveSandboxPath(inputPath: string, cwd: string): string {
   return path.join(cwd, inputPath);
 }
 
+async function runSandboxCommand(
+  sandbox: Sandbox,
+  command: string,
+  opts: { timeoutMs: number; cwd?: string; abortSignal?: AbortSignal },
+): Promise<{ stdout: string; stderr: string }> {
+  opts.abortSignal?.throwIfAborted();
+
+  const handle = await sandbox.commands.run(command, {
+    timeoutMs: opts.timeoutMs,
+    ...(opts.cwd ? { cwd: opts.cwd } : {}),
+    background: true,
+  });
+
+  const onAbort = () => {
+    handle.kill().catch(() => {});
+  };
+  if (opts.abortSignal?.aborted) {
+    onAbort();
+  } else {
+    opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
+  }
+
+  try {
+    const result = await handle.wait();
+    return { stdout: result.stdout || "", stderr: result.stderr || "" };
+  } finally {
+    opts.abortSignal?.removeEventListener("abort", onAbort);
+  }
+}
+
 async function executeSandboxBash(
   args: { command: string; timeout?: number; description: string },
   sandbox: Sandbox,
   cwd: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   const timeout = args.timeout || DEFAULT_TIMEOUT;
 
   try {
-    const result = await sandbox.commands.run(args.command, {
+    const result = await runSandboxCommand(sandbox, args.command, {
       timeoutMs: timeout,
       cwd,
+      abortSignal,
     });
 
     let output = "";
@@ -48,7 +80,9 @@ async function executeSandboxRead(
   args: { filePath: string; offset?: number; limit?: number },
   sandbox: Sandbox,
   cwd: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
+  abortSignal?.throwIfAborted();
   const filePath = resolveSandboxPath(args.filePath, cwd);
 
   try {
@@ -95,6 +129,7 @@ async function executeSandboxGrep(
   args: { pattern: string; path?: string; include?: string },
   sandbox: Sandbox,
   cwd: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   const searchPath = args.path
     ? resolveSandboxPath(args.path, cwd)
@@ -105,7 +140,10 @@ async function executeSandboxGrep(
   rgArgs.push(shellEscape(args.pattern), shellEscape(searchPath));
 
   try {
-    const result = await sandbox.commands.run(rgArgs.join(" "), { timeoutMs: 30_000 });
+    const result = await runSandboxCommand(sandbox, rgArgs.join(" "), {
+      timeoutMs: 30_000,
+      abortSignal,
+    });
     const stdout = result.stdout || "";
 
     if (!stdout.trim()) {
@@ -140,15 +178,17 @@ async function executeSandboxGlob(
   args: { pattern: string; path?: string },
   sandbox: Sandbox,
   cwd: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   const searchPath = args.path
     ? resolveSandboxPath(args.path, cwd)
     : cwd;
 
   try {
-    const result = await sandbox.commands.run(
+    const result = await runSandboxCommand(
+      sandbox,
       `rg --files --glob ${shellEscape(args.pattern)} ${shellEscape(searchPath)}`,
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, abortSignal },
     );
 
     const stdout = result.stdout || "";
@@ -181,24 +221,24 @@ export function buildSandboxTools(options: BuildSandboxToolsOptions) {
     grep: tool({
       description: grepDescription,
       inputSchema: grepParameters,
-      execute: async (args) => executeSandboxGrep(args, sandbox, cwd),
+      execute: async (args, { abortSignal }) => executeSandboxGrep(args, sandbox, cwd, abortSignal),
       toModelOutput: ({ output }) => truncateForModel(output, GREP_MAX_CHARS),
     }),
     glob: tool({
       description: globDescription,
       inputSchema: globParameters,
-      execute: async (args) => executeSandboxGlob(args, sandbox, cwd),
+      execute: async (args, { abortSignal }) => executeSandboxGlob(args, sandbox, cwd, abortSignal),
       toModelOutput: ({ output }) => truncateForModel(output, GLOB_MAX_CHARS),
     }),
     read: tool({
       description: readDescription,
       inputSchema: readParameters,
-      execute: async (args) => executeSandboxRead(args, sandbox, cwd),
+      execute: async (args, { abortSignal }) => executeSandboxRead(args, sandbox, cwd, abortSignal),
     }),
     bash: tool({
       description: bashDescription,
       inputSchema: bashParameters,
-      execute: async (args) => executeSandboxBash(args, sandbox, cwd),
+      execute: async (args, { abortSignal }) => executeSandboxBash(args, sandbox, cwd, abortSignal),
     }),
     askUserQuestion: tool({
       description: askUserQuestionDescription,
@@ -217,7 +257,8 @@ export function buildSandboxTools(options: BuildSandboxToolsOptions) {
   filtered.repoSync = tool({
     description: repoSyncDescription,
     inputSchema: repoSyncParameters,
-    execute: async (args) => executeRepoSync(args, repoSyncOptions),
+    execute: async (args, { abortSignal }) =>
+      executeRepoSync(args, { ...repoSyncOptions, signal: abortSignal }),
   });
 
   return filtered;
