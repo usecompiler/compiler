@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { itemsToUIMessages, buildDisplayItems, buildSegments } from "./conversation-helpers";
 import type { Item } from "~/lib/types";
-import type { UIMessage } from "@ai-sdk/react";
+import type { CompilerUIMessage } from "~/lib/chat-message";
 
 function userItem(id: string, content: string | object): Item {
   return { id, type: "message", role: "user", content, createdAt: Date.now() };
@@ -23,7 +23,7 @@ function toolPart(toolName: string, state: string, output?: string, input?: unkn
     state,
     input: input ?? {},
     output: output ?? "",
-  } as UIMessage["parts"][number];
+  } as CompilerUIMessage["parts"][number];
 }
 
 describe("itemsToUIMessages", () => {
@@ -205,7 +205,7 @@ describe("itemsToUIMessages", () => {
 
 describe("buildDisplayItems", () => {
   it("maps user and assistant messages", () => {
-    const messages: UIMessage[] = [
+    const messages: CompilerUIMessage[] = [
       { id: "u1", role: "user", parts: [textPart("Hi")] },
       { id: "a1", role: "assistant", parts: [textPart("Hello")] },
     ];
@@ -216,7 +216,7 @@ describe("buildDisplayItems", () => {
   });
 
   it("appends system items", () => {
-    const messages: UIMessage[] = [
+    const messages: CompilerUIMessage[] = [
       { id: "u1", role: "user", parts: [textPart("Hi")] },
     ];
     const systemItems: Item[] = [
@@ -235,7 +235,7 @@ describe("buildDisplayItems", () => {
 describe("buildSegments", () => {
   it("groups consecutive text parts", () => {
     const parts = [textPart("First"), textPart("Second")];
-    const segments = buildSegments(parts as UIMessage["parts"]);
+    const segments = buildSegments(parts as CompilerUIMessage["parts"]);
     expect(segments).toHaveLength(1);
     expect(segments[0]).toMatchObject({ kind: "text", text: "First\n\nSecond" });
   });
@@ -245,7 +245,7 @@ describe("buildSegments", () => {
       toolPart("read", "output-available", "done"),
       toolPart("glob", "output-available", "found"),
     ];
-    const segments = buildSegments(parts as UIMessage["parts"]);
+    const segments = buildSegments(parts as CompilerUIMessage["parts"]);
     expect(segments).toHaveLength(1);
     expect(segments[0].kind).toBe("tools");
     if (segments[0].kind === "tools") {
@@ -259,7 +259,7 @@ describe("buildSegments", () => {
       toolPart("read", "output-available"),
       textPart("After tools"),
     ];
-    const segments = buildSegments(parts as UIMessage["parts"]);
+    const segments = buildSegments(parts as CompilerUIMessage["parts"]);
     expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "text"]);
   });
 
@@ -274,7 +274,7 @@ describe("buildSegments", () => {
         ),
         textPart("Great choice!"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments.map((s) => s.kind)).toEqual(["text", "qa", "text"]);
       expect(segments[1]).toMatchObject({
         kind: "qa",
@@ -290,7 +290,7 @@ describe("buildSegments", () => {
           JSON.stringify({ Color: "Red", Size: "Large" })
         ),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(1);
       expect(segments[0]).toMatchObject({
         kind: "qa",
@@ -304,7 +304,7 @@ describe("buildSegments", () => {
         toolPart("askUserQuestion", "input-available"),
         textPart("After"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(1);
       expect(segments[0]).toMatchObject({ kind: "text", text: "Before\n\nAfter" });
     });
@@ -313,7 +313,7 @@ describe("buildSegments", () => {
       const parts = [
         toolPart("askUserQuestion", "input-streaming"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(0);
     });
 
@@ -321,7 +321,7 @@ describe("buildSegments", () => {
       const parts = [
         toolPart("askUserQuestion", "output-available", ""),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(0);
     });
 
@@ -329,7 +329,7 @@ describe("buildSegments", () => {
       const parts = [
         toolPart("askUserQuestion", "output-available", "not-json"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(0);
     });
 
@@ -341,7 +341,7 @@ describe("buildSegments", () => {
           JSON.stringify({ Color: "Red", Skipped: "" })
         ),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(1);
       expect(segments[0]).toMatchObject({
         kind: "qa",
@@ -357,7 +357,7 @@ describe("buildSegments", () => {
           JSON.stringify({ A: "", B: "" })
         ),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments).toHaveLength(0);
     });
 
@@ -367,7 +367,7 @@ describe("buildSegments", () => {
         toolPart("askUserQuestion", "output-available", JSON.stringify({ Q: "A" })),
         toolPart("glob", "output-available", "files"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments.map((s) => s.kind)).toEqual(["tools", "qa", "tools"]);
     });
 
@@ -383,7 +383,7 @@ describe("buildSegments", () => {
         textPart("Thanks, continuing with Option A."),
         toolPart("bash", "output-available", "ok"),
       ];
-      const segments = buildSegments(parts as UIMessage["parts"]);
+      const segments = buildSegments(parts as CompilerUIMessage["parts"]);
       expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "qa", "text", "tools"]);
       expect(segments[2]).toMatchObject({
         kind: "qa",

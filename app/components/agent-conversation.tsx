@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useRevalidator, useBlocker, Link } from "react-router";
-import { useChat, type UIMessage } from "@ai-sdk/react";
+import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
+import type { CompilerUIMessage } from "~/lib/chat-message";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { Streamdown } from "streamdown";
 import type { Item } from "~/lib/types";
@@ -76,7 +77,7 @@ export function AgentConversation({
 
   const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
 
-  const transport = useMemo(() => new DefaultChatTransport({
+  const transport = useMemo(() => new DefaultChatTransport<CompilerUIMessage>({
     api: "/api/agent",
     body: { conversationId },
     prepareSendMessagesRequest({ messages: msgs, body: extraBody }) {
@@ -100,17 +101,17 @@ export function AgentConversation({
     stop,
     addToolOutput,
     setMessages,
-  } = useChat({
+  } = useChat<CompilerUIMessage>({
     id: conversationId,
     messages: initialUIMessages,
     transport,
     throttle: 50,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onToolCall({ toolCall }) {
+      if (toolCall.dynamic) return;
       if (toolCall.toolName === "askUserQuestion") {
-        const toolInput = toolCall.input as { questions: PendingQuestionData[] };
         setPendingQuestion({
-          questions: toolInput.questions,
+          questions: toolCall.input.questions,
           toolCallId: toolCall.toolCallId,
         });
       }
@@ -496,9 +497,9 @@ export function AgentConversation({
                       setStreamStartTime(Date.now());
 
                       await addToolOutput({
-                        tool: "askUserQuestion" as never,
+                        tool: "askUserQuestion",
                         toolCallId,
-                        output: JSON.stringify(answersPayload) as never,
+                        output: JSON.stringify(answersPayload),
                       });
                     }}
                     onSkipped={async () => {
@@ -512,9 +513,9 @@ export function AgentConversation({
                       setStreamStartTime(Date.now());
 
                       await addToolOutput({
-                        tool: "askUserQuestion" as never,
+                        tool: "askUserQuestion",
                         toolCallId,
-                        output: JSON.stringify(emptyAnswers) as never,
+                        output: JSON.stringify(emptyAnswers),
                       });
                     }}
                   />
@@ -553,7 +554,7 @@ export function AgentConversation({
   );
 }
 
-const UserMessageRow = memo(function UserMessageRow({ message, itemBlobs }: { message: UIMessage; itemBlobs?: BlobMeta[] }) {
+const UserMessageRow = memo(function UserMessageRow({ message, itemBlobs }: { message: CompilerUIMessage; itemBlobs?: BlobMeta[] }) {
   const [copied, setCopied] = useState(false);
   const contentText = message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -642,7 +643,7 @@ const UserMessageRow = memo(function UserMessageRow({ message, itemBlobs }: { me
 });
 
 interface AssistantMessageRowProps {
-  message: UIMessage;
+  message: CompilerUIMessage;
   isStreaming: boolean;
   streamStartTime?: number;
 }
