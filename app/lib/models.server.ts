@@ -29,7 +29,7 @@ export function clearModelCache() {
 
 export const DEFAULT_MODEL_ID = "claude-opus-5";
 
-export const TITLE_MODEL_ID = "claude-sonnet-4-6";
+export const TITLE_MODEL_ID = "claude-haiku-4-5";
 
 const FALLBACK_MODELS: ClaudeModel[] = [
   {
