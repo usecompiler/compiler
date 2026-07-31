@@ -15,10 +15,13 @@ services:
     command: sleep infinity
     environment:
       - DATABASE_URL=postgresql://compiler:compiler@db:5432/compiler
+      - REDIS_URL=redis://redis:6379
       - SHELL=/bin/bash
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
 
   db:
     image: postgres:16-alpine
@@ -35,6 +38,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  redis:
+    image: redis:7-alpine
 
 volumes:
   pgdata:

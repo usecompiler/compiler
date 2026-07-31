@@ -1,6 +1,7 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, isStepCount, smoothStream, toUIMessageStream, createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import { streamText, convertToModelMessages, isStepCount, smoothStream, toUIMessageStream, createUIMessageStream, createUIMessageStreamResponse, generateId } from "ai";
 import type { CompilerUIMessage } from "~/lib/chat-message";
+import { getStreamContext, setActiveStream, clearActiveStream, registerAbort, releaseAbort } from "~/lib/resumable.server";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -237,7 +238,11 @@ export async function action({ request }: Route.ActionArgs) {
   let totalCacheWriteTokens = 0;
   let toolUseCount = 0;
   let streamErrored = false;
+  let activeStreamId: string | null = null;
   const startTime = Date.now();
+
+  const abortController = new AbortController();
+  registerAbort(conversationId, abortController);
 
   const instructionsForStream = promptCachingEnabled
     ? {
@@ -306,7 +311,7 @@ export async function action({ request }: Route.ActionArgs) {
     },
     experimental_transform: smoothStream(),
     stopWhen: isStepCount(50),
-    abortSignal: request.signal,
+    abortSignal: abortController.signal,
     onStepEnd: ({ usage, toolCalls }) => {
       if (usage) {
         totalInputTokens += usage.inputTokens || 0;
@@ -420,6 +425,13 @@ export async function action({ request }: Route.ActionArgs) {
         console.log(`[agent] Stream ${status} for conversation=${conversationId} tokens=${stats.tokens} cacheRead=${stats.cacheReadTokens} cacheWrite=${stats.cacheWriteTokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
       } catch (cleanupError) {
         console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
+      } finally {
+        releaseAbort(conversationId, abortController);
+        if (activeStreamId) {
+          await clearActiveStream(conversationId, activeStreamId).catch((err) => {
+            console.error(`[agent] Failed to clear active stream for conversation=${conversationId}:`, err);
+          });
+        }
       }
     },
   });
@@ -493,7 +505,19 @@ export async function action({ request }: Route.ActionArgs) {
     },
   });
 
-  const response = createUIMessageStreamResponse({ stream: uiStream });
+  const response = createUIMessageStreamResponse({
+    stream: uiStream,
+    async consumeSseStream({ stream }) {
+      try {
+        const streamId = generateId();
+        activeStreamId = streamId;
+        await getStreamContext().createNewResumableStream(streamId, () => stream);
+        await setActiveStream(conversationId, streamId);
+      } catch (err) {
+        console.error(`[agent] Failed to register resumable stream for conversation=${conversationId}:`, err);
+      }
+    },
+  });
 
   Promise.resolve(result.consumeStream()).catch((err) => {
     console.error(`[agent] Stream error for conversation=${conversationId}:`, err);

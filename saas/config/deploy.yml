@@ -24,6 +24,7 @@ env:
   clear:
     APP_MODE: saas
     EMAIL_FROM: noreply@notifications.usecompiler.com
+    REDIS_URL: redis://compiler-redis:6379
   secret:
     - DATABASE_URL
     - TOKEN_ENCRYPTION_KEY
@@ -41,4 +42,12 @@ builder:
   arch: arm64
   dockerfile: Dockerfile
   context: ..
+
+accessories:
+  redis:
+    image: redis:7-alpine
+    roles:
+      - web
+    volumes:
+      - /var/lib/compiler-redis:/data
 

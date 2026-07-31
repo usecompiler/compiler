@@ -4,10 +4,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://compiler:${POSTGRES_PASSWORD}@db:5432/compiler
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY}
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./repos:/repos
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   caddy:
@@ -38,7 +41,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  redisdata:

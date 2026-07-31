@@ -33,6 +33,8 @@ export default [
 
   // API routes
   route("api/agent", "routes/api.agent.ts"),
+  route("api/agent/:conversationId/stream", "routes/api.agent.$conversationId.stream.ts"),
+  route("api/agent/:conversationId/stop", "routes/api.agent.$conversationId.stop.ts"),
   route("api/conversations", "routes/api.conversations.ts"),
   route("api/items", "routes/api.items.ts"),
   route("api/search", "routes/api.search.ts"),
