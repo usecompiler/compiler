@@ -1272,6 +1272,72 @@ describe("api.agent action", () => {
       const stats = content.stats as Record<string, number>;
       expect(stats.toolUses).toBe(2);
     });
+
+    it("accumulates token and cache detail across steps into stats", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      streamArgs.onStepEnd({
+        usage: { inputTokens: 1000, outputTokens: 50, inputTokenDetails: { cacheReadTokens: 800, cacheWriteTokens: 150 } },
+        toolCalls: [{ toolName: "read" }],
+      });
+      streamArgs.onStepEnd({
+        usage: { inputTokens: 1200, outputTokens: 80, inputTokenDetails: { cacheReadTokens: 1100, cacheWriteTokens: 0 } },
+        toolCalls: [],
+      });
+
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: { parts: [{ type: "text", text: "Done." }] },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      expect(content.stats).toMatchObject({
+        tokens: 2330,
+        inputTokens: 2200,
+        outputTokens: 130,
+        cacheReadTokens: 1900,
+        cacheWriteTokens: 150,
+        toolUses: 1,
+      });
+    });
+
+    it("tolerates steps without inputTokenDetails", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      streamArgs.onStepEnd({ usage: { inputTokens: 10, outputTokens: 5 }, toolCalls: [] });
+
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: { parts: [{ type: "text", text: "Done." }] },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      expect(content.stats).toMatchObject({
+        tokens: 15,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      });
+    });
   });
 
   describe("stream termination callbacks", () => {
