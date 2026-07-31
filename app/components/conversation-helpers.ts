@@ -37,7 +37,7 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
       }
     } else if (item.role === "assistant") {
       const content = item.content as {
-        parts?: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; input?: unknown; output?: string }>;
+        parts?: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; input?: unknown; output?: string; isError?: boolean }>;
         text?: string;
         toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
       } | null;
@@ -55,9 +55,10 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
               type: "dynamic-tool",
               toolName: p.toolName,
               toolCallId: p.toolCallId || crypto.randomUUID(),
-              state: "output-available",
               input: p.input,
-              output: p.output || "",
+              ...(p.isError
+                ? { state: "output-error", errorText: p.output || "" }
+                : { state: "output-available", output: p.output || "" }),
             } as UIMessage["parts"][number]);
           }
         }

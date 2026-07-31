@@ -332,8 +332,8 @@ describe("api.agent action", () => {
     });
   });
 
-  describe("onFinish persistence callback", () => {
-    it("passes onFinish to toUIMessageStream", async () => {
+  describe("onEnd persistence callback", () => {
+    it("passes onEnd to toUIMessageStream", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -344,8 +344,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      expect(callArgs).toHaveProperty("onFinish");
-      expect(typeof callArgs.onFinish).toBe("function");
+      expect(callArgs).toHaveProperty("onEnd");
+      expect(typeof callArgs.onEnd).toBe("function");
     });
 
     it("persists text and tool-call parts from assistant message", async () => {
@@ -359,7 +359,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: {
           parts: [
             { type: "text", text: "Here is the file." },
@@ -391,7 +392,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: {
           parts: [
             { type: "text", text: "Let me check." },
@@ -424,7 +426,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: {
           parts: [
             { type: "text", text: "What color?" },
@@ -453,7 +456,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: {
           parts: [
             { type: "text", text: "First." },
@@ -481,13 +485,139 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: { parts: [{ type: "text", text: "Done." }] },
       });
 
       const setCalls = mockDb._updateSet.mock.calls;
       const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed");
       expect(contentUpdate).toBeDefined();
+    });
+
+    it("sets status to aborted and persists partial parts when the stream was aborted", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: true,
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Partial response" },
+            { type: "dynamic-tool", toolName: "read", toolCallId: "tc-1", state: "output-available", input: { path: "/f" }, output: "data" },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const abortUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "aborted");
+      expect(abortUpdate).toBeDefined();
+      const content = (abortUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toMatchObject({ type: "text", text: "Partial response" });
+      expect(parts[1]).toMatchObject({ type: "tool-call", toolName: "read", toolCallId: "tc-1" });
+      const completedUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed");
+      expect(completedUpdate).toBeUndefined();
+    });
+
+    it("sets status to error when the stream errored before finishing", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      streamArgs.onError({ error: new Error("provider failure") });
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: { parts: [{ type: "text", text: "Partial before error" }] },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const errorUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "error");
+      expect(errorUpdate).toBeDefined();
+      const content = (errorUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      expect(content.text).toBe("Partial before error");
+      const completedUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "completed");
+      expect(completedUpdate).toBeUndefined();
+    });
+
+    it("persists failed tool calls with isError and their errorText", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: {
+          parts: [
+            { type: "dynamic-tool", toolName: "bash", toolCallId: "tc-1", state: "output-error", input: { command: "ls" }, errorText: "command timed out" },
+            { type: "text", text: "The command failed." },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts[0]).toMatchObject({
+        type: "tool-call",
+        toolName: "bash",
+        toolCallId: "tc-1",
+        output: "command timed out",
+        isError: true,
+      });
+    });
+
+    it("skips tool calls that never reached a terminal state", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const result = mockStreamText.mock.results[0].value;
+      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: true,
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Checking" },
+            { type: "dynamic-tool", toolName: "read", toolCallId: "tc-1", state: "input-streaming", input: undefined },
+            { type: "dynamic-tool", toolName: "grep", toolCallId: "tc-2", state: "input-available", input: { pattern: "x" } },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(1);
+      expect(parts[0]).toMatchObject({ type: "text", text: "Checking" });
     });
   });
 
@@ -1083,7 +1213,8 @@ describe("api.agent action", () => {
 
       const result = mockStreamText.mock.results[0].value;
       const callArgs = result.toUIMessageStream.mock.calls[0][0];
-      await callArgs.onFinish({
+      await callArgs.onEnd({
+        isAborted: false,
         responseMessage: { parts: [{ type: "text", text: "Done." }] },
       });
 
@@ -1095,8 +1226,8 @@ describe("api.agent action", () => {
     });
   });
 
-  describe("onAbort callback", () => {
-    it("passes onAbort to streamText", async () => {
+  describe("stream termination callbacks", () => {
+    it("does not pass onAbort to streamText (abort persistence is consolidated in onEnd)", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -1106,111 +1237,9 @@ describe("api.agent action", () => {
       await callAction(request);
 
       const streamArgs = mockStreamText.mock.calls[0][0];
-      expect(streamArgs.onAbort).toBeDefined();
-      expect(typeof streamArgs.onAbort).toBe("function");
+      expect(streamArgs.onAbort).toBeUndefined();
     });
 
-    it("updates assistant item with status aborted and partial stats on abort", async () => {
-      mockDb._selectResults = [
-        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
-        [],
-      ];
-      mockDb._selectCallCount = 0;
-      const request = buildRequest(validBody());
-      await callAction(request);
-
-      const streamArgs = mockStreamText.mock.calls[0][0];
-      await streamArgs.onAbort({
-        steps: [
-          {
-            text: "Partial response",
-            toolCalls: [
-              { toolName: "read", toolCallId: "tc-1", args: { path: "/file" } },
-            ],
-            toolResults: [
-              { toolCallId: "tc-1", result: "file content" },
-            ],
-            usage: { inputTokens: 200, outputTokens: 100 },
-          },
-          {
-            text: " continued",
-            toolCalls: [],
-            toolResults: [],
-            usage: { inputTokens: 50, outputTokens: 25 },
-          },
-        ],
-      });
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const abortUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "aborted");
-      expect(abortUpdate).toBeDefined();
-      const content = (abortUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
-      const parts = content.parts as Array<Record<string, unknown>>;
-      expect(parts).toHaveLength(3);
-      expect(parts[0]).toMatchObject({ type: "text", text: "Partial response" });
-      expect(parts[1]).toMatchObject({ type: "tool-call", toolName: "read", toolCallId: "tc-1" });
-      expect(parts[2]).toMatchObject({ type: "text", text: " continued" });
-      expect(content.text).toBe("Partial response continued");
-      const stats = content.stats as Record<string, number>;
-      expect(stats.tokens).toBe(375);
-      expect(stats.toolUses).toBe(1);
-    });
-
-    it("excludes askUserQuestion tool calls from aborted parts", async () => {
-      mockDb._selectResults = [
-        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
-        [],
-      ];
-      mockDb._selectCallCount = 0;
-      const request = buildRequest(validBody());
-      await callAction(request);
-
-      const streamArgs = mockStreamText.mock.calls[0][0];
-      await streamArgs.onAbort({
-        steps: [
-          {
-            text: "Pick a color",
-            toolCalls: [
-              { toolName: "askUserQuestion", toolCallId: "tc-ask", args: {} },
-              { toolName: "read", toolCallId: "tc-read", args: { path: "/f" } },
-            ],
-            toolResults: [],
-            usage: { inputTokens: 10, outputTokens: 5 },
-          },
-        ],
-      });
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const abortUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "aborted");
-      const content = (abortUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
-      const parts = content.parts as Array<Record<string, unknown>>;
-      expect(parts.every((p) => p.toolName !== "askUserQuestion")).toBe(true);
-      const stats = content.stats as Record<string, number>;
-      expect(stats.toolUses).toBe(1);
-    });
-
-    it("updates conversation updatedAt on abort", async () => {
-      mockDb._selectResults = [
-        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
-        [],
-      ];
-      mockDb._selectCallCount = 0;
-      const request = buildRequest(validBody());
-      await callAction(request);
-
-      mockDb._updateSet.mockClear();
-      const streamArgs = mockStreamText.mock.calls[0][0];
-      await streamArgs.onAbort({
-        steps: [{ text: "partial", toolCalls: [], toolResults: [], usage: { inputTokens: 5, outputTokens: 5 } }],
-      });
-
-      const setCalls = mockDb._updateSet.mock.calls;
-      const updatedAtUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).updatedAt !== undefined);
-      expect(updatedAtUpdate).toBeDefined();
-    });
-  });
-
-  describe("onError callback", () => {
     it("passes onError to streamText", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -1225,7 +1254,7 @@ describe("api.agent action", () => {
       expect(typeof streamArgs.onError).toBe("function");
     });
 
-    it("updates assistant item status to error", async () => {
+    it("onError does not write to the DB directly (persistence is consolidated in onEnd)", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -1234,14 +1263,11 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
+      mockDb._updateSet.mockClear();
       const streamArgs = mockStreamText.mock.calls[0][0];
       streamArgs.onError({ error: new Error("provider failure") });
 
-      await vi.waitFor(() => {
-        const setCalls = mockDb._updateSet.mock.calls;
-        const errorUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).status === "error");
-        expect(errorUpdate).toBeDefined();
-      });
+      expect(mockDb._updateSet).not.toHaveBeenCalled();
     });
   });
 });

@@ -233,6 +233,7 @@ export async function action({ request }: Route.ActionArgs) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let toolUseCount = 0;
+  let streamErrored = false;
   const startTime = Date.now();
 
   const systemForStream = promptCachingEnabled
@@ -305,74 +306,9 @@ export async function action({ request }: Route.ActionArgs) {
         }
       }
     },
-    onAbort: async ({ steps }) => {
-      try {
-        const durationMs = Date.now() - startTime;
-        let abortInputTokens = 0;
-        let abortOutputTokens = 0;
-        let abortToolUses = 0;
-
-        const parts: Array<
-          | { type: "text"; text: string }
-          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string }
-        > = [];
-        for (const step of steps) {
-          if (step.text) {
-            parts.push({ type: "text", text: step.text });
-          }
-          for (const tc of step.toolCalls || []) {
-            if (tc.toolName === "askUserQuestion") continue;
-            abortToolUses++;
-            const matchingResult = step.toolResults?.find(
-              (r) => r.toolCallId === tc.toolCallId
-            );
-            parts.push({
-              type: "tool-call",
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              input: tc.input,
-              output: typeof matchingResult?.output === "string"
-                ? matchingResult.output
-                : JSON.stringify(matchingResult?.output || ""),
-            });
-          }
-          if (step.usage) {
-            abortInputTokens += step.usage.inputTokens || 0;
-            abortOutputTokens += step.usage.outputTokens || 0;
-          }
-        }
-
-        const text = parts
-          .filter((p): p is { type: "text"; text: string } => p.type === "text")
-          .map((p) => p.text)
-          .join("");
-        const stats = {
-          toolUses: abortToolUses,
-          tokens: abortInputTokens + abortOutputTokens,
-          durationMs,
-        };
-
-        await db
-          .update(items)
-          .set({ content: { parts, text, stats }, status: "aborted" })
-          .where(eq(items.id, assistantItemId));
-
-        await db
-          .update(conversations)
-          .set({ updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
-
-        console.log(`[agent] Stream aborted for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
-      } catch (err) {
-        console.error(`[agent] Abort cleanup error for conversation=${conversationId}:`, err);
-      }
-    },
     onError: ({ error }) => {
+      streamErrored = true;
       console.error(`[agent] Stream error for conversation=${conversationId}:`, error);
-      db.update(items)
-        .set({ status: "error" })
-        .where(eq(items.id, assistantItemId))
-        .catch((err: unknown) => console.error(`[agent] Error status update failed:`, err));
     },
   });
 
@@ -381,8 +317,9 @@ export async function action({ request }: Route.ActionArgs) {
   const innerUiStream = result.toUIMessageStream({
     originalMessages: uiMessages,
     sendFinish: false,
-    onFinish: async ({ responseMessage: assistantMessage }) => {
+    onEnd: async ({ responseMessage: assistantMessage, isAborted }) => {
       try {
+        const status = isAborted ? "aborted" : streamErrored ? "error" : "completed";
         const durationMs = Date.now() - startTime;
         const stats = {
           toolUses: toolUseCount,
@@ -392,7 +329,7 @@ export async function action({ request }: Route.ActionArgs) {
 
         const parts: Array<
           | { type: "text"; text: string }
-          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string }
+          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string; isError?: true }
           | { type: "step-start" }
         > = [];
         for (const part of assistantMessage.parts) {
@@ -403,9 +340,21 @@ export async function action({ request }: Route.ActionArgs) {
           } else if (part.type === "step-start") {
             parts.push({ type: "step-start" });
           } else if (part.type === "dynamic-tool" || (part.type as string).startsWith("tool-")) {
-            const tp = part as { toolName?: string; toolCallId?: string; input?: unknown; output?: unknown; type: string };
+            const tp = part as { toolName?: string; toolCallId?: string; input?: unknown; output?: unknown; errorText?: string; state?: string; type: string };
             const name = tp.toolName || tp.type.replace("tool-", "");
             if (name === "askUserQuestion") continue;
+            if (tp.state === "input-streaming" || tp.state === "input-available") continue;
+            if (tp.state === "output-error") {
+              parts.push({
+                type: "tool-call",
+                toolName: name,
+                toolCallId: tp.toolCallId || crypto.randomUUID(),
+                input: tp.input,
+                output: tp.errorText || "",
+                isError: true,
+              });
+              continue;
+            }
             parts.push({
               type: "tool-call",
               toolName: name,
@@ -425,7 +374,7 @@ export async function action({ request }: Route.ActionArgs) {
           .update(items)
           .set({
             content: { parts, text, stats },
-            status: "completed",
+            status,
           })
           .where(eq(items.id, assistantItemId));
 
@@ -434,7 +383,7 @@ export async function action({ request }: Route.ActionArgs) {
           .set({ updatedAt: new Date() })
           .where(eq(conversations.id, conversationId));
 
-        console.log(`[agent] Stream completed for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
+        console.log(`[agent] Stream ${status} for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
       } catch (cleanupError) {
         console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
       }
