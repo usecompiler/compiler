@@ -74,6 +74,27 @@ describe("itemsToUIMessages", () => {
     expect(msgs[0].parts[2]).toMatchObject({ type: "text", text: "Here's what I found." });
   });
 
+  it("restores failed tool calls as output-error parts with errorText", () => {
+    const items = [
+      assistantItem("a1", {
+        parts: [
+          { type: "tool-call", toolName: "bash", toolCallId: "tc1", input: { command: "ls" }, output: "command timed out", isError: true },
+          { type: "text", text: "The command failed." },
+        ],
+        text: "The command failed.",
+      }),
+    ];
+    const msgs = itemsToUIMessages(items);
+    expect(msgs[0].parts[0]).toMatchObject({
+      type: "dynamic-tool",
+      toolName: "bash",
+      toolCallId: "tc1",
+      state: "output-error",
+      errorText: "command timed out",
+    });
+    expect(msgs[0].parts[0]).not.toHaveProperty("output");
+  });
+
   it("restores multiple tool groups interleaved with text", () => {
     const items = [
       assistantItem("a1", {
