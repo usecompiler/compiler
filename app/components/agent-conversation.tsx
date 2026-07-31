@@ -69,6 +69,7 @@ export function AgentConversation({
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
   const pendingBlobIdsRef = useRef<string[]>([]);
+  const pendingSendRef = useRef<string | null>(null);
 
   const transport = useMemo(() => new DefaultChatTransport<CompilerUIMessage>({
     api: "/api/agent",
@@ -119,29 +120,30 @@ export function AgentConversation({
       }
     },
     onFinish() {
+      pendingSendRef.current = null;
       setStreamStartTime(undefined);
       revalidator.revalidate();
     },
-    onError() {
+    onError(error) {
+      console.error("[chat] Stream error:", error);
       setStreamStartTime(undefined);
       setNetworkError(true);
-      setMessages((prev) => {
-        let lastUserIndex = -1;
-        for (let i = prev.length - 1; i >= 0; i--) {
-          if (prev[i].role === "user") {
-            lastUserIndex = i;
-            break;
-          }
-        }
-        if (lastUserIndex === -1) return prev;
-        return prev.filter((_, i) => i !== lastUserIndex);
-      });
+      const pendingId = pendingSendRef.current;
+      pendingSendRef.current = null;
+      if (!pendingId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== pendingId));
       setInput((current) => current || savedPromptRef.current);
       setPendingFiles((current) => current.length > 0 ? current : savedFilesRef.current);
     },
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
+
+  useEffect(() => {
+    if (status === "streaming") {
+      pendingSendRef.current = null;
+    }
+  }, [status]);
 
   useEffect(() => {
     if (!networkError) return;
@@ -271,6 +273,7 @@ export function AgentConversation({
 
       revalidator.revalidate();
 
+      pendingSendRef.current = userMessageId;
       await sendMessage({
         id: userMessageId,
         parts: [{ type: "text", text: promptText.trim() || "Describe this file." }],
@@ -338,7 +341,7 @@ export function AgentConversation({
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
           </svg>
           <span className="text-sm text-amber-800 dark:text-amber-200">
-            We couldn't connect. Please check your network connection and try again.
+            Something went wrong. Please try again.
           </span>
           <button
             onClick={() => setNetworkError(false)}
