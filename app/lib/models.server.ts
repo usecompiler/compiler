@@ -3,6 +3,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createAmazonBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import type { LanguageModel } from "ai";
 import { getAIProviderConfig, type AIProvider } from "./ai-provider.server";
+import { isSaas } from "./appMode.server";
 import { db } from "./db/index.server";
 import { aiProviderConfigurations, members } from "./db/schema";
 import { eq } from "drizzle-orm";
@@ -393,7 +394,9 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
   const optionalTools =
     result.length > 0 && result[0].allowedTools
       ? (result[0].allowedTools as string[])
-      : ["Bash"];
+      : isSaas()
+        ? ["Bash", "WebFetch", "WebSearch"]
+        : ["Bash"];
 
   const mapped = optionalTools.map((t) => TOOL_NAME_MAP[t] || t.toLowerCase());
 

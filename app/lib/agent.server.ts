@@ -1,6 +1,7 @@
 import { getAIProviderConfig } from "./ai-provider.server";
 import { getAgentEffort, getAgentFallbacks, getModel, getToolConfig } from "./models.server";
 import { buildTools } from "./tools/index.server";
+import { buildWebTools } from "./tools/web.server";
 import { buildSystemPrompt, COMPACTION_INSTRUCTIONS } from "./prompts.server";
 import { isSaas } from "./appMode.server";
 import { getOrCreateSandbox } from "./e2b/sandbox-manager.server";
@@ -67,6 +68,8 @@ export async function getAgentConfig(
       projectId,
     });
   }
+
+  Object.assign(tools, buildWebTools(provider, modelId, enabledTools));
 
   return {
     model,

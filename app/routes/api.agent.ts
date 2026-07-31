@@ -339,6 +339,7 @@ export async function action({ request }: Route.ActionArgs) {
     stream: result.stream,
     tools,
     originalMessages: uiMessages,
+    sendSources: true,
     sendFinish: false,
     onEnd: async ({ responseMessage: assistantMessage, isAborted }) => {
       try {
