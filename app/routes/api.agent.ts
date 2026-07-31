@@ -233,6 +233,8 @@ export async function action({ request }: Route.ActionArgs) {
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalCacheWriteTokens = 0;
   let toolUseCount = 0;
   let streamErrored = false;
   const startTime = Date.now();
@@ -299,6 +301,8 @@ export async function action({ request }: Route.ActionArgs) {
       if (usage) {
         totalInputTokens += usage.inputTokens || 0;
         totalOutputTokens += usage.outputTokens || 0;
+        totalCacheReadTokens += usage.inputTokenDetails?.cacheReadTokens || 0;
+        totalCacheWriteTokens += usage.inputTokenDetails?.cacheWriteTokens || 0;
       }
       if (toolCalls) {
         for (const tc of toolCalls) {
@@ -328,6 +332,10 @@ export async function action({ request }: Route.ActionArgs) {
         const stats = {
           toolUses: toolUseCount,
           tokens: totalInputTokens + totalOutputTokens,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          cacheReadTokens: totalCacheReadTokens,
+          cacheWriteTokens: totalCacheWriteTokens,
           durationMs,
         };
 
@@ -399,7 +407,7 @@ export async function action({ request }: Route.ActionArgs) {
           .set({ updatedAt: new Date() })
           .where(eq(conversations.id, conversationId));
 
-        console.log(`[agent] Stream ${status} for conversation=${conversationId} tokens=${stats.tokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
+        console.log(`[agent] Stream ${status} for conversation=${conversationId} tokens=${stats.tokens} cacheRead=${stats.cacheReadTokens} cacheWrite=${stats.cacheWriteTokens} tools=${stats.toolUses} duration=${stats.durationMs}ms`);
       } catch (cleanupError) {
         console.error(`[agent] Cleanup error for conversation=${conversationId}:`, cleanupError);
       }
