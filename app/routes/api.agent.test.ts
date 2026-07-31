@@ -1077,6 +1077,45 @@ describe("api.agent action", () => {
       });
     });
 
+    it("strips cache breakpoints left on earlier messages by previous steps", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-sonnet-4-6",
+        tools: {},
+        systemPrompt: "test system prompt",
+        promptCachingEnabled: true,
+        compactionEnabled: true,
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      const stepMessages = [
+        { role: "user", content: "Hello" },
+        {
+          role: "user",
+          content: "Prior tail",
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" }, other: "keep" } },
+        },
+        { role: "assistant", content: "Working on it" },
+        { role: "user", content: "Tool results" },
+      ];
+      const result = streamArgs.prepareStep({ messages: stepMessages });
+
+      const withBreakpoints = result.messages.filter(
+        (m: { providerOptions?: { anthropic?: { cacheControl?: unknown } } }) =>
+          m.providerOptions?.anthropic?.cacheControl !== undefined
+      );
+      expect(withBreakpoints).toHaveLength(1);
+      expect(result.messages[3].providerOptions.anthropic.cacheControl).toEqual({ type: "ephemeral" });
+      expect(result.messages[1].providerOptions.anthropic).toEqual({ other: "keep" });
+    });
+
 });
 
   describe("native compaction via contextManagement", () => {

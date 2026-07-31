@@ -256,17 +256,27 @@ export async function action({ request }: Route.ActionArgs) {
     tools,
     prepareStep: promptCachingEnabled
       ? ({ messages: stepMessages }) => ({
-          messages: stepMessages.map((msg, index) =>
-            index === stepMessages.length - 1
-              ? {
-                  ...msg,
-                  providerOptions: {
-                    ...msg.providerOptions,
-                    anthropic: { cacheControl: { type: "ephemeral" } },
-                  },
-                }
-              : msg
-          ),
+          messages: stepMessages.map((msg, index) => {
+            const { cacheControl: staleCacheControl, ...anthropicRest } =
+              (msg.providerOptions?.anthropic ?? {}) as Record<string, unknown>;
+            void staleCacheControl;
+            const isLast = index === stepMessages.length - 1;
+            const anthropic = isLast
+              ? { ...anthropicRest, cacheControl: { type: "ephemeral" } }
+              : anthropicRest;
+            const providerOptions = { ...msg.providerOptions } as Record<string, unknown>;
+            if (Object.keys(anthropic).length > 0) {
+              providerOptions.anthropic = anthropic;
+            } else {
+              delete providerOptions.anthropic;
+            }
+            return {
+              ...msg,
+              providerOptions: (Object.keys(providerOptions).length > 0
+                ? providerOptions
+                : undefined) as typeof msg.providerOptions,
+            };
+          }),
         })
       : undefined,
     providerOptions: {
