@@ -13,18 +13,16 @@ export interface ClaudeModel {
   createdAt: string;
 }
 
-interface ModelCache {
+interface ModelCacheEntry {
   models: ClaudeModel[];
   fetchedAt: number;
-  provider: string;
-  organizationId: string;
 }
 
-let modelCache: ModelCache | null = null;
+const modelCache = new Map<string, ModelCacheEntry>();
 const CACHE_TTL = 60 * 60 * 1000;
 
 export function clearModelCache() {
-  modelCache = null;
+  modelCache.clear();
 }
 
 export const DEFAULT_MODEL_ID = "claude-opus-5";
@@ -258,13 +256,10 @@ export async function getAvailableClaudeModels(
   }
 
   const now = Date.now();
-  if (
-    modelCache &&
-    modelCache.organizationId === organizationId &&
-    modelCache.provider === config.provider &&
-    now - modelCache.fetchedAt < CACHE_TTL
-  ) {
-    return modelCache.models;
+  const cacheKey = `${organizationId}:${config.provider}`;
+  const cached = modelCache.get(cacheKey);
+  if (cached && now - cached.fetchedAt < CACHE_TTL) {
+    return cached.models;
   }
 
   let models: ClaudeModel[];
@@ -286,12 +281,7 @@ export async function getAvailableClaudeModels(
     return FALLBACK_MODELS;
   }
 
-  modelCache = {
-    models,
-    fetchedAt: now,
-    provider: config.provider,
-    organizationId,
-  };
+  modelCache.set(cacheKey, { models, fetchedAt: now });
 
   return models;
 }
