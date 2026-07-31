@@ -104,7 +104,7 @@ export function AgentConversation({
     id: conversationId,
     messages: initialUIMessages,
     transport,
-    experimental_throttle: 50,
+    throttle: 50,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onToolCall({ toolCall }) {
       if (toolCall.toolName === "askUserQuestion") {
