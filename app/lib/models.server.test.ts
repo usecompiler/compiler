@@ -1,9 +1,49 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("~/lib/db/index.server", () => ({ db: {} }));
-vi.mock("~/lib/ai-provider.server", () => ({ getAIProviderConfig: vi.fn() }));
 
-import { getAgentEffort, getAgentFallbacks, DEFAULT_MODEL_ID } from "./models.server";
+const getAIProviderConfig = vi.fn();
+vi.mock("~/lib/ai-provider.server", () => ({
+  getAIProviderConfig: (...args: unknown[]) => getAIProviderConfig(...args),
+}));
+
+import { getAgentEffort, getAgentFallbacks, getAvailableClaudeModels, clearModelCache, DEFAULT_MODEL_ID } from "./models.server";
+
+describe("getAvailableClaudeModels caching", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    clearModelCache();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({
+        data: [{ id: "claude-opus-5", display_name: "Claude Opus 5", created_at: "2026-07-24T00:00:00Z" }],
+      })),
+    );
+    getAIProviderConfig.mockImplementation(async (organizationId: string) => ({
+      provider: "anthropic",
+      anthropicApiKey: `key-${organizationId}`,
+    }));
+  });
+
+  it("caches per organization instead of a single slot", async () => {
+    await getAvailableClaudeModels("org-1");
+    await getAvailableClaudeModels("org-2");
+    await getAvailableClaudeModels("org-1");
+    await getAvailableClaudeModels("org-2");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches after clearModelCache", async () => {
+    await getAvailableClaudeModels("org-1");
+    clearModelCache();
+    await getAvailableClaudeModels("org-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("getAgentEffort", () => {
   it("returns xhigh for claude-opus-5 on anthropic", () => {
