@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import { useRevalidator, useBlocker, Link } from "react-router";
+import { useRevalidator, Link } from "react-router";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import type { CompilerUIMessage } from "~/lib/chat-message";
@@ -8,7 +8,6 @@ import { Streamdown } from "streamdown";
 import type { Item } from "~/lib/types";
 import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput, type PendingFile } from "./prompt-input";
-import { NavigationBlocker } from "./navigation-blocker";
 import { itemsToUIMessages, buildDisplayItems, buildSegments, derivePendingQuestion, type PendingQuestionState } from "./conversation-helpers";
 
 interface AnsweredQuestion {
@@ -86,6 +85,9 @@ export function AgentConversation({
         },
       };
     },
+    prepareReconnectToStreamRequest() {
+      return { api: `/api/agent/${conversationId}/stream` };
+    },
   }), [conversationId, initialProjectId]);
 
   const {
@@ -99,6 +101,7 @@ export function AgentConversation({
     id: conversationId,
     messages: initialUIMessages,
     transport,
+    resume: !readOnly && initialUIMessages.length > 0,
     throttle: 50,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onToolCall({ toolCall }) {
@@ -139,20 +142,6 @@ export function AgentConversation({
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
-
-  const blocker = useBlocker(isStreaming);
-
-  useEffect(() => {
-    if (!isStreaming) return;
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isStreaming]);
 
   useEffect(() => {
     if (!networkError) return;
@@ -302,7 +291,8 @@ export function AgentConversation({
 
   const handleStop = useCallback(() => {
     stop();
-  }, [stop]);
+    fetch(`/api/agent/${conversationId}/stop`, { method: "POST" }).catch(() => {});
+  }, [stop, conversationId]);
 
   const allDisplayItems = useMemo(
     () => buildDisplayItems(messages, systemItems),
@@ -342,7 +332,6 @@ export function AgentConversation({
 
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900">
-      <NavigationBlocker blocker={blocker} />
       {networkError && (
         <div className="fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900 shadow-lg animate-[slideIn_0.3s_ease-out]">
           <svg className="w-5 h-5 text-amber-500 dark:text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">

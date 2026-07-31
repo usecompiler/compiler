@@ -33,6 +33,20 @@ vi.mock("ai", () => ({
   toUIMessageStream: (...args: unknown[]) => mockToUIMessageStream(...args),
   createUIMessageStream: (...args: unknown[]) => mockCreateUIMessageStream(...args),
   createUIMessageStreamResponse: (...args: unknown[]) => mockCreateUIMessageStreamResponse(...args),
+  generateId: () => "stream-id-1",
+}));
+
+const mockCreateNewResumableStream = vi.fn().mockResolvedValue(undefined);
+const mockSetActiveStream = vi.fn().mockResolvedValue(undefined);
+const mockClearActiveStream = vi.fn().mockResolvedValue(undefined);
+const mockRegisterAbort = vi.fn();
+const mockReleaseAbort = vi.fn();
+vi.mock("~/lib/resumable.server", () => ({
+  getStreamContext: () => ({ createNewResumableStream: mockCreateNewResumableStream }),
+  setActiveStream: (...args: unknown[]) => mockSetActiveStream(...args),
+  clearActiveStream: (...args: unknown[]) => mockClearActiveStream(...args),
+  registerAbort: (...args: unknown[]) => mockRegisterAbort(...args),
+  releaseAbort: (...args: unknown[]) => mockReleaseAbort(...args),
 }));
 
 const generateAndSaveTitle = vi.fn().mockResolvedValue(undefined);
@@ -115,6 +129,9 @@ beforeEach(() => {
     compactionEnabled: true,
   });
   setupMockStreamText();
+  mockClearActiveStream.mockResolvedValue(undefined);
+  mockSetActiveStream.mockResolvedValue(undefined);
+  mockCreateNewResumableStream.mockResolvedValue(undefined);
   mockDb._setSelectResult([{ id: "conv-1", title: "Existing Chat", userId: "user-1" }]);
 });
 
@@ -1421,6 +1438,43 @@ describe("api.agent action", () => {
       streamArgs.onError({ error: new Error("provider failure") });
 
       expect(mockDb._updateSet).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("resumable streams", () => {
+    it("registers the stream and a server-side abort controller", async () => {
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      expect(mockRegisterAbort).toHaveBeenCalledWith("conv-1", expect.any(AbortController));
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.abortSignal).not.toBe(request.signal);
+
+      const responseArgs = mockCreateUIMessageStreamResponse.mock.calls[0][0];
+      expect(typeof responseArgs.consumeSseStream).toBe("function");
+      await responseArgs.consumeSseStream({ stream: "sse-stream" });
+
+      expect(mockCreateNewResumableStream).toHaveBeenCalledWith("stream-id-1", expect.any(Function));
+      expect(mockCreateNewResumableStream.mock.calls[0][1]()).toBe("sse-stream");
+      expect(mockSetActiveStream).toHaveBeenCalledWith("conv-1", "stream-id-1");
+    });
+
+    it("clears the active stream and releases the abort controller on end", async () => {
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const responseArgs = mockCreateUIMessageStreamResponse.mock.calls[0][0];
+      await responseArgs.consumeSseStream({ stream: "sse-stream" });
+
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: { parts: [{ type: "text", text: "Done." }] },
+      });
+
+      const registeredController = mockRegisterAbort.mock.calls[0][1];
+      expect(mockReleaseAbort).toHaveBeenCalledWith("conv-1", registeredController);
+      expect(mockClearActiveStream).toHaveBeenCalledWith("conv-1", "stream-id-1");
     });
   });
 });
