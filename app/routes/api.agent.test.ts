@@ -1133,6 +1133,28 @@ describe("api.agent action", () => {
       expect(streamArgs.providerOptions.anthropic.contextManagement).toBeDefined();
     });
 
+    it("passes fallbacks from agent config to provider options", async () => {
+      getAgentConfig.mockResolvedValue({
+        model: "mock-model",
+        modelId: "claude-opus-5",
+        effort: "xhigh",
+        fallbacks: "default",
+        tools: {},
+        systemPrompt: "test system prompt",
+        compactionEnabled: true,
+      });
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const streamArgs = mockStreamText.mock.calls[0][0];
+      expect(streamArgs.providerOptions.anthropic.fallbacks).toBe("default");
+    });
+
     it("omits effort when agent config has none", async () => {
       getAgentConfig.mockResolvedValue({
         model: "mock-model",
