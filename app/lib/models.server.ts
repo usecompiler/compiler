@@ -413,6 +413,16 @@ export function getAgentEffort(
   return supported ? "xhigh" : undefined;
 }
 
+function requireAnthropicApiKey(config: { anthropicApiKey?: string } | null): string {
+  const apiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "AI provider is not configured. Add an Anthropic API key or Bedrock credentials in Settings → AI Provider."
+    );
+  }
+  return apiKey;
+}
+
 const SERVER_FALLBACK_MODELS = ["claude-opus-5", "claude-fable-5"];
 
 export function getAgentFallbacks(
@@ -443,7 +453,7 @@ export async function getModel(
   }
 
   const anthropic = createAnthropic({
-    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
+    apiKey: requireAnthropicApiKey(config),
   });
   return { model: anthropic(modelId), modelId };
 }
@@ -469,7 +479,7 @@ export async function getTitleGenerationModel(
   }
 
   const anthropic = createAnthropic({
-    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
+    apiKey: requireAnthropicApiKey(config),
   });
   return anthropic(TITLE_MODEL_ID);
 }

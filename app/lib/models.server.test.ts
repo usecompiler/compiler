@@ -7,7 +7,18 @@ vi.mock("~/lib/ai-provider.server", () => ({
   getAIProviderConfig: (...args: unknown[]) => getAIProviderConfig(...args),
 }));
 
-import { getAgentEffort, getAgentFallbacks, getAvailableClaudeModels, clearModelCache, DEFAULT_MODEL_ID } from "./models.server";
+import { getAgentEffort, getAgentFallbacks, getAvailableClaudeModels, getTitleGenerationModel, clearModelCache, DEFAULT_MODEL_ID } from "./models.server";
+
+describe("unconfigured provider", () => {
+  it("throws a clear error instead of using an empty API key", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    getAIProviderConfig.mockResolvedValue(null);
+
+    await expect(getTitleGenerationModel("org-1")).rejects.toThrow(/AI provider is not configured/);
+
+    vi.unstubAllEnvs();
+  });
+});
 
 describe("getAvailableClaudeModels caching", () => {
   const fetchMock = vi.fn();
