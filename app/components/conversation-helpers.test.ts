@@ -463,3 +463,62 @@ describe("derivePendingQuestion", () => {
     expect(derivePendingQuestion([])).toBeNull();
   });
 });
+
+describe("verbatim uiParts persistence", () => {
+  it("prefers uiParts over the legacy parts shape", () => {
+    const uiParts = [
+      { type: "text", text: "Live shape" },
+      { type: "tool-read", toolCallId: "tc9", state: "output-available", input: { filePath: "/f" }, output: "data" },
+    ] as CompilerUIMessage["parts"];
+    const items = [
+      assistantItem("a1", {
+        parts: [{ type: "text", text: "Legacy shape" }],
+        text: "Legacy shape",
+        uiParts,
+      }),
+    ];
+    const msgs = itemsToUIMessages(items);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].parts).toEqual(uiParts);
+  });
+
+  it("falls back to the legacy shape when uiParts is empty", () => {
+    const items = [
+      assistantItem("a1", {
+        parts: [{ type: "text", text: "Legacy shape" }],
+        text: "Legacy shape",
+        uiParts: [],
+      }),
+    ];
+    const msgs = itemsToUIMessages(items);
+    expect(msgs[0].parts).toEqual([{ type: "text", text: "Legacy shape" }]);
+  });
+});
+
+describe("buildSegments with streamed static tool parts", () => {
+  it("groups tool-* parts and keeps text boundaries", () => {
+    const segments = buildSegments([
+      { type: "text", text: "Checking" },
+      { type: "tool-read", toolCallId: "t1", state: "output-available", input: {}, output: "a" },
+      { type: "tool-grep", toolCallId: "t2", state: "output-available", input: {}, output: "b" },
+      { type: "text", text: "Done" },
+    ] as CompilerUIMessage["parts"]);
+    expect(segments.map((s) => s.kind)).toEqual(["text", "tools", "text"]);
+    expect(segments[1].kind === "tools" ? segments[1].tools : []).toHaveLength(2);
+  });
+
+  it("extracts qa from a static tool-askUserQuestion part", () => {
+    const segments = buildSegments([
+      { type: "tool-askUserQuestion", toolCallId: "t1", state: "output-available", input: { questions: [] }, output: JSON.stringify({ Approach: "Option A" }) },
+    ] as CompilerUIMessage["parts"]);
+    expect(segments).toEqual([{ kind: "qa", text: "Q: Approach\nA: Option A" }]);
+  });
+
+  it("ignores reasoning parts", () => {
+    const segments = buildSegments([
+      { type: "reasoning", text: "" },
+      { type: "text", text: "Answer" },
+    ] as CompilerUIMessage["parts"]);
+    expect(segments).toEqual([{ kind: "text", text: "Answer" }]);
+  });
+});
