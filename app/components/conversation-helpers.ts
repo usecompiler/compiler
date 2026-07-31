@@ -63,7 +63,17 @@ export function itemsToUIMessages(dbItems: MessageItem[]): CompilerUIMessage[] {
         parts?: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; input?: unknown; output?: string; isError?: boolean; pending?: boolean }>;
         text?: string;
         toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
+        uiParts?: CompilerUIMessage["parts"];
       } | null;
+
+      if (content?.uiParts && content.uiParts.length > 0) {
+        messages.push({
+          id: item.id,
+          role: "assistant",
+          parts: content.uiParts,
+        });
+        continue;
+      }
 
       const uiParts: CompilerUIMessage["parts"] = [];
 

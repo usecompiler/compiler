@@ -212,14 +212,14 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
-  const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
-
   const { model, effort, fallbacks, tools, systemPrompt, promptCachingEnabled, compactionEnabled, compactionInstructions } = await getAgentConfig(
     organizationId,
     conv[0].projectId,
     memberId,
     request.signal,
   );
+
+  const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true, tools });
 
   const assistantItemId = crypto.randomUUID();
   await db.insert(items).values({
@@ -409,10 +409,15 @@ export async function action({ request }: Route.ActionArgs) {
           .map((p) => p.text)
           .join("");
 
+        const uiParts = assistantMessage.parts.filter((part) => {
+          const meta = (part as { providerMetadata?: { anthropic?: { type?: string } } }).providerMetadata;
+          return meta?.anthropic?.type !== "compaction";
+        });
+
         await db
           .update(items)
           .set({
-            content: { parts, text, stats },
+            content: { parts, text, stats, uiParts },
             status,
           })
           .where(eq(items.id, assistantItemId));

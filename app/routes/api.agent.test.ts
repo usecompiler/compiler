@@ -635,6 +635,37 @@ describe("api.agent action", () => {
       });
     });
 
+    it("persists verbatim uiParts and filters compaction blocks from them", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const compactionPart = {
+        type: "text",
+        text: "Summary of earlier work",
+        providerMetadata: { anthropic: { type: "compaction" } },
+      };
+      const reasoningPart = { type: "reasoning", text: "", providerOptions: { anthropic: { signature: "sig" } } };
+      const textPart = { type: "text", text: "Answer." };
+      const toolPart = { type: "tool-read", toolCallId: "tc-1", state: "output-available", input: { filePath: "/f" }, output: "data" };
+
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: { parts: [compactionPart, reasoningPart, textPart, toolPart] },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      expect(content.uiParts).toEqual([reasoningPart, textPart, toolPart]);
+      expect(content.text).toBe("Answer.");
+    });
+
     it("skips tool calls that never reached a terminal state", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
