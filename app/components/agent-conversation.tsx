@@ -697,15 +697,19 @@ const AssistantMessageRow = memo(function AssistantMessageRow({ message, isStrea
           const done = !isStreaming || !isLastSegment ? toolsDone : false;
           const lastTool = segment.tools[segment.tools.length - 1] as { toolName?: string; type: string };
           const lastToolName = lastTool.toolName || lastTool.type.replace("tool-", "");
+          const failedTools = segment.tools.filter((p) => (p as { state?: string }).state === "output-error");
+          const firstFailure = failedTools[0] as { toolName?: string; type: string; errorText?: string } | undefined;
+          const firstFailureName = firstFailure ? firstFailure.toolName || firstFailure.type.replace("tool-", "") : null;
 
           return (
             <div key={i} className="my-3 text-xs">
               <div className="flex items-center gap-2">
-                <span className={done ? "text-green-500" : "text-yellow-500"}>●</span>
+                <span className={done ? (failedTools.length > 0 ? "text-red-500" : "text-green-500") : "text-yellow-500"}>●</span>
                 <span className="font-medium text-neutral-500 dark:text-neutral-400">Exploring</span>
                 {done ? (
                   <span className="text-neutral-500">
-                    ({segment.tools.length} tool use{segment.tools.length !== 1 ? "s" : ""})
+                    ({segment.tools.length} tool use{segment.tools.length !== 1 ? "s" : ""}
+                    {failedTools.length > 0 ? `, ${failedTools.length} failed` : ""})
                   </span>
                 ) : (
                   <span className="text-neutral-500 inline-flex items-center gap-1">
@@ -719,7 +723,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({ message, isStrea
               </div>
               <div className="ml-2 border-l border-neutral-300 dark:border-neutral-700 pl-3 mt-1 text-neutral-400 dark:text-neutral-500">
                 └ {done
-                    ? "Done"
+                    ? firstFailure
+                      ? `${firstFailureName} failed${firstFailure.errorText ? `: ${truncateError(firstFailure.errorText)}` : ""}`
+                      : "Done"
                     : `${getToolLabel(lastToolName)}...`}
               </div>
             </div>
@@ -1098,6 +1104,11 @@ function QuestionCard({ pendingQuestion, conversationId, onAnswered, onSkipped }
       </div>
     </div>
   );
+}
+
+function truncateError(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 120 ? `${flat.slice(0, 120)}…` : flat;
 }
 
 function getToolLabel(tool?: string): string {
