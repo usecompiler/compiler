@@ -27,11 +27,21 @@ export function clearModelCache() {
   modelCache = null;
 }
 
-export const DEFAULT_MODEL_ID = "claude-opus-4-8";
+export const DEFAULT_MODEL_ID = "claude-opus-5";
 
 export const TITLE_MODEL_ID = "claude-sonnet-4-6";
 
 const FALLBACK_MODELS: ClaudeModel[] = [
+  {
+    id: "claude-opus-5",
+    displayName: "Claude Opus 5",
+    createdAt: "2026-07-24T00:00:00Z",
+  },
+  {
+    id: "claude-sonnet-5",
+    displayName: "Claude Sonnet 5",
+    createdAt: "2026-06-29T00:00:00Z",
+  },
   {
     id: "claude-opus-4-8",
     displayName: "Claude Opus 4.8",
@@ -400,7 +410,7 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
   return [...baseTools, ...mapped];
 }
 
-const XHIGH_EFFORT_MODELS = ["claude-opus-4-7", "claude-opus-4-8"];
+const XHIGH_EFFORT_MODELS = ["claude-opus-5", "claude-fable-5", "claude-sonnet-5", "claude-opus-4-7", "claude-opus-4-8"];
 
 export function getAgentEffort(
   provider: AIProvider,
@@ -411,6 +421,19 @@ export function getAgentEffort(
     (m) => modelId === m || modelId.startsWith(`${m}-`)
   );
   return supported ? "xhigh" : undefined;
+}
+
+const SERVER_FALLBACK_MODELS = ["claude-opus-5", "claude-fable-5"];
+
+export function getAgentFallbacks(
+  provider: AIProvider,
+  modelId: string
+): "default" | undefined {
+  if (provider !== "anthropic") return undefined;
+  const supported = SERVER_FALLBACK_MODELS.some(
+    (m) => modelId === m || modelId.startsWith(`${m}-`)
+  );
+  return supported ? "default" : undefined;
 }
 
 export async function getModel(

@@ -213,7 +213,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const modelMessages = await convertToModelMessages(uiMessages, { ignoreIncompleteToolCalls: true });
 
-  const { model, effort, tools, systemPrompt, promptCachingEnabled, compactionEnabled, compactionInstructions } = await getAgentConfig(
+  const { model, effort, fallbacks, tools, systemPrompt, promptCachingEnabled, compactionEnabled, compactionInstructions } = await getAgentConfig(
     organizationId,
     conv[0].projectId,
     memberId,
@@ -270,6 +270,7 @@ export async function action({ request }: Route.ActionArgs) {
     providerOptions: {
       anthropic: {
         ...(effort ? { effort } : {}),
+        ...(fallbacks ? { fallbacks } : {}),
         ...(compactionEnabled
           ? {
               contextManagement: {
