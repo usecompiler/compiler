@@ -4,7 +4,7 @@ import { grepDescription, grepParameters, executeGrep } from "./grep.server";
 import { globDescription, globParameters, executeGlob } from "./glob.server";
 import { readDescription, readParameters, executeRead } from "./read.server";
 import { bashDescription, bashParameters, executeBash } from "./bash.server";
-import { askUserQuestionDescription, askUserQuestionParameters } from "./ask-user-question.server";
+import { askUserQuestionDescription, askUserQuestionParameters, askUserQuestionOutputSchema } from "./ask-user-question.server";
 import { repoSyncDescription, repoSyncParameters, executeRepoSync } from "./repo-sync.server";
 
 export const GREP_MAX_CHARS = 5000;
@@ -57,12 +57,12 @@ interface BuildToolsOptions {
 
 type AnyTool = Tool<any, any>;
 
-export function buildTools(options: BuildToolsOptions) {
-  const { cwd, allowedDirs, signal, enabledTools, organizationId, projectId } = options;
+function agentToolSet(options: BuildToolsOptions) {
+  const { cwd, allowedDirs, signal, organizationId, projectId } = options;
   const toolOptions = { cwd, allowedDirs, signal };
   const repoSyncOptions = { organizationId, projectId, signal };
 
-  const allTools: Record<string, AnyTool> = {
+  return {
     grep: tool({
       description: grepDescription,
       inputSchema: grepParameters,
@@ -88,21 +88,29 @@ export function buildTools(options: BuildToolsOptions) {
     askUserQuestion: tool({
       description: askUserQuestionDescription,
       inputSchema: askUserQuestionParameters,
+      outputSchema: askUserQuestionOutputSchema,
+    }),
+    repoSync: tool({
+      description: repoSyncDescription,
+      inputSchema: repoSyncParameters,
+      execute: async (args) => executeRepoSync(args, repoSyncOptions),
     }),
   };
+}
+
+export type AgentToolSet = ReturnType<typeof agentToolSet>;
+
+export function buildTools(options: BuildToolsOptions) {
+  const allTools = agentToolSet(options);
 
   const filtered: Record<string, AnyTool> = {};
-  for (const name of enabledTools) {
-    if (allTools[name]) {
-      filtered[name] = allTools[name];
+  for (const name of options.enabledTools) {
+    if (name !== "repoSync" && name in allTools) {
+      filtered[name] = allTools[name as keyof AgentToolSet];
     }
   }
 
-  filtered.repoSync = tool({
-    description: repoSyncDescription,
-    inputSchema: repoSyncParameters,
-    execute: async (args) => executeRepoSync(args, repoSyncOptions),
-  });
+  filtered.repoSync = allTools.repoSync;
 
   return filtered;
 }

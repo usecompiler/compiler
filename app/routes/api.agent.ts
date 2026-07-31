@@ -1,5 +1,6 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, isStepCount, smoothStream, toUIMessageStream, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, isStepCount, smoothStream, toUIMessageStream, createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import type { CompilerUIMessage } from "~/lib/chat-message";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -24,7 +25,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const body = await request.json();
-  const message: UIMessage | undefined = body.message;
+  const message: CompilerUIMessage | undefined = body.message;
   const conversationId: string | undefined = body.conversationId;
   const blobIds: string[] | undefined = body.blobIds;
   const projectId: string | undefined = body.projectId;
@@ -185,20 +186,20 @@ export async function action({ request }: Route.ActionArgs) {
 
     const lastMsg = uiMessages[uiMessages.length - 1];
     if (lastMsg && lastMsg.role === "user") {
-      const imageParts: UIMessage["parts"] = [];
+      const imageParts: CompilerUIMessage["parts"] = [];
       for (const img of agentImages) {
         if (SUPPORTED_IMAGE_TYPES.has(img.mediaType)) {
           imageParts.push({
             type: "file",
             mediaType: img.mediaType,
             url: `data:${img.mediaType};base64,${img.base64}`,
-          } as UIMessage["parts"][number]);
+          } as CompilerUIMessage["parts"][number]);
         } else if (img.mediaType === "application/pdf") {
           imageParts.push({
             type: "file",
             mediaType: img.mediaType,
             url: `data:${img.mediaType};base64,${img.base64}`,
-          } as UIMessage["parts"][number]);
+          } as CompilerUIMessage["parts"][number]);
         } else if (img.mediaType.startsWith("text/") || TEXT_MEDIA_TYPES.has(img.mediaType)) {
           const text = Buffer.from(img.base64, "base64").toString("utf-8");
           imageParts.push({ type: "text", text: `[File: ${img.filename || "file"}]\n${text}` });
@@ -424,7 +425,7 @@ export async function action({ request }: Route.ActionArgs) {
     heartbeat = undefined;
   };
 
-  const uiStream = createUIMessageStream({
+  const uiStream = createUIMessageStream<CompilerUIMessage>({
     originalMessages: uiMessages,
     onEnd: stopHeartbeat,
     execute: ({ writer }) => {

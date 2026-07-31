@@ -5,7 +5,7 @@ import { bashDescription, bashParameters, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT } fr
 import { readDescription, readParameters, MAX_OUTPUT_BYTES, MAX_LINE_CHARS, DEFAULT_LIMIT } from "../tools/read.server";
 import { grepDescription, grepParameters } from "../tools/grep.server";
 import { globDescription, globParameters } from "../tools/glob.server";
-import { askUserQuestionDescription, askUserQuestionParameters } from "../tools/ask-user-question.server";
+import { askUserQuestionDescription, askUserQuestionParameters, askUserQuestionOutputSchema } from "../tools/ask-user-question.server";
 import { repoSyncDescription, repoSyncParameters, executeRepoSync } from "../tools/repo-sync.server";
 import { truncateForModel, GREP_MAX_CHARS, GLOB_MAX_CHARS } from "../tools/index.server";
 
@@ -203,6 +203,7 @@ export function buildSandboxTools(options: BuildSandboxToolsOptions) {
     askUserQuestion: tool({
       description: askUserQuestionDescription,
       inputSchema: askUserQuestionParameters,
+      outputSchema: askUserQuestionOutputSchema,
     }),
   };
 

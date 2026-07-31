@@ -1,4 +1,4 @@
-import type { UIMessage } from "@ai-sdk/react";
+import type { CompilerUIMessage } from "~/lib/chat-message";
 import type { Item } from "~/lib/types";
 
 export interface MessageItem {
@@ -8,17 +8,17 @@ export interface MessageItem {
 }
 
 export type DisplayItem =
-  | { kind: "user"; message: UIMessage; createdAt: number }
-  | { kind: "assistant"; message: UIMessage; createdAt: number }
+  | { kind: "user"; message: CompilerUIMessage; createdAt: number }
+  | { kind: "assistant"; message: CompilerUIMessage; createdAt: number }
   | { kind: "system"; item: Item; createdAt: number };
 
 export type Segment =
   | { kind: "text"; text: string }
-  | { kind: "tools"; tools: Array<UIMessage["parts"][number]> }
+  | { kind: "tools"; tools: Array<CompilerUIMessage["parts"][number]> }
   | { kind: "qa"; text: string };
 
-export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
-  const messages: UIMessage[] = [];
+export function itemsToUIMessages(dbItems: MessageItem[]): CompilerUIMessage[] {
+  const messages: CompilerUIMessage[] = [];
 
   for (const item of dbItems) {
     if ("type" in item && (item as Item).type !== "message") continue;
@@ -42,12 +42,12 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
         toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
       } | null;
 
-      const uiParts: UIMessage["parts"] = [];
+      const uiParts: CompilerUIMessage["parts"] = [];
 
       if (content?.parts) {
         for (const p of content.parts) {
           if (p.type === "step-start") {
-            uiParts.push({ type: "step-start" } as UIMessage["parts"][number]);
+            uiParts.push({ type: "step-start" } as CompilerUIMessage["parts"][number]);
           } else if (p.type === "text" && p.text) {
             uiParts.push({ type: "text", text: p.text });
           } else if (p.type === "tool-call" && p.toolName && p.toolName !== "step-start") {
@@ -59,7 +59,7 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
               ...(p.isError
                 ? { state: "output-error", errorText: p.output || "" }
                 : { state: "output-available", output: p.output || "" }),
-            } as UIMessage["parts"][number]);
+            } as CompilerUIMessage["parts"][number]);
           }
         }
       } else {
@@ -75,7 +75,7 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
               state: "output-available",
               input: tc.input,
               output: tc.result || "",
-            } as UIMessage["parts"][number]);
+            } as CompilerUIMessage["parts"][number]);
           }
         }
       }
@@ -93,7 +93,7 @@ export function itemsToUIMessages(dbItems: MessageItem[]): UIMessage[] {
   return messages;
 }
 
-export function buildDisplayItems(messages: UIMessage[], systemItems: Item[]): DisplayItem[] {
+export function buildDisplayItems(messages: CompilerUIMessage[], systemItems: Item[]): DisplayItem[] {
   const items: DisplayItem[] = [];
 
   for (const msg of messages) {
@@ -113,7 +113,7 @@ export function buildDisplayItems(messages: UIMessage[], systemItems: Item[]): D
   return items;
 }
 
-export function buildSegments(parts: UIMessage["parts"]): Segment[] {
+export function buildSegments(parts: CompilerUIMessage["parts"]): Segment[] {
   const segments: Segment[] = [];
   for (const part of parts) {
     if (part.type === "text") {
