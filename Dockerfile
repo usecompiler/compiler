@@ -1,4 +1,4 @@
-FROM node:20 AS development-dependencies-env
+FROM node:24 AS development-dependencies-env
 RUN apt-get update && apt-get install -y --no-install-recommends git bash curl ripgrep openssh-client ca-certificates \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
@@ -10,18 +10,18 @@ COPY . /app
 WORKDIR /app
 RUN npm ci
 
-FROM node:20-alpine AS production-dependencies-env
+FROM node:24-alpine AS production-dependencies-env
 COPY ./package.json package-lock.json /app/
 WORKDIR /app
 RUN npm ci --omit=dev
 
-FROM node:20-alpine AS build-env
+FROM node:24-alpine AS build-env
 COPY . /app/
 COPY --from=development-dependencies-env /app/node_modules /app/node_modules
 WORKDIR /app
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:24-alpine
 RUN apk add --no-cache git bash ripgrep
 COPY ./package.json package-lock.json /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
