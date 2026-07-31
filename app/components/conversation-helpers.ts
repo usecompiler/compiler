@@ -1,5 +1,28 @@
 import type { CompilerUIMessage } from "~/lib/chat-message";
+import type { PendingQuestionData } from "~/lib/tools/ask-user-question.server";
 import type { Item } from "~/lib/types";
+
+export interface PendingQuestionState {
+  questions: PendingQuestionData[];
+  toolCallId: string;
+}
+
+export function derivePendingQuestion(messages: CompilerUIMessage[]): PendingQuestionState | null {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "assistant") return null;
+  for (const part of last.parts) {
+    if (part.type === "tool-askUserQuestion" && part.state === "input-available") {
+      return { questions: part.input.questions, toolCallId: part.toolCallId };
+    }
+    if (part.type === "dynamic-tool" && part.toolName === "askUserQuestion" && part.state === "input-available") {
+      const input = part.input as { questions?: PendingQuestionData[] } | undefined;
+      if (input?.questions?.length) {
+        return { questions: input.questions, toolCallId: part.toolCallId };
+      }
+    }
+  }
+  return null;
+}
 
 export interface MessageItem {
   id: string;
@@ -37,7 +60,7 @@ export function itemsToUIMessages(dbItems: MessageItem[]): CompilerUIMessage[] {
       }
     } else if (item.role === "assistant") {
       const content = item.content as {
-        parts?: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; input?: unknown; output?: string; isError?: boolean }>;
+        parts?: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; input?: unknown; output?: string; isError?: boolean; pending?: boolean }>;
         text?: string;
         toolCalls?: Array<{ id: string; tool: string; input: unknown; result?: string }>;
       } | null;
@@ -56,9 +79,11 @@ export function itemsToUIMessages(dbItems: MessageItem[]): CompilerUIMessage[] {
               toolName: p.toolName,
               toolCallId: p.toolCallId || crypto.randomUUID(),
               input: p.input,
-              ...(p.isError
-                ? { state: "output-error", errorText: p.output || "" }
-                : { state: "output-available", output: p.output || "" }),
+              ...(p.pending
+                ? { state: "input-available" }
+                : p.isError
+                  ? { state: "output-error", errorText: p.output || "" }
+                  : { state: "output-available", output: p.output || "" }),
             } as CompilerUIMessage["parts"][number]);
           }
         }

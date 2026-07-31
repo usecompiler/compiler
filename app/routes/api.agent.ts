@@ -332,7 +332,7 @@ export async function action({ request }: Route.ActionArgs) {
 
         const parts: Array<
           | { type: "text"; text: string }
-          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string; isError?: true }
+          | { type: "tool-call"; toolName: string; toolCallId: string; input: unknown; output: string; isError?: true; pending?: true }
           | { type: "step-start" }
         > = [];
         for (const part of assistantMessage.parts) {
@@ -345,7 +345,19 @@ export async function action({ request }: Route.ActionArgs) {
           } else if (part.type === "dynamic-tool" || (part.type as string).startsWith("tool-")) {
             const tp = part as { toolName?: string; toolCallId?: string; input?: unknown; output?: unknown; errorText?: string; state?: string; type: string };
             const name = tp.toolName || tp.type.replace("tool-", "");
-            if (name === "askUserQuestion") continue;
+            if (name === "askUserQuestion") {
+              if (tp.state === "input-available") {
+                parts.push({
+                  type: "tool-call",
+                  toolName: name,
+                  toolCallId: tp.toolCallId || crypto.randomUUID(),
+                  input: tp.input,
+                  output: "",
+                  pending: true,
+                });
+              }
+              continue;
+            }
             if (tp.state === "input-streaming" || tp.state === "input-available") continue;
             if (tp.state === "output-error") {
               parts.push({

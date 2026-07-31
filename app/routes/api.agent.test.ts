@@ -445,6 +445,39 @@ describe("api.agent action", () => {
       expect(parts.every((p) => p.type !== "tool-call" || p.toolName !== "askUserQuestion")).toBe(true);
     });
 
+    it("persists an unanswered askUserQuestion as a pending tool call", async () => {
+      mockDb._selectResults = [
+        [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
+        [],
+      ];
+      mockDb._selectCallCount = 0;
+      const request = buildRequest(validBody());
+      await callAction(request);
+
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
+      await callArgs.onEnd({
+        isAborted: false,
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Which option?" },
+            { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", state: "input-available", input: { questions: [{ question: "Pick one", options: [{ label: "A" }] }] } },
+          ],
+        },
+      });
+
+      const setCalls = mockDb._updateSet.mock.calls;
+      const contentUpdate = setCalls.find((c: unknown[]) => (c[0] as Record<string, unknown>).content !== undefined);
+      const content = (contentUpdate![0] as Record<string, unknown>).content as Record<string, unknown>;
+      const parts = content.parts as Array<Record<string, unknown>>;
+      expect(parts).toHaveLength(2);
+      expect(parts[1]).toMatchObject({
+        type: "tool-call",
+        toolName: "askUserQuestion",
+        toolCallId: "tc-ask",
+        pending: true,
+      });
+    });
+
     it("concatenates text parts into a flat text field", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],

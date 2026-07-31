@@ -9,7 +9,7 @@ import type { Item } from "~/lib/types";
 import type { PendingQuestionData } from "~/lib/agent.server";
 import { PromptInput, type PendingFile } from "./prompt-input";
 import { NavigationBlocker } from "./navigation-blocker";
-import { itemsToUIMessages, buildDisplayItems, buildSegments } from "./conversation-helpers";
+import { itemsToUIMessages, buildDisplayItems, buildSegments, derivePendingQuestion, type PendingQuestionState } from "./conversation-helpers";
 
 interface AnsweredQuestion {
   question: string;
@@ -32,7 +32,6 @@ interface AgentConversationProps {
   ownsConversation?: boolean;
   onFork?: () => void;
   source?: { id: string; title: string; shareToken: string | null } | null;
-  initialPendingQuestion?: PendingQuestionData[] | null;
   initialBlobsByItemId?: Record<string, BlobMeta[]>;
   initialBlobIds?: string;
   hasStorageConfig?: boolean;
@@ -48,7 +47,6 @@ export function AgentConversation({
   ownsConversation = false,
   onFork,
   source,
-  initialPendingQuestion,
   initialBlobsByItemId,
   initialBlobIds,
   hasStorageConfig = false,
@@ -60,11 +58,9 @@ export function AgentConversation({
   const [networkError, setNetworkError] = useState(false);
   const savedPromptRef = useRef("");
   const savedFilesRef = useRef<PendingFile[]>([]);
-  const [pendingQuestion, setPendingQuestion] = useState<{
-    questions: PendingQuestionData[];
-    toolCallId: string;
-  } | null>(
-    initialPendingQuestion ? { questions: initialPendingQuestion, toolCallId: "" } : null
+  const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestionState | null>(
+    () => (readOnly ? null : derivePendingQuestion(initialUIMessages))
   );
   const [systemItems, setSystemItems] = useState<Item[]>(
     initialItems.filter((i) => i.type === "system")
@@ -74,8 +70,6 @@ export function AgentConversation({
   const hasProcessedInitialPrompt = useRef(false);
   const revalidator = useRevalidator();
   const pendingBlobIdsRef = useRef<string[]>([]);
-
-  const initialUIMessages = useMemo(() => itemsToUIMessages(initialItems), []);
 
   const transport = useMemo(() => new DefaultChatTransport<CompilerUIMessage>({
     api: "/api/agent",

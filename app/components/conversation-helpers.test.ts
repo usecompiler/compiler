@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { itemsToUIMessages, buildDisplayItems, buildSegments } from "./conversation-helpers";
+import { itemsToUIMessages, buildDisplayItems, buildSegments, derivePendingQuestion } from "./conversation-helpers";
 import type { Item } from "~/lib/types";
 import type { CompilerUIMessage } from "~/lib/chat-message";
 
@@ -93,6 +93,26 @@ describe("itemsToUIMessages", () => {
       errorText: "command timed out",
     });
     expect(msgs[0].parts[0]).not.toHaveProperty("output");
+  });
+
+  it("restores pending tool calls as input-available parts", () => {
+    const items = [
+      assistantItem("a1", {
+        parts: [
+          { type: "text", text: "Which option?" },
+          { type: "tool-call", toolName: "askUserQuestion", toolCallId: "tc1", input: { questions: [] }, output: "", pending: true },
+        ],
+        text: "Which option?",
+      }),
+    ];
+    const msgs = itemsToUIMessages(items);
+    expect(msgs[0].parts[1]).toMatchObject({
+      type: "dynamic-tool",
+      toolName: "askUserQuestion",
+      toolCallId: "tc1",
+      state: "input-available",
+    });
+    expect(msgs[0].parts[1]).not.toHaveProperty("output");
   });
 
   it("restores multiple tool groups interleaved with text", () => {
@@ -390,5 +410,56 @@ describe("buildSegments", () => {
         text: "Q: Approach\nA: Option A",
       });
     });
+  });
+});
+
+describe("derivePendingQuestion", () => {
+  const questions = [{ question: "Pick one", options: [{ label: "A" }, { label: "B" }] }];
+
+  function pendingAskMessage(id: string): CompilerUIMessage {
+    return {
+      id,
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Which option?" },
+        { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", state: "input-available", input: { questions } } as CompilerUIMessage["parts"][number],
+      ],
+    };
+  }
+
+  it("returns the questions and toolCallId from a pending ask on the last assistant message", () => {
+    const result = derivePendingQuestion([pendingAskMessage("a1")]);
+    expect(result).toEqual({ questions, toolCallId: "tc-ask" });
+  });
+
+  it("finds a pending ask on a streamed static tool part", () => {
+    const msg: CompilerUIMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [
+        { type: "tool-askUserQuestion", toolCallId: "tc-2", state: "input-available", input: { questions } } as CompilerUIMessage["parts"][number],
+      ],
+    };
+    expect(derivePendingQuestion([msg])).toEqual({ questions, toolCallId: "tc-2" });
+  });
+
+  it("returns null when the ask has been answered", () => {
+    const msg: CompilerUIMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [
+        { type: "dynamic-tool", toolName: "askUserQuestion", toolCallId: "tc-ask", state: "output-available", input: { questions }, output: "{}" } as CompilerUIMessage["parts"][number],
+      ],
+    };
+    expect(derivePendingQuestion([msg])).toBeNull();
+  });
+
+  it("returns null when a later message follows the ask", () => {
+    const userMsg: CompilerUIMessage = { id: "u1", role: "user", parts: [{ type: "text", text: "answers" }] };
+    expect(derivePendingQuestion([pendingAskMessage("a1"), userMsg])).toBeNull();
+  });
+
+  it("returns null for empty conversations", () => {
+    expect(derivePendingQuestion([])).toBeNull();
   });
 });
