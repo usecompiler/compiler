@@ -692,6 +692,21 @@ const AssistantMessageRow = memo(function AssistantMessageRow({ message, isStrea
       .join("\n\n"),
     [segments],
   );
+
+  const sources = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ url: string; title?: string | null }> = [];
+    for (const part of message.parts) {
+      if (part.type === "source-url") {
+        const sp = part as { url: string; title?: string | null };
+        if (sp.url && !seen.has(sp.url)) {
+          seen.add(sp.url);
+          list.push({ url: sp.url, title: sp.title });
+        }
+      }
+    }
+    return list;
+  }, [message.parts]);
   const hasContent = allText.trim().length > 0;
   const hasAnything = segments.length > 0;
 
@@ -771,6 +786,25 @@ const AssistantMessageRow = memo(function AssistantMessageRow({ message, isStrea
         }
         return null;
       })}
+
+      {sources.length > 0 && (
+        <div className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
+          Sources:{" "}
+          {sources.map((source, i) => (
+            <span key={source.url}>
+              {i > 0 && " · "}
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-neutral-600 dark:hover:text-neutral-300"
+              >
+                {sourceLabel(source.url, source.title)}
+              </a>
+            </span>
+          ))}
+        </div>
+      )}
 
       {hasContent && (
         <div className="flex mt-1">
@@ -1161,7 +1195,20 @@ function getToolLabel(tool?: string): string {
       return "Running";
     case "repoSync":
       return "Fetching code";
+    case "web_search":
+      return "Searching the web";
+    case "web_fetch":
+      return "Reading a page";
     default:
       return "Running";
+  }
+}
+
+function sourceLabel(url: string, title?: string | null): string {
+  if (title) return title;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
   }
 }

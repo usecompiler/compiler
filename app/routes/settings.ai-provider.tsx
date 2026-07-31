@@ -29,10 +29,12 @@ import { isSaas } from "~/lib/appMode.server";
 const REQUIRED_TOOLS = ["Read", "Glob", "Grep", "Task"];
 
 const OPTIONAL_TOOLS = [
-  { id: "bash", label: "Bash", description: "Execute shell commands" },
-  { id: "webfetch", label: "WebFetch", description: "Fetch web page content" },
-  { id: "websearch", label: "WebSearch", description: "Search the web" },
+  { id: "bash", label: "Bash", description: "Execute shell commands", anthropicOnly: false },
+  { id: "webfetch", label: "WebFetch", description: "Fetch web page content", anthropicOnly: true },
+  { id: "websearch", label: "WebSearch", description: "Search the web", anthropicOnly: true },
 ];
+
+const ANTHROPIC_ONLY_TOOL_IDS = OPTIONAL_TOOLS.filter((t) => t.anthropicOnly).map((t) => t.id);
 
 interface ModelOption {
   id: string;
@@ -110,9 +112,10 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "save-tools") {
     const selectedTools = formData.getAll("selectedTools") as string[];
-    const validTools = selectedTools.filter((t) =>
-      SERVER_OPTIONAL_TOOLS.some((ot) => ot.id === t)
-    );
+    const providerConfig = await getAIProviderConfig(user.organization.id);
+    const validTools = selectedTools
+      .filter((t) => SERVER_OPTIONAL_TOOLS.some((ot) => ot.id === t))
+      .filter((t) => providerConfig?.provider !== "bedrock" || !ANTHROPIC_ONLY_TOOL_IDS.includes(t));
     await saveToolConfig(user.organization.id, validTools);
     await logAuditEvent(user.organization.id, user.id, "updated tool configuration");
     return { error: null, success: true, intent };
@@ -620,29 +623,37 @@ export default function AIProviderSettings({ loaderData }: Route.ComponentProps)
                   Optional tools:
                 </p>
                 <div className="space-y-2">
-                  {OPTIONAL_TOOLS.map((tool) => (
-                    <label
-                      key={tool.id}
-                      className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        name="selectedTools"
-                        value={tool.id}
-                        checked={selectedTools.includes(tool.id)}
-                        onChange={() => handleToolToggle(tool.id)}
-                        className="w-4 h-4"
-                      />
-                      <div className="flex-1">
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                          {tool.label}
-                        </span>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                          {tool.description}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
+                  {OPTIONAL_TOOLS.map((tool) => {
+                    const unavailable = tool.anthropicOnly && config.provider === "bedrock";
+                    return (
+                      <label
+                        key={tool.id}
+                        className={`flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg transition-colors ${
+                          unavailable
+                            ? "opacity-50 cursor-not-allowed"
+                            : "cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          name="selectedTools"
+                          value={tool.id}
+                          checked={!unavailable && selectedTools.includes(tool.id)}
+                          disabled={unavailable}
+                          onChange={() => handleToolToggle(tool.id)}
+                          className="w-4 h-4"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                            {tool.label}
+                          </span>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            {unavailable ? "Not available with AWS Bedrock" : tool.description}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
