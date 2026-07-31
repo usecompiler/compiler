@@ -38,6 +38,9 @@ export function getStreamContext(): ResumableStreamContext {
 function getRedis(): Promise<RedisClient> {
   if (!redisPromise) {
     redisPromise = connectRedis();
+    redisPromise.catch(() => {
+      redisPromise = null;
+    });
   }
   return redisPromise;
 }
@@ -104,6 +107,9 @@ function ensureStopSubscriber(): Promise<void> {
         abortLocal(conversationId);
       });
     })();
+    stopSubscriberPromise.catch(() => {
+      stopSubscriberPromise = null;
+    });
   }
   return stopSubscriberPromise;
 }
