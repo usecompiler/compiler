@@ -23,7 +23,7 @@ export async function generateAndSaveTitle(
   const model = await getTitleGenerationModel(organizationId);
   const { text } = await generateText({
     model,
-    system: TITLE_PROMPT,
+    instructions: TITLE_PROMPT,
     prompt: `Title this message:\n\n${trimmed.slice(0, 2000)}`,
     maxOutputTokens: 50,
   });

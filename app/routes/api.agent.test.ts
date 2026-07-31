@@ -24,11 +24,13 @@ const mockCreateUIMessageStreamResponse = vi.fn().mockImplementation(() =>
   new Response("data: test\n\n", { headers: { "Content-Type": "text/event-stream" } })
 );
 const mockCreateUIMessageStream = vi.fn();
+const mockToUIMessageStream = vi.fn();
 vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
-  stepCountIs: (n: number) => ({ type: "stepCount", value: n }),
+  isStepCount: (n: number) => ({ type: "stepCount", value: n }),
   smoothStream: () => "mock-smooth-stream",
+  toUIMessageStream: (...args: unknown[]) => mockToUIMessageStream(...args),
   createUIMessageStream: (...args: unknown[]) => mockCreateUIMessageStream(...args),
   createUIMessageStreamResponse: (...args: unknown[]) => mockCreateUIMessageStreamResponse(...args),
 }));
@@ -69,9 +71,10 @@ function validBody() {
 
 function setupMockStreamText() {
   mockStreamText.mockReturnValue({
-    toUIMessageStream: vi.fn().mockReturnValue(new ReadableStream()),
+    stream: "mock-full-stream",
     consumeStream: vi.fn().mockResolvedValue(undefined),
   });
+  mockToUIMessageStream.mockReturnValue(new ReadableStream());
   mockCreateUIMessageStream.mockImplementation((opts: { execute?: (args: { writer: { merge: (s: unknown) => void; write: (c: unknown) => void } }) => Promise<void> | void }) => {
     const writer = { merge: vi.fn(), write: vi.fn() };
     void Promise.resolve(opts.execute?.({ writer }));
@@ -275,13 +278,13 @@ describe("api.agent action", () => {
       expect(mockStreamText).toHaveBeenCalledWith(
         expect.objectContaining({
           model: "mock-model",
-          system: "test system prompt",
+          instructions: "test system prompt",
           tools: {},
         })
       );
     });
 
-    it("calls toUIMessageStream on the result", async () => {
+    it("converts the result stream to a UI message stream", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
         [],
@@ -291,8 +294,9 @@ describe("api.agent action", () => {
       const response = await callAction(request);
 
       expect(response).toBeInstanceOf(Response);
-      const result = mockStreamText.mock.results[0].value;
-      expect(result.toUIMessageStream).toHaveBeenCalled();
+      expect(mockToUIMessageStream).toHaveBeenCalledWith(
+        expect.objectContaining({ stream: "mock-full-stream", tools: {} })
+      );
     });
 
     it("calls consumeStream for guaranteed persistence", async () => {
@@ -342,8 +346,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       expect(callArgs).toHaveProperty("onEnd");
       expect(typeof callArgs.onEnd).toBe("function");
     });
@@ -357,8 +360,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: {
@@ -390,8 +392,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: {
@@ -424,8 +425,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: {
@@ -454,8 +454,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: {
@@ -483,8 +482,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: { parts: [{ type: "text", text: "Done." }] },
@@ -504,8 +502,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: true,
         responseMessage: {
@@ -540,8 +537,7 @@ describe("api.agent action", () => {
       const streamArgs = mockStreamText.mock.calls[0][0];
       streamArgs.onError({ error: new Error("provider failure") });
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: { parts: [{ type: "text", text: "Partial before error" }] },
@@ -565,8 +561,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: {
@@ -599,8 +594,7 @@ describe("api.agent action", () => {
       const request = buildRequest(validBody());
       await callAction(request);
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: true,
         responseMessage: {
@@ -1190,7 +1184,7 @@ describe("api.agent action", () => {
     });
   });
 
-  describe("onStepFinish token tracking", () => {
+  describe("onStepEnd token tracking", () => {
     it("does not count askUserQuestion toward toolUseCount", async () => {
       mockDb._selectResults = [
         [{ id: "conv-1", title: "Existing Chat", userId: "user-1" }],
@@ -1202,7 +1196,7 @@ describe("api.agent action", () => {
 
       const streamArgs = mockStreamText.mock.calls[0][0];
       let toolCount = 0;
-      streamArgs.onStepFinish({
+      streamArgs.onStepEnd({
         usage: { inputTokens: 100, outputTokens: 50 },
         toolCalls: [
           { toolName: "read" },
@@ -1211,8 +1205,7 @@ describe("api.agent action", () => {
         ],
       });
 
-      const result = mockStreamText.mock.results[0].value;
-      const callArgs = result.toUIMessageStream.mock.calls[0][0];
+      const callArgs = mockToUIMessageStream.mock.calls[0][0];
       await callArgs.onEnd({
         isAborted: false,
         responseMessage: { parts: [{ type: "text", text: "Done." }] },

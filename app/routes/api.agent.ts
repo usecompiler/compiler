@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.agent";
-import { streamText, convertToModelMessages, stepCountIs, smoothStream, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, isStepCount, smoothStream, toUIMessageStream, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
 import { getAgentConfig } from "~/lib/agent.server";
 import { requireActiveAuth } from "~/lib/auth.server";
 import { db } from "~/lib/db/index.server";
@@ -236,7 +236,7 @@ export async function action({ request }: Route.ActionArgs) {
   let streamErrored = false;
   const startTime = Date.now();
 
-  const systemForStream = promptCachingEnabled
+  const instructionsForStream = promptCachingEnabled
     ? {
         role: "system" as const,
         content: systemPrompt,
@@ -248,7 +248,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const result = streamText({
     model,
-    system: systemForStream,
+    instructions: instructionsForStream,
     messages: modelMessages,
     tools,
     prepareStep: promptCachingEnabled
@@ -291,9 +291,9 @@ export async function action({ request }: Route.ActionArgs) {
       },
     },
     experimental_transform: smoothStream(),
-    stopWhen: stepCountIs(50),
+    stopWhen: isStepCount(50),
     abortSignal: request.signal,
-    onStepFinish: ({ usage, toolCalls }) => {
+    onStepEnd: ({ usage, toolCalls }) => {
       if (usage) {
         totalInputTokens += usage.inputTokens || 0;
         totalOutputTokens += usage.outputTokens || 0;
@@ -314,7 +314,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const compactionBlockIds = new Set<string>();
 
-  const innerUiStream = result.toUIMessageStream({
+  const innerUiStream = toUIMessageStream({
+    stream: result.stream,
+    tools,
     originalMessages: uiMessages,
     sendFinish: false,
     onEnd: async ({ responseMessage: assistantMessage, isAborted }) => {
@@ -424,7 +426,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const uiStream = createUIMessageStream({
     originalMessages: uiMessages,
-    onFinish: stopHeartbeat,
+    onEnd: stopHeartbeat,
     execute: ({ writer }) => {
       if (!isSaas()) {
         heartbeat = setInterval(() => {

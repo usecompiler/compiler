@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
+import { createAmazonBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import type { LanguageModel } from "ai";
 import { getAIProviderConfig, type AIProvider } from "./ai-provider.server";
 import { db } from "./db/index.server";
@@ -400,55 +400,6 @@ export async function getToolConfig(organizationId: string): Promise<string[]> {
   return [...baseTools, ...mapped];
 }
 
-export function createBedrockCompactionFetch(
-  region: string,
-  accessKeyId: string,
-  secretAccessKey: string,
-) {
-  const signingKeyCache = new Map<string, ArrayBuffer>();
-  return async (
-    url: RequestInfo | URL,
-    options?: RequestInit,
-  ): Promise<Response> => {
-    if (options?.body && typeof options.body === "string") {
-      const body = JSON.parse(options.body);
-      if (body.context_management) {
-        const betas = new Set<string>(body.anthropic_beta || []);
-        betas.add("compact-2026-01-12");
-        betas.add("context-management-2025-06-27");
-        body.anthropic_beta = Array.from(betas);
-        const newBody = JSON.stringify(body);
-
-        const { AwsV4Signer } = await import("aws4fetch");
-        const urlStr =
-          typeof url === "string"
-            ? url
-            : url instanceof URL
-              ? url.href
-              : (url as Request).url;
-        const signer = new AwsV4Signer({
-          url: urlStr,
-          method: "POST",
-          headers: (options.headers ?? {}) as HeadersInit,
-          body: newBody,
-          region,
-          accessKeyId,
-          secretAccessKey,
-          service: "bedrock",
-          cache: signingKeyCache,
-        });
-        const signed = await signer.sign();
-        return fetch(url, {
-          ...options,
-          body: newBody,
-          headers: signed.headers,
-        });
-      }
-    }
-    return fetch(url, options);
-  };
-}
-
 const XHIGH_EFFORT_MODELS = ["claude-opus-4-7", "claude-opus-4-8"];
 
 export function getAgentEffort(
@@ -470,15 +421,10 @@ export async function getModel(
   const modelId = await getEffectiveModel(memberId, organizationId);
 
   if (config?.provider === "bedrock" && config.awsRegion && config.awsAccessKeyId && config.awsSecretAccessKey) {
-    const bedrock = createBedrockAnthropic({
+    const bedrock = createAmazonBedrockAnthropic({
       region: config.awsRegion,
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
-      fetch: createBedrockCompactionFetch(
-        config.awsRegion,
-        config.awsAccessKeyId,
-        config.awsSecretAccessKey,
-      ),
     });
     return { model: bedrock(modelId), modelId };
   }
@@ -495,7 +441,7 @@ export async function getTitleGenerationModel(
   const config = await getAIProviderConfig(organizationId);
 
   if (config?.provider === "bedrock" && config.awsRegion && config.awsAccessKeyId && config.awsSecretAccessKey) {
-    const bedrock = createBedrockAnthropic({
+    const bedrock = createAmazonBedrockAnthropic({
       region: config.awsRegion,
       accessKeyId: config.awsAccessKeyId,
       secretAccessKey: config.awsSecretAccessKey,
